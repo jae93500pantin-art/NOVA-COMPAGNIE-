@@ -1,0 +1,76 @@
+export type VehicleCategory = "Business" | "Luxury" | "SUV" | "Van" | "Electric";
+
+export interface City {
+  id: string;
+  name: string;
+  country: string;
+  countryCode: string;
+  image: string;
+  driversCount: number;
+  /** Relative coordinates (0-100) used to position pins on the stylised map. */
+  mapX: number;
+  mapY: number;
+  primary?: boolean;
+}
+
+export interface Review {
+  id: string;
+  author: string;
+  avatar: string;
+  rating: number;
+  date: string;
+  comment: string;
+  trip?: string;
+}
+
+export interface Driver {
+  id: string;
+  firstName: string;
+  lastName: string;
+  age: number;
+  avatar: string;
+  cityId: string;
+  rating: number;
+  reviewsCount: number;
+  trips: number;
+  languages: string[];
+  experienceYears: number;
+  car: {
+    make: string;
+    model: string;
+    year: number;
+    color: string;
+    photos: string[];
+  };
+  categories: VehicleCategory[];
+  available: boolean;
+  responseTime: string;
+  pricePerHour: number;
+  pricePerKm: number;
+  bio: string;
+  badges: string[];
+  /** Relative coordinates (0-100) used to position the live pin on the map. */
+  mapX: number;
+  mapY: number;
+  /** Optional real-world coordinates (populated when backed by Supabase). */
+  lng?: number;
+  lat?: number;
+  reviews: Review[];
+}
+
+export interface ChatMessage {
+  id: string;
+  fromMe: boolean;
+  text: string;
+  time: string;
+  read?: boolean;
+}
+
+export interface Conversation {
+  id: string;
+  driverId: string;
+  lastMessage: string;
+  time: string;
+  unread: number;
+  messages: ChatMessage[];
+}

@@ -1,0 +1,217 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background-color: #05060a;
+  color: #e7ebf3;
+  overflow-x: hidden;
+  min-height: 100svh;
+  /* Respect the iPhone notch / home indicator. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Smooth momentum scrolling inside containers on iOS */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Selection */
+::selection {
+  background: rgba(47, 99, 255, 0.35);
+  color: #fff;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0c12;
+}
+::-webkit-scrollbar-thumb {
+  background: #252b3b;
+  border-radius: 999px;
+  border: 2px solid #0a0c12;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a4256;
+}
+
+@layer components {
+  /* Glassmorphism surface */
+  .glass {
+    @apply bg-white/[0.04] backdrop-blur-xl border border-white/[0.08];
+  }
+  .glass-strong {
+    @apply bg-white/[0.07] backdrop-blur-2xl border border-white/[0.12];
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full font-medium transition-all duration-300 ease-out select-none;
+  }
+  .btn-primary {
+    @apply btn bg-royal-500 text-white px-6 py-3 hover:bg-royal-400 shadow-glow hover:-translate-y-0.5 active:translate-y-0;
+  }
+  .btn-ghost {
+    @apply btn text-white/80 px-6 py-3 border border-white/10 hover:bg-white/5 hover:text-white;
+  }
+  .btn-white {
+    @apply btn bg-white text-ink-900 px-6 py-3 hover:bg-white/90 hover:-translate-y-0.5;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] border border-white/10 px-3 py-1 text-xs font-medium text-white/70;
+  }
+
+  .input {
+    @apply w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-sm text-white placeholder:text-white/30 outline-none transition focus:border-royal-400/60 focus:bg-white/[0.06] focus:ring-2 focus:ring-royal-500/20;
+  }
+
+  .section-eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-royal-300;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-br from-white via-white to-white/40 bg-clip-text text-transparent;
+  }
+  .text-gradient-royal {
+    background: linear-gradient(120deg, #fff 0%, #8eb5ff 60%, #2f63ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .mask-fade-b {
+    -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+    mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  /* Safe-area aware spacing for the iPhone notch & home indicator */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .top-safe {
+    top: calc(env(safe-area-inset-top) + 0.75rem);
+  }
+  /* Dynamic viewport height — avoids the iOS Safari address-bar jump */
+  .min-h-screen-dvh {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  .h-screen-dvh {
+    height: 100vh;
+    height: 100dvh;
+  }
+}
+
+/*
+ * Prevent iOS Safari from auto-zooming when focusing form fields.
+ * Fields stay visually compact on desktop but use a 16px base on phones.
+ */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Mapbox popup — premium dark glass override */
+.lumecar-popup .mapboxgl-popup-content {
+  background: rgba(14, 17, 24, 0.92);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.7);
+}
+.lumecar-popup .mapboxgl-popup-tip {
+  border-top-color: rgba(14, 17, 24, 0.92);
+}
+.mapboxgl-ctrl-group {
+  background: rgba(14, 17, 24, 0.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+.mapboxgl-ctrl-group button {
+  filter: invert(1);
+}
+
+/* Legal / prose documents */
+.prose-legal h1 {
+  font-size: 1.875rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.prose-legal h2 {
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #fff;
+}
+.prose-legal p,
+.prose-legal li {
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: rgba(231, 235, 243, 0.6);
+}
+.prose-legal p {
+  margin-top: 0.75rem;
+}
+.prose-legal ul {
+  margin-top: 0.75rem;
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.prose-legal li {
+  margin-top: 0.35rem;
+}
+.prose-legal a {
+  color: #8eb5ff;
+  text-underline-offset: 2px;
+}
+.prose-legal a:hover {
+  text-decoration: underline;
+}
+.prose-legal .lead {
+  font-size: 1rem;
+  color: rgba(231, 235, 243, 0.75);
+}
+.prose-legal .updated {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: rgba(231, 235, 243, 0.35);
+}
