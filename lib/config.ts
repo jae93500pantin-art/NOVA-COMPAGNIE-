@@ -19,6 +19,7 @@ export const env = {
  */
 export const serverEnv = {
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
 };
 
 export const isSupabaseConfigured =
@@ -28,3 +29,14 @@ export const isMapboxConfigured = env.mapboxToken.startsWith("pk.");
 
 export const isSupabaseAdminConfigured =
   isSupabaseConfigured && serverEnv.supabaseServiceRoleKey.length > 20;
+
+/**
+ * Stripe is configured when a secret key is present. `sk_test_…` runs in test
+ * mode (no real charges), `sk_live_…` in production. Without a key, the
+ * booking flow falls back to the simulated confirmation.
+ */
+export const isStripeConfigured =
+  serverEnv.stripeSecretKey.startsWith("sk_");
+
+export const isStripeLiveMode =
+  serverEnv.stripeSecretKey.startsWith("sk_live_");

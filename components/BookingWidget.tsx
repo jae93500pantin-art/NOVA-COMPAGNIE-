@@ -3,22 +3,59 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, CheckCircle2, ShieldCheck, Calendar, Clock } from "lucide-react";
+import {
+  MessageCircle,
+  CheckCircle2,
+  ShieldCheck,
+  Calendar,
+  Clock,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import type { Driver } from "@/lib/types";
 import { addContact } from "@/lib/contacts";
+import { computeBookingAmount } from "@/lib/payments";
 
 export function BookingWidget({ driver }: { driver: Driver }) {
   const router = useRouter();
   const [hours, setHours] = useState(3);
   const [confirmed, setConfirmed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const subtotal = driver.pricePerHour * hours;
-  const serviceFee = Math.round(subtotal * 0.12);
-  const total = subtotal + serviceFee;
+  const { subtotal, serviceFee, total } = computeBookingAmount(
+    driver.pricePerHour,
+    hours
+  );
 
   const contact = () => {
     addContact(driver.id);
     router.push(`/messages?driver=${driver.id}`);
+  };
+
+  const reserve = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driverId: driver.id, hours }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Erreur");
+      if (data.mode === "stripe" && data.url) {
+        // Real Stripe Checkout (test or live).
+        window.location.href = data.url;
+        return;
+      }
+      // Demo mode: simulated confirmation.
+      setConfirmed(true);
+    } catch {
+      setError("Le paiement n'a pas pu démarrer. Réessayez.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -112,11 +149,19 @@ export function BookingWidget({ driver }: { driver: Driver }) {
             animate={{ opacity: 1 }}
             className="mt-5 space-y-2"
           >
+            {error && (
+              <p className="flex items-center gap-1.5 rounded-xl border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs text-red-300">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                {error}
+              </p>
+            )}
             <button
-              onClick={() => setConfirmed(true)}
-              className="btn-primary w-full"
+              onClick={reserve}
+              disabled={loading}
+              className="btn-primary w-full disabled:opacity-60"
             >
-              Réserver
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading ? "Redirection…" : "Réserver"}
             </button>
             <button onClick={contact} className="btn-ghost w-full">
               <MessageCircle className="h-4 w-4" />

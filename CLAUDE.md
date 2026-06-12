@@ -70,6 +70,7 @@ app/
     live/[room]/route.ts      SSE stream (GET) + publish (POST). Powers /live AND /messages (room dm-<driverId>)
     account/route.ts          DELETE → RGPD account erasure (service role)
     account/export/route.ts   GET → RGPD data export (JSON)
+    checkout/route.ts         POST → Stripe Checkout session (test/live) or {mode:"demo"} fallback. Amount computed server-side.
 
 components/                   All client components unless noted
   Navbar                      Account dropdown + logout when logged in (uses useAuth)
@@ -133,6 +134,21 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
 - Requires login (shows a CTA otherwise). Messages are ephemeral (in-memory broker),
   same infra as `/live`. Persistent history = Supabase step (not done yet).
 
+## Payments (Stripe — branch `stripe-test`)
+
+- Pure amount logic in `lib/payments.ts` (`computeBookingAmount`, `clampHours`,
+  12% service fee, euros→cents). Fully unit-tested (`tests/payments.test.ts`).
+- `lib/stripe.ts` = server-only Stripe client (null if no key). `lib/config.ts`
+  flags: `isStripeConfigured`, `isStripeLiveMode`.
+- `POST /api/checkout` creates a Checkout Session. **Amount is computed
+  server-side from the trusted driver price** — a client-supplied `amount` is
+  ignored (anti price-tampering). Rate-limited (10/min/IP). Apple Pay & Google
+  Pay appear automatically in Stripe Checkout.
+- No key → returns `{ mode: "demo", amount }` and `BookingWidget` shows the
+  simulated confirmation. With `sk_test_…` → real test Checkout (test cards),
+  redirect to `/compte/reservation?status=success`.
+- To enable: put `STRIPE_SECRET_KEY=sk_test_…` in `.env.local`, restart.
+
 ## Deployment workflow
 
 - Local dev → `./deploy.sh` (build locally first; aborts if it fails). The script also
@@ -148,6 +164,7 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public | Supabase anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | **server only** | Privileged ops (account deletion). NEVER expose to browser. |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | public | Mapbox token (`pk....`) |
+| `STRIPE_SECRET_KEY` | **server only** | Stripe Checkout. `sk_test_…`=test mode (no real charge), `sk_live_…`=prod. Empty=demo flow. |
 
 Empty/placeholder → demo mode. Flags in `lib/config.ts` decide behaviour at
 runtime; never hard-require a key.
