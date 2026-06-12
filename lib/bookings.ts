@@ -1,6 +1,6 @@
 /** Booking (course request) domain types + pure helpers (unit-testable). */
 
-export type BookingStatus = "pending" | "confirmed" | "refused";
+export type BookingStatus = "pending" | "confirmed" | "refused" | "paid";
 
 export interface Booking {
   id: string;
@@ -27,10 +27,15 @@ export interface NewBookingInput {
   when?: string;
 }
 
-/** Whether a status change is allowed (pending → confirmed/refused only). */
+/**
+ * Whether a status change is allowed.
+ * pending → confirmed | refused (driver decision)
+ * confirmed → paid          (client pays after acceptance)
+ */
 export function canTransition(from: BookingStatus, to: BookingStatus): boolean {
-  if (from !== "pending") return false;
-  return to === "confirmed" || to === "refused";
+  if (from === "pending") return to === "confirmed" || to === "refused";
+  if (from === "confirmed") return to === "paid";
+  return false;
 }
 
 export function statusLabel(status: BookingStatus): string {
@@ -38,9 +43,11 @@ export function statusLabel(status: BookingStatus): string {
     case "pending":
       return "En attente";
     case "confirmed":
-      return "Acceptée";
+      return "Acceptée — à payer";
     case "refused":
       return "Refusée";
+    case "paid":
+      return "Payée";
   }
 }
 

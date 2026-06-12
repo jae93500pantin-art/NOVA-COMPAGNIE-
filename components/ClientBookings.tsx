@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   XCircle,
   Hourglass,
+  CreditCard,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { getDriver } from "@/lib/drivers";
@@ -31,7 +32,7 @@ export function ClientBookings() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [byId, setById] = useState<Record<string, Booking>>({});
-  const [clientId, setClientId] = useState("");
+  const [payingId, setPayingId] = useState<string | null>(null);
   const sourcesRef = useRef<EventSource[]>([]);
 
   useEffect(() => {
@@ -40,7 +41,6 @@ export function ClientBookings() {
 
   useEffect(() => {
     if (!user) return;
-    setClientId(getClientId());
 
     const connect = () => {
       // Tear down previous streams.
@@ -83,6 +83,32 @@ export function ClientBookings() {
       </div>
     );
   }
+
+  const pay = async (b: Booking) => {
+    setPayingId(b.id);
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driverId: b.driverId, hours: b.hours, bookingId: b.id }),
+      });
+      const data = await res.json();
+      if (data.mode === "stripe" && data.url) {
+        window.location.href = data.url; // real Stripe Checkout
+        return;
+      }
+      // Demo mode: mark the booking paid directly.
+      await fetch(`/api/bookings/${b.driverId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: b.id, status: "paid" }),
+      });
+    } catch {
+      /* ignore — user can retry */
+    } finally {
+      setPayingId(null);
+    }
+  };
 
   const bookings = Object.values(byId).sort((a, b) => b.createdAt - a.createdAt);
 
@@ -147,6 +173,20 @@ export function ClientBookings() {
                   </div>
                   <div className="flex items-center gap-3">
                     <StatusBadge status={b.status} />
+                    {b.status === "confirmed" && (
+                      <button
+                        onClick={() => pay(b)}
+                        disabled={payingId === b.id}
+                        className="btn-primary text-xs disabled:opacity-60"
+                      >
+                        {payingId === b.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <CreditCard className="h-4 w-4" />
+                        )}
+                        Payer €{b.total}
+                      </button>
+                    )}
                     {driver && (
                       <Link
                         href={`/messages?driver=${driver.id}`}
@@ -172,6 +212,7 @@ function StatusBadge({ status }: { status: Booking["status"] }) {
     pending: { icon: Hourglass, cls: "border-amber-400/30 bg-amber-400/10 text-amber-300" },
     confirmed: { icon: CheckCircle2, cls: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" },
     refused: { icon: XCircle, cls: "border-red-400/30 bg-red-400/10 text-red-300" },
+    paid: { icon: CreditCard, cls: "border-royal-400/30 bg-royal-500/10 text-royal-200" },
   } as const;
   const { icon: Icon, cls } = map[status];
   return (

@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { driverId?: string; hours?: number };
+  let body: { driverId?: string; hours?: number; bookingId?: string };
   try {
     body = await req.json();
   } catch {
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
   }
 
   const driverId = sanitizeText(body.driverId, 64);
+  const bookingId = sanitizeText(body.bookingId, 64);
   const driver = getDriver(driverId);
   if (!driver) {
     return Response.json({ error: "Unknown driver" }, { status: 404 });
@@ -86,11 +87,12 @@ export async function POST(req: NextRequest) {
       ],
       metadata: {
         driverId: driver.id,
+        bookingId,
         hours: String(amount.hours),
         total: String(amount.total),
       },
-      success_url: `${origin}/compte/reservation?status=success&driver=${driver.id}`,
-      cancel_url: `${origin}/drivers/${driver.id}?canceled=1`,
+      success_url: `${origin}/compte/reservation?status=success&driver=${driver.id}&booking=${encodeURIComponent(bookingId)}`,
+      cancel_url: `${origin}/compte/reservations?canceled=1`,
     });
 
     return Response.json({ mode: "stripe", url: session.url });

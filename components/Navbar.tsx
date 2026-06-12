@@ -159,6 +159,14 @@ export function Navbar() {
                         <Calendar className="h-4 w-4" /> Mes réservations
                       </Link>
                     )}
+                    {user.role === "driver" && (
+                      <Link
+                        href="/compte/courses"
+                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/80 transition hover:bg-white/5"
+                      >
+                        <CarFront className="h-4 w-4" /> Mes courses
+                      </Link>
+                    )}
                     <Link
                       href="/messages"
                       className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/80 transition hover:bg-white/5"

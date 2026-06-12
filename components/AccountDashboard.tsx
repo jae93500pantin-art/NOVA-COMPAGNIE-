@@ -329,8 +329,21 @@ function DriverDashboard({ driverId }: { driverId: string | null }) {
         ))}
       </div>
 
+      {/* Quick links */}
+      <div className="flex flex-wrap gap-2">
+        <Link href="/compte/courses" className="btn-primary text-sm">
+          <TrendingUp className="h-4 w-4" /> Mes courses
+        </Link>
+        <Link href="/messages" className="btn-ghost text-sm">
+          <MessageSquare className="h-4 w-4" /> Messagerie
+        </Link>
+        <Link href="/compte/profil" className="btn-ghost text-sm">
+          <Car className="h-4 w-4" /> Mon profil
+        </Link>
+      </div>
+
       {/* Requests */}
-      <Section title="Demandes de course" icon={TrendingUp}>
+      <Section title="Demandes de course" icon={TrendingUp} href="/compte/courses">
         <DriverRequests driverId={driver.id} />
       </Section>
 

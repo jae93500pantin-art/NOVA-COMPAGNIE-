@@ -1,19 +1,23 @@
 import Link from "next/link";
 import { CheckCircle2, MessageCircle, Home } from "lucide-react";
 import { getDriver } from "@/lib/drivers";
+import { MarkPaid } from "@/components/MarkPaid";
 
 export const metadata = { title: "Réservation confirmée — LumeCar" };
 
 export default function ReservationPage({
   searchParams,
 }: {
-  searchParams: { status?: string; driver?: string };
+  searchParams: { status?: string; driver?: string; booking?: string };
 }) {
   const driver = searchParams.driver ? getDriver(searchParams.driver) : undefined;
   const success = searchParams.status === "success";
 
   return (
     <div className="mx-auto grid min-h-[70vh] max-w-lg place-items-center px-5 pt-28 text-center lg:pt-32">
+      {success && searchParams.driver && searchParams.booking && (
+        <MarkPaid driverId={searchParams.driver} bookingId={searchParams.booking} />
+      )}
       <div>
         <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-emerald-400/10">
           <CheckCircle2 className="h-9 w-9 text-emerald-400" />

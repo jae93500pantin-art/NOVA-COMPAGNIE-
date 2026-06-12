@@ -37,37 +37,30 @@ export function BookingWidget({ driver }: { driver: Driver }) {
   };
 
   const reserve = async () => {
+    if (!user) {
+      router.push("/auth/login");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      // 1) Create a real-time course request the driver receives instantly.
+      // Send a course request. Payment happens later, only after the driver
+      // accepts — tracked from "Mes réservations".
       const clientId = getClientId();
-      await fetch(`/api/bookings/${driver.id}`, {
+      const res = await fetch(`/api/bookings/${driver.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientId,
-          clientName: user ? `${user.firstName} ${user.lastName}`.trim() : "Client",
+          clientName: `${user.firstName} ${user.lastName}`.trim() || "Client",
           hours,
         }),
       });
+      if (!res.ok) throw new Error("Erreur");
       rememberBookedDriver(driver.id);
-
-      // 2) Payment: Stripe Checkout when configured, otherwise demo confirmation.
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ driverId: driver.id, hours }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Erreur");
-      if (data.mode === "stripe" && data.url) {
-        window.location.href = data.url;
-        return;
-      }
       setConfirmed(true);
     } catch {
-      setError("La réservation n'a pas pu être envoyée. Réessayez.");
+      setError("La demande n'a pas pu être envoyée. Réessayez.");
     } finally {
       setLoading(false);
     }
@@ -148,13 +141,20 @@ export function BookingWidget({ driver }: { driver: Driver }) {
               Demande envoyée !
             </p>
             <p className="mt-1 text-xs text-white/60">
-              {driver.firstName} vous répondra sous {driver.responseTime}.
+              {driver.firstName} doit accepter votre course. Vous paierez
+              ensuite depuis « Mes réservations ».
             </p>
             <button
-              onClick={contact}
-              className="mt-3 inline-block text-xs font-medium text-emerald-300 hover:underline"
+              onClick={() => router.push("/compte/reservations")}
+              className="btn-primary mt-3 w-full text-sm"
             >
-              Suivre la conversation →
+              Suivre ma réservation →
+            </button>
+            <button
+              onClick={contact}
+              className="mt-2 inline-block text-xs font-medium text-emerald-300 hover:underline"
+            >
+              Contacter le chauffeur
             </button>
           </motion.div>
         ) : (
@@ -176,7 +176,7 @@ export function BookingWidget({ driver }: { driver: Driver }) {
               className="btn-primary w-full disabled:opacity-60"
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {loading ? "Redirection…" : "Réserver"}
+              {loading ? "Envoi…" : "Demander cette course"}
             </button>
             <button onClick={contact} className="btn-ghost w-full">
               <MessageCircle className="h-4 w-4" />

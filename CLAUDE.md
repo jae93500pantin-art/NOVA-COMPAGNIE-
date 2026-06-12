@@ -137,17 +137,21 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
 
 ## Real-time bookings (course requests, client ↔ driver)
 
-- Client clicks **Réserver** (`BookingWidget`) → `POST /api/bookings/[driverId]`
-  creates a request (amount recomputed server-side). The driver's dashboard
-  (`/compte`) shows incoming requests **live** via SSE (`components/DriverRequests.tsx`)
-  and can Accept/Refuse (`PATCH`). The client follows status live on
-  **`/compte/reservations`** (`components/ClientBookings.tsx`).
-- In-memory broker `lib/bookingBroker.ts` (per-driver rooms, pub/sub, ephemeral),
-  pure logic + types in `lib/bookings.ts` (status machine: pending→confirmed/refused).
-- Client identity: stable `lib/clientBookings.ts` `getClientId()` + booked-driver
-  list (localStorage) so the client filters the driver room to their own bookings.
-- Unit-tested in `tests/bookings.test.ts`. Verified live: create → driver receives →
-  accept → client sees "Acceptée" without reload. Production = Supabase `bookings` table.
+- **Flow (realistic): client requests → driver accepts/refuses → client pays (Stripe) → paid.**
+  Status machine in `lib/bookings.ts`: pending → confirmed|refused, confirmed → paid.
+- Client clicks **Demander cette course** (`BookingWidget`, must be logged in) →
+  `POST /api/bookings/[driverId]` creates a **pending** request (NO payment yet).
+- Driver sees requests **live** on **`/compte/courses`** (dedicated page, `DriverCourses`
+  → `DriverRequests`) and on the dashboard; Accept/Refuse via `PATCH`.
+- Client follows status live on **`/compte/reservations`** (`ClientBookings`). When
+  **confirmed**, a **Payer €X** button appears → `POST /api/checkout` (Stripe Checkout
+  if `STRIPE_SECRET_KEY` set, else demo) → on success the booking is marked **paid**
+  (`PATCH status:paid`, via `MarkPaid` on the Stripe return page, or directly in demo).
+- Nav: drivers get "Mes courses", clients get "Mes réservations" in the account menu.
+- In-memory broker `lib/bookingBroker.ts` (per-driver rooms, SSE), pure logic + types in
+  `lib/bookings.ts`. Client identity via `lib/clientBookings.ts`.
+- Unit-tested in `tests/bookings.test.ts` (13). Verified live end-to-end:
+  request → driver receives → accept → client pays → both see "Payée" without reload.
 
 ## Payments (Stripe — branch `stripe-test`)
 

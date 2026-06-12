@@ -17,15 +17,23 @@ describe("bookings — transitions de statut", () => {
     expect(canTransition("pending", "confirmed")).toBe(true);
     expect(canTransition("pending", "refused")).toBe(true);
   });
+  it("autorise confirmed → paid (paiement après acceptation)", () => {
+    expect(canTransition("confirmed", "paid")).toBe(true);
+  });
+  it("interdit de payer une course non acceptée", () => {
+    expect(canTransition("pending", "paid")).toBe(false);
+    expect(canTransition("refused", "paid")).toBe(false);
+  });
   it("interdit toute transition depuis un état final", () => {
-    expect(canTransition("confirmed", "refused")).toBe(false);
     expect(canTransition("refused", "confirmed")).toBe(false);
+    expect(canTransition("paid", "confirmed")).toBe(false);
     expect(canTransition("confirmed", "pending")).toBe(false);
   });
   it("a un libellé pour chaque statut", () => {
     expect(statusLabel("pending")).toBe("En attente");
-    expect(statusLabel("confirmed")).toBe("Acceptée");
+    expect(statusLabel("confirmed")).toBe("Acceptée — à payer");
     expect(statusLabel("refused")).toBe("Refusée");
+    expect(statusLabel("paid")).toBe("Payée");
   });
 });
 
@@ -90,8 +98,9 @@ describe("bookingBroker — création & cycle de vie", () => {
     const driverId = `d-${Math.random()}`;
     const b = createBooking({ driverId, clientId: "c1", clientName: "X", hours: 1, total: 50 });
     expect(updateBookingStatus(driverId, b.id, "confirmed")).not.toBeNull();
-    // déjà confirmée → on ne peut plus refuser
+    // confirmée → on peut payer, mais plus refuser
     expect(updateBookingStatus(driverId, b.id, "refused")).toBeNull();
+    expect(updateBookingStatus(driverId, b.id, "paid")).not.toBeNull();
   });
 
   it("retourne null pour une réservation inconnue", () => {
