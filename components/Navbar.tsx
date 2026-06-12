@@ -14,6 +14,7 @@ import {
   CarFront,
   User,
   ChevronDown,
+  Calendar,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -150,6 +151,14 @@ export function Navbar() {
                     >
                       <LayoutDashboard className="h-4 w-4" /> Mon espace
                     </Link>
+                    {user.role === "client" && (
+                      <Link
+                        href="/compte/reservations"
+                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/80 transition hover:bg-white/5"
+                      >
+                        <Calendar className="h-4 w-4" /> Mes réservations
+                      </Link>
+                    )}
                     <Link
                       href="/messages"
                       className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/80 transition hover:bg-white/5"

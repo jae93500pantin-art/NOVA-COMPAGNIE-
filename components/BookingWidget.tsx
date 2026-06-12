@@ -15,9 +15,12 @@ import {
 import type { Driver } from "@/lib/types";
 import { addContact } from "@/lib/contacts";
 import { computeBookingAmount } from "@/lib/payments";
+import { useAuth } from "@/lib/auth";
+import { getClientId, rememberBookedDriver } from "@/lib/clientBookings";
 
 export function BookingWidget({ driver }: { driver: Driver }) {
   const router = useRouter();
+  const { user } = useAuth();
   const [hours, setHours] = useState(3);
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -37,6 +40,20 @@ export function BookingWidget({ driver }: { driver: Driver }) {
     setLoading(true);
     setError(null);
     try {
+      // 1) Create a real-time course request the driver receives instantly.
+      const clientId = getClientId();
+      await fetch(`/api/bookings/${driver.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId,
+          clientName: user ? `${user.firstName} ${user.lastName}`.trim() : "Client",
+          hours,
+        }),
+      });
+      rememberBookedDriver(driver.id);
+
+      // 2) Payment: Stripe Checkout when configured, otherwise demo confirmation.
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -45,14 +62,12 @@ export function BookingWidget({ driver }: { driver: Driver }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Erreur");
       if (data.mode === "stripe" && data.url) {
-        // Real Stripe Checkout (test or live).
         window.location.href = data.url;
         return;
       }
-      // Demo mode: simulated confirmation.
       setConfirmed(true);
     } catch {
-      setError("Le paiement n'a pas pu démarrer. Réessayez.");
+      setError("La réservation n'a pas pu être envoyée. Réessayez.");
     } finally {
       setLoading(false);
     }

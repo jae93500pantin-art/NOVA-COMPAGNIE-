@@ -16,7 +16,6 @@ import {
   MapPin,
   ArrowRight,
   Wallet,
-  CheckCircle2,
   Power,
   ExternalLink,
   Sparkles,
@@ -27,6 +26,7 @@ import { drivers, getDriver } from "@/lib/drivers";
 import { conversations } from "@/lib/conversations";
 import { getCity } from "@/lib/cities";
 import { StarRating } from "./StarRating";
+import { DriverRequests } from "./DriverRequests";
 import { initials } from "@/lib/utils";
 
 export function AccountDashboard() {
@@ -115,6 +115,19 @@ function ClientDashboard({ firstName }: { firstName: string }) {
         {stats.map((s, i) => (
           <StatCard key={s.label} {...s} delay={i * 0.05} />
         ))}
+      </div>
+
+      {/* Quick links */}
+      <div className="flex flex-wrap gap-2">
+        <Link href="/compte/reservations" className="btn-ghost text-sm">
+          <Calendar className="h-4 w-4" /> Mes réservations
+        </Link>
+        <Link href="/messages" className="btn-ghost text-sm">
+          <MessageSquare className="h-4 w-4" /> Messagerie
+        </Link>
+        <Link href="/drivers" className="btn-ghost text-sm">
+          <Car className="h-4 w-4" /> Réserver une course
+        </Link>
       </div>
 
       {/* Upcoming booking */}
@@ -318,36 +331,7 @@ function DriverDashboard({ driverId }: { driverId: string | null }) {
 
       {/* Requests */}
       <Section title="Demandes de course" icon={TrendingUp}>
-        <div className="space-y-2">
-          {[
-            { name: "Sophie L.", from: "Châtelet", to: "Aéroport CDG", time: "Dans 30 min", price: 78 },
-            { name: "James T.", from: "Le Marais", to: "La Défense", time: "16:00", price: 52 },
-          ].map((r) => (
-            <div
-              key={r.name}
-              className="flex flex-col gap-3 rounded-2xl glass p-4 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="flex items-center gap-3">
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-white/5 text-sm font-semibold text-white">
-                  {r.name.split(" ").map((x) => x[0]).join("")}
-                </span>
-                <div>
-                  <p className="text-sm font-semibold text-white">{r.name}</p>
-                  <p className="flex items-center gap-1 text-xs text-white/50">
-                    <MapPin className="h-3 w-3" /> {r.from} → {r.to} · {r.time}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-base font-semibold text-white">€{r.price}</span>
-                <button className="btn-ghost text-xs">Refuser</button>
-                <button className="btn-primary text-xs">
-                  <CheckCircle2 className="h-4 w-4" /> Accepter
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <DriverRequests driverId={driver.id} />
       </Section>
 
       {/* Recent reviews */}

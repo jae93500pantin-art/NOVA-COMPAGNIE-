@@ -71,6 +71,7 @@ app/
     account/route.ts          DELETE → RGPD account erasure (service role)
     account/export/route.ts   GET → RGPD data export (JSON)
     checkout/route.ts         POST → Stripe Checkout session (test/live) or {mode:"demo"} fallback. Amount computed server-side.
+    bookings/[driverId]/route.ts  SSE (GET) live course requests + POST create + PATCH accept/refuse
 
 components/                   All client components unless noted
   Navbar                      Account dropdown + logout when logged in (uses useAuth)
@@ -133,6 +134,20 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
   `/messages?driver=<id>`; the logged-in driver auto-joins `dm-<their own id>`.
 - Requires login (shows a CTA otherwise). Messages are ephemeral (in-memory broker),
   same infra as `/live`. Persistent history = Supabase step (not done yet).
+
+## Real-time bookings (course requests, client ↔ driver)
+
+- Client clicks **Réserver** (`BookingWidget`) → `POST /api/bookings/[driverId]`
+  creates a request (amount recomputed server-side). The driver's dashboard
+  (`/compte`) shows incoming requests **live** via SSE (`components/DriverRequests.tsx`)
+  and can Accept/Refuse (`PATCH`). The client follows status live on
+  **`/compte/reservations`** (`components/ClientBookings.tsx`).
+- In-memory broker `lib/bookingBroker.ts` (per-driver rooms, pub/sub, ephemeral),
+  pure logic + types in `lib/bookings.ts` (status machine: pending→confirmed/refused).
+- Client identity: stable `lib/clientBookings.ts` `getClientId()` + booked-driver
+  list (localStorage) so the client filters the driver room to their own bookings.
+- Unit-tested in `tests/bookings.test.ts`. Verified live: create → driver receives →
+  accept → client sees "Acceptée" without reload. Production = Supabase `bookings` table.
 
 ## Payments (Stripe — branch `stripe-test`)
 
