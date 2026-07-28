@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Menu,
   X,
-  MessageSquare,
+  MessageCircle,
   Sparkles,
   LayoutDashboard,
   LogOut,
@@ -18,19 +18,23 @@ import {
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-
-const links = [
-  { href: "/drivers", label: "Chauffeurs" },
-  { href: "/#villes", label: "Villes" },
-  { href: "/messages", label: "Messagerie" },
-  { href: "/live", label: "Salon live" },
-];
+import { useI18n } from "@/lib/i18n";
+import { whatsappUrl } from "@/lib/whatsapp";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+import { CitySwitcher } from "./CitySwitcher";
 
 export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { t } = useI18n();
   const [scrolled, setScrolled] = useState(false);
+
+  const links: { href: string; label: string }[] = [
+    { href: "/drivers", label: t("nav.booking") },
+    { href: "/transfert-aeroport", label: t("nav.transfer") },
+    { href: "/contact", label: t("nav.contact") },
+  ];
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -80,34 +84,33 @@ export function Navbar() {
             <Sparkles className="h-4 w-4 text-white" />
           </span>
           <span className="text-lg font-semibold tracking-tight">
-            Lume<span className="text-royal-400">Car</span>
+            Nova <span className="text-royal-400">Compagnie</span>
           </span>
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
-          {links.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="rounded-full px-4 py-2 text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
-            >
-              {l.label}
-            </Link>
-          ))}
+          {links.map((l) => {
+            const active = pathname === l.href;
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={cn(
+                  "rounded-full px-4 py-2 text-sm transition",
+                  active
+                    ? "bg-white/10 text-white"
+                    : "text-white/70 hover:bg-white/5 hover:text-white"
+                )}
+              >
+                {l.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="hidden items-center gap-2 md:flex">
-          <Link
-            href="/messages"
-            className="relative grid h-10 w-10 place-items-center rounded-full border border-white/10 text-white/70 transition hover:bg-white/5 hover:text-white"
-            aria-label="Messagerie"
-          >
-            <MessageSquare className="h-4 w-4" />
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-royal-500 text-[10px] font-semibold text-white">
-              2
-            </span>
-          </Link>
-
+          <CitySwitcher />
+          <LanguageSwitcher />
           {user ? (
             <div className="relative" ref={menuRef}>
               <button
@@ -142,21 +145,21 @@ export function Navbar() {
                         ) : (
                           <User className="h-3 w-3" />
                         )}
-                        {user.role === "driver" ? "Chauffeur" : "Client"}
+                        {user.role === "driver" ? t("nav.driver") : t("nav.client")}
                       </p>
                     </div>
                     <Link
                       href="/compte"
                       className="mt-1 flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/80 transition hover:bg-white/5"
                     >
-                      <LayoutDashboard className="h-4 w-4" /> Mon espace
+                      <LayoutDashboard className="h-4 w-4" /> {t("nav.account")}
                     </Link>
                     {user.role === "client" && (
                       <Link
                         href="/compte/reservations"
                         className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/80 transition hover:bg-white/5"
                       >
-                        <Calendar className="h-4 w-4" /> Mes réservations
+                        <Calendar className="h-4 w-4" /> {t("nav.myBookings")}
                       </Link>
                     )}
                     {user.role === "driver" && (
@@ -164,20 +167,22 @@ export function Navbar() {
                         href="/compte/courses"
                         className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/80 transition hover:bg-white/5"
                       >
-                        <CarFront className="h-4 w-4" /> Mes courses
+                        <CarFront className="h-4 w-4" /> {t("nav.myCourses")}
                       </Link>
                     )}
-                    <Link
-                      href="/messages"
+                    <a
+                      href={whatsappUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/80 transition hover:bg-white/5"
                     >
-                      <MessageSquare className="h-4 w-4" /> Messagerie
-                    </Link>
+                      <MessageCircle className="h-4 w-4 text-green-400" /> {t("nav.whatsapp")}
+                    </a>
                     <button
                       onClick={handleSignOut}
                       className="mt-1 flex w-full items-center gap-2.5 rounded-xl border-t border-white/10 px-3 py-2.5 text-sm text-red-300 transition hover:bg-red-400/10"
                     >
-                      <LogOut className="h-4 w-4" /> Déconnexion
+                      <LogOut className="h-4 w-4" /> {t("nav.logout")}
                     </button>
                   </motion.div>
                 )}
@@ -186,10 +191,10 @@ export function Navbar() {
           ) : (
             <>
               <Link href="/auth/login" className="btn-ghost text-sm">
-                Connexion
+                {t("nav.login")}
               </Link>
               <Link href="/auth/register" className="btn-primary text-sm">
-                S'inscrire
+                {t("nav.register")}
               </Link>
             </>
           )}
@@ -222,7 +227,7 @@ export function Navbar() {
                     {user.firstName} {user.lastName}
                   </p>
                   <p className="text-xs text-white/50">
-                    {user.role === "driver" ? "Chauffeur" : "Client"}
+                    {user.role === "driver" ? t("nav.driver") : t("nav.client")}
                   </p>
                 </div>
               </div>
@@ -233,7 +238,7 @@ export function Navbar() {
                   href="/compte"
                   className="flex items-center gap-2.5 rounded-xl px-4 py-3 text-sm text-white/80 transition hover:bg-white/5"
                 >
-                  <LayoutDashboard className="h-4 w-4" /> Mon espace
+                  <LayoutDashboard className="h-4 w-4" /> {t("nav.account")}
                 </Link>
               )}
               {links.map((l) => (
@@ -246,20 +251,27 @@ export function Navbar() {
                 </Link>
               ))}
             </nav>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <span className="text-xs text-white/40">{t("nav.language")}</span>
+              <div className="flex items-center gap-2">
+                <CitySwitcher />
+                <LanguageSwitcher />
+              </div>
+            </div>
             {user ? (
               <button
                 onClick={handleSignOut}
                 className="btn-ghost mt-3 w-full border-red-400/30 text-sm text-red-300"
               >
-                <LogOut className="h-4 w-4" /> Déconnexion
+                <LogOut className="h-4 w-4" /> {t("nav.logout")}
               </button>
             ) : (
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <Link href="/auth/login" className="btn-ghost text-sm">
-                  Connexion
+                  {t("nav.login")}
                 </Link>
                 <Link href="/auth/register" className="btn-primary text-sm">
-                  S'inscrire
+                  {t("nav.register")}
                 </Link>
               </div>
             )}

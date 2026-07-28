@@ -1,6 +1,6 @@
 import { DriverCourses } from "@/components/DriverCourses";
 
-export const metadata = { title: "Mes courses — LumeCar" };
+export const metadata = { title: "Mes courses — Nova Compagnie" };
 
 export default function CoursesPage() {
   return (

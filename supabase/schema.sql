@@ -1,8 +1,8 @@
 -- ─────────────────────────────────────────────────────────────
 -- LumeCar — schéma Supabase (Postgres)
 -- À exécuter dans Supabase → SQL Editor.
--- Couvre : profils, chauffeurs, véhicules, avis, conversations,
--- messages et réservations, avec Row Level Security.
+-- Couvre : profils, chauffeurs, véhicules, avis
+-- et réservations, avec Row Level Security.
 -- ─────────────────────────────────────────────────────────────
 
 -- Extensions
@@ -14,7 +14,7 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-  create type vehicle_category as enum ('Business', 'Luxury', 'SUV', 'Van', 'Electric');
+  create type vehicle_category as enum ('Business', 'Moto', 'Van', 'Van Luxury', 'Luxury');
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -76,27 +76,6 @@ create table if not exists public.reviews (
 
 create index if not exists reviews_driver_idx on public.reviews (driver_id);
 
--- ── Conversations (client ↔ driver) ──────────────────────────
-create table if not exists public.conversations (
-  id         uuid primary key default uuid_generate_v4(),
-  client_id  uuid not null references public.profiles (id) on delete cascade,
-  driver_id  uuid not null references public.drivers (id) on delete cascade,
-  created_at timestamptz not null default now(),
-  unique (client_id, driver_id)
-);
-
--- ── Messages ─────────────────────────────────────────────────
-create table if not exists public.messages (
-  id              uuid primary key default uuid_generate_v4(),
-  conversation_id uuid not null references public.conversations (id) on delete cascade,
-  sender_id       uuid not null references public.profiles (id) on delete cascade,
-  body            text not null,
-  read            boolean default false,
-  created_at      timestamptz not null default now()
-);
-
-create index if not exists messages_conversation_idx on public.messages (conversation_id, created_at);
-
 -- ── Bookings ─────────────────────────────────────────────────
 create table if not exists public.bookings (
   id          uuid primary key default uuid_generate_v4(),
@@ -141,8 +120,6 @@ create trigger on_auth_user_created
 alter table public.profiles      enable row level security;
 alter table public.drivers       enable row level security;
 alter table public.reviews       enable row level security;
-alter table public.conversations enable row level security;
-alter table public.messages      enable row level security;
 alter table public.bookings      enable row level security;
 
 -- Profiles : lecture publique, écriture par le propriétaire
@@ -158,28 +135,6 @@ create policy "drivers_update_own" on public.drivers for update using (auth.uid(
 create policy "reviews_select" on public.reviews for select using (true);
 create policy "reviews_insert" on public.reviews for insert with check (auth.uid() = author_id);
 
--- Conversations : visibles par les deux parties
-create policy "conversations_select" on public.conversations
-  for select using (auth.uid() = client_id or auth.uid() = driver_id);
-create policy "conversations_insert" on public.conversations
-  for insert with check (auth.uid() = client_id);
-
--- Messages : visibles/écrits par les membres de la conversation
-create policy "messages_select" on public.messages for select using (
-  exists (
-    select 1 from public.conversations c
-    where c.id = conversation_id
-      and (c.client_id = auth.uid() or c.driver_id = auth.uid())
-  )
-);
-create policy "messages_insert" on public.messages for insert with check (
-  auth.uid() = sender_id and exists (
-    select 1 from public.conversations c
-    where c.id = conversation_id
-      and (c.client_id = auth.uid() or c.driver_id = auth.uid())
-  )
-);
-
 -- Bookings : visibles par client et chauffeur concernés
 create policy "bookings_select" on public.bookings
   for select using (auth.uid() = client_id or auth.uid() = driver_id);
@@ -189,9 +144,8 @@ create policy "bookings_update_parties" on public.bookings
   for update using (auth.uid() = client_id or auth.uid() = driver_id);
 
 -- ─────────────────────────────────────────────────────────────
--- Realtime : activer la diffusion sur messages & drivers
+-- Realtime : activer la diffusion sur drivers
 -- ─────────────────────────────────────────────────────────────
-alter publication supabase_realtime add table public.messages;
 alter publication supabase_realtime add table public.drivers;
 
 -- ─────────────────────────────────────────────────────────────

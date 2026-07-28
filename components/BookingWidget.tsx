@@ -1,44 +1,94 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle,
   CheckCircle2,
   ShieldCheck,
-  Calendar,
-  Clock,
   Loader2,
   AlertCircle,
 } from "lucide-react";
 import type { Driver } from "@/lib/types";
-import { addContact } from "@/lib/contacts";
-import { computeBookingAmount } from "@/lib/payments";
+import { computeAmount, type BookingUnit } from "@/lib/payments";
+import { composeWhen, isFutureBooking, todayISODate } from "@/lib/bookings";
+import { whatsappUrl } from "@/lib/whatsapp";
 import { useAuth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
+import { DatePicker } from "./DatePicker";
 import { getClientId, rememberBookedDriver } from "@/lib/clientBookings";
+
+/** Session key used to carry the date chosen in the home search bar. */
+const PREFILL_KEY = "jw_booking_date";
 
 export function BookingWidget({ driver }: { driver: Driver }) {
   const router = useRouter();
   const { user } = useAuth();
+  const { t } = useI18n();
+  const today = todayISODate();
+  const [unit, setUnit] = useState<BookingUnit>("hour");
   const [hours, setHours] = useState(3);
+  const [date, setDate] = useState(today);
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
+  const [time, setTime] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { subtotal, serviceFee, total } = computeBookingAmount(
+  // Prefill the date(s) from the home search (sessionStorage) when present.
+  useEffect(() => {
+    try {
+      const isValid = (s: string | null) =>
+        !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && s >= today;
+      const start = sessionStorage.getItem(PREFILL_KEY);
+      const end = sessionStorage.getItem("jw_booking_end");
+      if (isValid(start)) {
+        setDate(start as string);
+        if (isValid(end) && end !== start) {
+          setUnit("day");
+          setRangeStart(start as string);
+          setRangeEnd(end as string);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [today]);
+
+  const daysCount = rangeStart
+    ? daysBetween(rangeStart, rangeEnd || rangeStart)
+    : 1;
+  const effectiveStart = unit === "day" ? rangeStart : date;
+  const quantity = unit === "day" ? daysCount : hours;
+  const { subtotal, total } = computeAmount(
     driver.pricePerHour,
-    hours
+    driver.pricePerDay,
+    unit,
+    quantity
   );
 
+  const unitRate = unit === "day" ? driver.pricePerDay : driver.pricePerHour;
+  const unitShort = unit === "day" ? t("booking.dayShort") : "h";
+
   const contact = () => {
-    addContact(driver.id);
-    router.push(`/messages?driver=${driver.id}`);
+    window.open(
+      whatsappUrl(
+        `Bonjour, je souhaite contacter ${driver.firstName} (${driver.car.make} ${driver.car.model}).`
+      ),
+      "_blank",
+      "noopener,noreferrer"
+    );
   };
 
   const reserve = async () => {
     if (!user) {
       router.push("/auth/login");
+      return;
+    }
+    if (!isFutureBooking(effectiveStart, unit === "day" ? "" : time)) {
+      setError(t("booking.pastError"));
       return;
     }
     setLoading(true);
@@ -53,14 +103,17 @@ export function BookingWidget({ driver }: { driver: Driver }) {
         body: JSON.stringify({
           clientId,
           clientName: `${user.firstName} ${user.lastName}`.trim() || "Client",
-          hours,
+          clientEmail: user.email ?? "",
+          hours: quantity,
+          unit,
+          when: composeWhen(effectiveStart, unit === "day" ? "" : time),
         }),
       });
       if (!res.ok) throw new Error("Erreur");
       rememberBookedDriver(driver.id);
       setConfirmed(true);
     } catch {
-      setError("La demande n'a pas pu être envoyée. Réessayez.");
+      setError(t("booking.sendError"));
     } finally {
       setLoading(false);
     }
@@ -73,7 +126,10 @@ export function BookingWidget({ driver }: { driver: Driver }) {
           <span className="text-3xl font-semibold text-white">
             €{driver.pricePerHour}
           </span>
-          <span className="text-sm text-white/50"> / heure</span>
+          <span className="text-sm text-white/50"> {t("booking.perHour")}</span>
+          <p className="mt-1 text-xs text-white/40">
+            €{driver.pricePerDay} {t("drivers.perDay")} · {t("drivers.quoteWeek")}
+          </p>
         </div>
         <span
           className={`chip ${
@@ -87,45 +143,93 @@ export function BookingWidget({ driver }: { driver: Driver }) {
               driver.available ? "bg-emerald-400" : "bg-white/40"
             }`}
           />
-          {driver.available ? "Disponible maintenant" : "Sur réservation"}
+          {driver.available ? t("booking.availableNow") : t("booking.onRequest")}
         </span>
       </div>
 
+      {/* Hour / day toggle */}
       <div className="mt-5 grid grid-cols-2 gap-2">
-        <div className="rounded-xl border border-white/10 px-3 py-2.5">
-          <p className="flex items-center gap-1.5 text-[11px] text-white/40">
-            <Calendar className="h-3 w-3" /> Date
-          </p>
-          <p className="mt-0.5 text-sm font-medium text-white">Aujourd'hui</p>
-        </div>
-        <div className="rounded-xl border border-white/10 px-3 py-2.5">
-          <p className="flex items-center gap-1.5 text-[11px] text-white/40">
-            <Clock className="h-3 w-3" /> Départ
-          </p>
-          <p className="mt-0.5 text-sm font-medium text-white">14:30</p>
-        </div>
+        {(["hour", "day"] as BookingUnit[]).map((u) => (
+          <button
+            key={u}
+            type="button"
+            onClick={() => {
+              setUnit(u);
+              setHours(u === "day" ? 1 : 3);
+            }}
+            className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+              unit === u
+                ? "border-royal-400/50 bg-royal-500/20 text-white"
+                : "border-white/10 text-white/60 hover:bg-white/5"
+            }`}
+          >
+            {u === "day" ? t("booking.byDay") : t("booking.byHour")}
+          </button>
+        ))}
       </div>
 
-      <div className="mt-3 rounded-xl border border-white/10 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-white/60">Durée estimée</span>
-          <span className="text-sm font-medium text-white">{hours} h</span>
-        </div>
-        <input
-          type="range"
-          min={1}
-          max={10}
-          value={hours}
-          onChange={(e) => setHours(Number(e.target.value))}
-          className="mt-2 w-full accent-royal-500"
-        />
+      {/* Date(s) */}
+      <div className="mt-3 space-y-2">
+        {unit === "day" ? (
+          <>
+            <DatePicker
+              date={rangeStart}
+              time=""
+              endDate={rangeEnd}
+              mode="range"
+              showTime={false}
+              min={today}
+              variant="booking"
+              onRangeChange={(s, e) => {
+                setRangeStart(s);
+                setRangeEnd(e);
+                setError(null);
+              }}
+            />
+            <p className="pt-1 text-xs text-white/50">
+              {daysCount} {daysCount > 1 ? t("booking.days") : t("booking.day")}
+            </p>
+          </>
+        ) : (
+          <DatePicker
+            date={date}
+            time={time}
+            showTime={false}
+            min={today}
+            variant="booking"
+            onChange={(d, tm) => {
+              setDate(d);
+              setTime(tm);
+              setError(null);
+            }}
+          />
+        )}
       </div>
+
+      {/* Hours slider (hour mode only) */}
+      {unit === "hour" && (
+        <div className="mt-3 rounded-xl border border-white/10 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-white/60">{t("booking.duration")}</span>
+            <span className="text-sm font-medium text-white">
+              {hours} {unitShort}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={10}
+            value={hours}
+            onChange={(e) => setHours(Number(e.target.value))}
+            className="mt-2 w-full accent-royal-500"
+          />
+        </div>
+      )}
 
       <div className="mt-4 space-y-2 text-sm">
-        <Row label={`€${driver.pricePerHour} × ${hours} h`} value={`€${subtotal}`} />
-        <Row label="Frais de service" value={`€${serviceFee}`} muted />
+        <Row label={`€${unitRate} × ${quantity} ${unitShort}`} value={`€${subtotal}`} />
         <div className="my-2 h-px bg-white/10" />
-        <Row label="Total" value={`€${total}`} bold />
+        <Row label={t("booking.total")} value={`€${total}`} bold />
       </div>
 
       <AnimatePresence mode="wait">
@@ -138,23 +242,22 @@ export function BookingWidget({ driver }: { driver: Driver }) {
           >
             <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-400" />
             <p className="mt-2 text-sm font-semibold text-white">
-              Demande envoyée !
+              {t("booking.sent")}
             </p>
             <p className="mt-1 text-xs text-white/60">
-              {driver.firstName} doit accepter votre course. Vous paierez
-              ensuite depuis « Mes réservations ».
+              {driver.firstName} {t("booking.sentDetailA")}
             </p>
             <button
               onClick={() => router.push("/compte/reservations")}
               className="btn-primary mt-3 w-full text-sm"
             >
-              Suivre ma réservation →
+              {t("booking.follow")}
             </button>
             <button
               onClick={contact}
               className="mt-2 inline-block text-xs font-medium text-emerald-300 hover:underline"
             >
-              Contacter le chauffeur
+              {t("booking.contactDriver")}
             </button>
           </motion.div>
         ) : (
@@ -176,11 +279,11 @@ export function BookingWidget({ driver }: { driver: Driver }) {
               className="btn-primary w-full disabled:opacity-60"
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {loading ? "Envoi…" : "Demander cette course"}
+              {loading ? t("booking.sending") : t("booking.request")}
             </button>
             <button onClick={contact} className="btn-ghost w-full">
               <MessageCircle className="h-4 w-4" />
-              Contacter
+              {t("booking.contact")}
             </button>
           </motion.div>
         )}
@@ -188,10 +291,19 @@ export function BookingWidget({ driver }: { driver: Driver }) {
 
       <p className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-white/40">
         <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-        Aucun débit avant confirmation du chauffeur
+        {t("booking.noCharge")}
       </p>
     </div>
   );
+}
+
+/** Inclusive number of days between two ISO dates (min 1). */
+function daysBetween(startISO: string, endISO: string): number {
+  const s = Date.parse(`${startISO}T00:00:00`);
+  const e = Date.parse(`${endISO}T00:00:00`);
+  if (Number.isNaN(s) || Number.isNaN(e)) return 1;
+  const diff = Math.round((e - s) / 86_400_000);
+  return diff >= 0 ? diff + 1 : 1;
 }
 
 function Row({

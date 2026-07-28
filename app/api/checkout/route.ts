@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { isStripeConfigured } from "@/lib/config";
-import { computeBookingAmount } from "@/lib/payments";
+import { computeAmount, type BookingUnit } from "@/lib/payments";
 import { getDriver } from "@/lib/drivers";
 import { sanitizeText, rateLimit } from "@/lib/validation";
 
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { driverId?: string; hours?: number; bookingId?: string };
+  let body: { driverId?: string; hours?: number; unit?: string; bookingId?: string };
   try {
     body = await req.json();
   } catch {
@@ -46,9 +46,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Amount is derived from the trusted server-side price, not the client.
+  const unit: BookingUnit = body.unit === "day" ? "day" : "hour";
   let amount;
   try {
-    amount = computeBookingAmount(driver.pricePerHour, Number(body.hours ?? 1));
+    amount = computeAmount(
+      driver.pricePerHour,
+      driver.pricePerDay,
+      unit,
+      Number(body.hours ?? 1)
+    );
   } catch {
     return Response.json({ error: "Invalid amount" }, { status: 400 });
   }
@@ -80,7 +86,7 @@ export async function POST(req: NextRequest) {
             unit_amount: amount.amountCents,
             product_data: {
               name: `Course avec ${driver.firstName} ${driver.lastName}`,
-              description: `${driver.car.make} ${driver.car.model} · ${amount.hours} h (frais de service inclus)`,
+              description: `${driver.car.make} ${driver.car.model} · ${amount.hours} ${unit === "day" ? "jour(s)" : "h"}`,
             },
           },
         },

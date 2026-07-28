@@ -1,4 +1,4 @@
-export const metadata = { title: "Politique cookies — LumeCar" };
+export const metadata = { title: "Politique cookies — Nova Compagnie" };
 
 export default function CookiesPage() {
   return (

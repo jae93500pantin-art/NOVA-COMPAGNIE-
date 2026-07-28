@@ -8,6 +8,7 @@ import { motion } from "framer-motion";
 import {
   Calendar,
   MessageSquare,
+  MessageCircle,
   Heart,
   Star,
   TrendingUp,
@@ -23,8 +24,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { drivers, getDriver } from "@/lib/drivers";
-import { conversations } from "@/lib/conversations";
 import { getCity } from "@/lib/cities";
+import { whatsappUrl } from "@/lib/whatsapp";
 import { StarRating } from "./StarRating";
 import { DriverRequests } from "./DriverRequests";
 import { initials } from "@/lib/utils";
@@ -103,7 +104,7 @@ function ClientDashboard({ firstName }: { firstName: string }) {
   const recommended = drivers.slice(0, 3);
   const stats = [
     { icon: Calendar, label: "Réservations", value: "3" },
-    { icon: MessageSquare, label: "Conversations", value: String(conversations.length) },
+    { icon: MessageSquare, label: "Demandes", value: "2" },
     { icon: Heart, label: "Favoris", value: "2" },
     { icon: Star, label: "Note donnée", value: "4.9" },
   ];
@@ -122,9 +123,14 @@ function ClientDashboard({ firstName }: { firstName: string }) {
         <Link href="/compte/reservations" className="btn-ghost text-sm">
           <Calendar className="h-4 w-4" /> Mes réservations
         </Link>
-        <Link href="/messages" className="btn-ghost text-sm">
-          <MessageSquare className="h-4 w-4" /> Messagerie
-        </Link>
+        <a
+          href={whatsappUrl()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-ghost text-sm"
+        >
+          <MessageCircle className="h-4 w-4 text-green-400" /> Contact WhatsApp
+        </a>
         <Link href="/drivers" className="btn-ghost text-sm">
           <Car className="h-4 w-4" /> Réserver une course
         </Link>
@@ -155,52 +161,18 @@ function ClientDashboard({ firstName }: { firstName: string }) {
             </div>
           </div>
           <div className="flex gap-2">
-            <Link href="/messages" className="btn-ghost text-sm">
-              <MessageSquare className="h-4 w-4" /> Message
-            </Link>
+            <a
+              href={whatsappUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost text-sm"
+            >
+              <MessageCircle className="h-4 w-4 text-green-400" /> WhatsApp
+            </a>
             <Link href={`/drivers/${drivers[0].id}`} className="btn-primary text-sm">
               Détails
             </Link>
           </div>
-        </div>
-      </Section>
-
-      {/* Recent conversations */}
-      <Section title="Conversations récentes" icon={MessageSquare} href="/messages">
-        <div className="space-y-2">
-          {conversations.map((c) => {
-            const d = getDriver(c.driverId);
-            if (!d) return null;
-            return (
-              <Link
-                key={c.id}
-                href="/messages"
-                className="flex items-center gap-3 rounded-2xl glass p-3 transition hover:border-white/20"
-              >
-                <Image
-                  src={d.avatar}
-                  alt={d.firstName}
-                  width={44}
-                  height={44}
-                  className="h-11 w-11 rounded-full object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold text-white">
-                      {d.firstName} {d.lastName}
-                    </p>
-                    <span className="shrink-0 text-[11px] text-white/40">{c.time}</span>
-                  </div>
-                  <p className="truncate text-xs text-white/50">{c.lastMessage}</p>
-                </div>
-                {c.unread > 0 && (
-                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-royal-500 px-1.5 text-[10px] font-semibold text-white">
-                    {c.unread}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
         </div>
       </Section>
 
@@ -334,9 +306,14 @@ function DriverDashboard({ driverId }: { driverId: string | null }) {
         <Link href="/compte/courses" className="btn-primary text-sm">
           <TrendingUp className="h-4 w-4" /> Mes courses
         </Link>
-        <Link href="/messages" className="btn-ghost text-sm">
-          <MessageSquare className="h-4 w-4" /> Messagerie
-        </Link>
+        <a
+          href={whatsappUrl()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-ghost text-sm"
+        >
+          <MessageCircle className="h-4 w-4 text-green-400" /> Contact WhatsApp
+        </a>
         <Link href="/compte/profil" className="btn-ghost text-sm">
           <Car className="h-4 w-4" /> Mon profil
         </Link>

@@ -5,10 +5,29 @@ import {
   subscribeBookings,
   type BookingEvent,
 } from "@/lib/bookingBroker";
-import type { BookingStatus } from "@/lib/bookings";
+import type { BookingStatus, Booking } from "@/lib/bookings";
+import { formatWhen } from "@/lib/bookings";
 import { isValidRoom, sanitizeText, rateLimit } from "@/lib/validation";
 import { getDriver } from "@/lib/drivers";
-import { computeBookingAmount } from "@/lib/payments";
+import type { Driver } from "@/lib/types";
+import { computeAmount, type BookingUnit } from "@/lib/payments";
+import {
+  sendEmail,
+  bookingRequestEmail,
+  bookingConfirmedEmail,
+  paymentReceivedEmail,
+} from "@/lib/email";
+
+function emailData(driver: Driver, booking: Booking) {
+  return {
+    clientName: booking.clientName,
+    driverName: `${driver.firstName} ${driver.lastName}`,
+    vehicle: `${driver.car.make} ${driver.car.model}`,
+    whenText: formatWhen(booking.when, "fr"),
+    durationText: `${booking.hours} ${booking.unit === "day" ? "jour(s)" : "h"}`,
+    total: booking.total,
+  };
+}
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -101,9 +120,15 @@ export async function POST(
   }
 
   // Amount is recomputed server-side from the trusted driver price.
+  const unit: BookingUnit = body.unit === "day" ? "day" : "hour";
   let amount;
   try {
-    amount = computeBookingAmount(driver.pricePerHour, Number(body.hours ?? 1));
+    amount = computeAmount(
+      driver.pricePerHour,
+      driver.pricePerDay,
+      unit,
+      Number(body.hours ?? 1)
+    );
   } catch {
     return Response.json({ error: "Invalid amount" }, { status: 400 });
   }
@@ -112,12 +137,20 @@ export async function POST(
     driverId,
     clientId,
     clientName: sanitizeText(body.clientName, 60) || "Client",
+    clientEmail: sanitizeText(body.clientEmail, 120),
     hours: amount.hours,
+    unit,
     total: amount.total,
     pickup: sanitizeText(body.pickup, 120),
     dropoff: sanitizeText(body.dropoff, 120),
     when: sanitizeText(body.when, 60),
   });
+
+  // Confirmation e-mail (no-op when RESEND_API_KEY is absent).
+  if (booking.clientEmail) {
+    const { subject, html } = bookingRequestEmail(emailData(driver, booking));
+    void sendEmail({ to: booking.clientEmail, subject, html });
+  }
 
   return Response.json({ ok: true, booking });
 }
@@ -148,5 +181,19 @@ export async function PATCH(
   if (!updated) {
     return Response.json({ error: "Cannot update" }, { status: 409 });
   }
+
+  // Status-change confirmation e-mail (no-op when email isn't configured).
+  const driver = getDriver(driverId);
+  if (driver && updated.clientEmail) {
+    const data = emailData(driver, updated);
+    if (status === "confirmed") {
+      const { subject, html } = bookingConfirmedEmail(data);
+      void sendEmail({ to: updated.clientEmail, subject, html });
+    } else if (status === "paid") {
+      const { subject, html } = paymentReceivedEmail(data);
+      void sendEmail({ to: updated.clientEmail, subject, html });
+    }
+  }
+
   return Response.json({ ok: true, booking: updated });
 }

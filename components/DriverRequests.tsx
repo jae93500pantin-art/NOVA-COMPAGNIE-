@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MapPin, CheckCircle2, XCircle, Inbox, Wifi, WifiOff } from "lucide-react";
 import type { Booking } from "@/lib/bookings";
-import { statusLabel } from "@/lib/bookings";
+import { statusLabel, formatWhen } from "@/lib/bookings";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /**
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
  * The driver can accept or refuse; the client sees the result in real time.
  */
 export function DriverRequests({ driverId }: { driverId: string }) {
+  const { lang } = useI18n();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [connected, setConnected] = useState(false);
 
@@ -107,7 +109,7 @@ export function DriverRequests({ driverId }: { driverId: string }) {
                   <div>
                     <p className="text-sm font-semibold text-white">{b.clientName}</p>
                     <p className="flex items-center gap-1 text-xs text-white/50">
-                      <MapPin className="h-3 w-3" /> {b.hours} h · {b.when}
+                      <MapPin className="h-3 w-3" /> {b.hours} {b.unit === "day" ? "j" : "h"} · {formatWhen(b.when, lang)}
                     </p>
                   </div>
                 </div>

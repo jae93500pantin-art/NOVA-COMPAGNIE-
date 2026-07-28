@@ -32,10 +32,8 @@ describe("drivers — données & accesseurs", () => {
 });
 
 describe("geo — coordonnées carte", () => {
-  it("connaît les 4 villes", () => {
-    expect(Object.keys(cityCoords)).toEqual(
-      expect.arrayContaining(["paris", "london", "barcelona", "newyork"])
-    );
+  it("ne connaît que Paris", () => {
+    expect(Object.keys(cityCoords)).toEqual(["paris"]);
   });
 
   it("place un chauffeur près du centre de sa ville", () => {

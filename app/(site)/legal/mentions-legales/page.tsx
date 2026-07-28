@@ -1,4 +1,4 @@
-export const metadata = { title: "Mentions légales — LumeCar" };
+export const metadata = { title: "Mentions légales — Nova Compagnie" };
 
 export default function LegalNoticePage() {
   return (
@@ -8,7 +8,7 @@ export default function LegalNoticePage() {
 
       <h2>Éditeur</h2>
       <p>
-        LumeCar — prototype de démonstration. Les informations ci-dessous sont
+        Nova Compagnie — prototype de démonstration. Les informations ci-dessous sont
         fictives et fournies à titre d’exemple dans le cadre d’une maquette
         produit.
       </p>
@@ -17,9 +17,9 @@ export default function LegalNoticePage() {
         <li>Siège social : 12 rue de l’Élégance, 75008 Paris, France</li>
         <li>
           Contact :{" "}
-          <a href="mailto:contact@lumecar.example">contact@lumecar.example</a>
+          <a href="mailto:contact@novacompagnie.com">contact@novacompagnie.com</a>
         </li>
-        <li>Directeur de la publication : l’équipe LumeCar</li>
+        <li>Directeur de la publication : l’équipe Nova Compagnie</li>
       </ul>
 
       <h2>Hébergement</h2>

@@ -1,4 +1,4 @@
-export type VehicleCategory = "Business" | "Luxury" | "SUV" | "Van" | "Electric";
+export type VehicleCategory = "Business" | "Moto" | "Van" | "Van Luxury" | "Luxury";
 
 export interface City {
   id: string;
@@ -46,6 +46,8 @@ export interface Driver {
   available: boolean;
   responseTime: string;
   pricePerHour: number;
+  /** Fixed daily rate (euros) based on the vehicle model/category. */
+  pricePerDay: number;
   pricePerKm: number;
   bio: string;
   badges: string[];
@@ -56,21 +58,4 @@ export interface Driver {
   lng?: number;
   lat?: number;
   reviews: Review[];
-}
-
-export interface ChatMessage {
-  id: string;
-  fromMe: boolean;
-  text: string;
-  time: string;
-  read?: boolean;
-}
-
-export interface Conversation {
-  id: string;
-  driverId: string;
-  lastMessage: string;
-  time: string;
-  unread: number;
-  messages: ChatMessage[];
 }

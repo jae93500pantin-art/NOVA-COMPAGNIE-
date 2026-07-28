@@ -19,6 +19,8 @@ export interface DemoAccount {
   lastName: string;
   /** Linked driver profile id (for driver accounts). */
   driverId?: string;
+  /** Optional e-mail — set your own to receive booking emails in demo mode. */
+  email?: string;
 }
 
 export const demoAccounts: DemoAccount[] = [
@@ -28,6 +30,8 @@ export const demoAccounts: DemoAccount[] = [
     role: "client",
     firstName: "Jérémy",
     lastName: "Test",
+    // Set this to your own address to receive booking emails in demo mode.
+    email: "",
   },
   {
     username: "driver",

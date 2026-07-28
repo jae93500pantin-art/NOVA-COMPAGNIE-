@@ -45,7 +45,7 @@ export async function GET() {
     },
     {
       headers: {
-        "Content-Disposition": 'attachment; filename="lumecar-mes-donnees.json"',
+        "Content-Disposition": 'attachment; filename="jw-company-mes-donnees.json"',
       },
     }
   );

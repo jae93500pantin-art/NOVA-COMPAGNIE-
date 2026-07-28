@@ -1,7 +1,7 @@
 /**
  * In-memory store + pub/sub for course bookings (demo, server-side).
  *
- * Mirrors lib/liveBroker.ts: bookings live only in the Node process and are
+ * Bookings live only in the Node process and are
  * broadcast over SSE so a client and a driver on different devices see them in
  * real time. Ephemeral by design (GDPR-friendly demo). Persistent bookings are
  * the Supabase `bookings` table (schema.sql) for production.

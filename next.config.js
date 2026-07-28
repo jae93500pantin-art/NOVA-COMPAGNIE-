@@ -16,6 +16,26 @@ const securityHeaders = [
     value: "max-age=31536000; includeSubDomains",
   },
   { key: "X-DNS-Prefetch-Control", value: "off" },
+  // Content-Security-Policy (OWASP A03/A05). Allowances cover Next.js inline
+  // runtime, Mapbox, Stripe Checkout, Supabase and the allow-listed image CDNs.
+  // 'unsafe-inline'/'unsafe-eval' are required by Next dev + Mapbox GL workers.
+  {
+    key: "Content-Security-Policy",
+    value: [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'self'",
+      "form-action 'self'",
+      "img-src 'self' data: blob: https://images.unsplash.com https://i.pravatar.cc https://*.mapbox.com",
+      "font-src 'self' data:",
+      "style-src 'self' 'unsafe-inline'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://api.mapbox.com",
+      "worker-src 'self' blob:",
+      "frame-src https://js.stripe.com https://hooks.stripe.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mapbox.com https://events.mapbox.com https://api.stripe.com",
+    ].join("; "),
+  },
 ];
 
 const nextConfig = {

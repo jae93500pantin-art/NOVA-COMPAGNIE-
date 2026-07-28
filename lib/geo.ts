@@ -3,9 +3,6 @@ import type { Driver } from "./types";
 /** Real-world coordinates [lng, lat] for each supported city centre. */
 export const cityCoords: Record<string, [number, number]> = {
   paris: [2.3522, 48.8566],
-  london: [-0.1276, 51.5074],
-  barcelona: [2.1734, 41.3851],
-  newyork: [-74.006, 40.7128],
 };
 
 /**

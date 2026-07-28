@@ -9,18 +9,20 @@ import { cities } from "@/lib/cities";
 import { DriverCard } from "@/components/DriverCard";
 import type { VehicleCategory } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
 
 const categories: (VehicleCategory | "Tous")[] = [
   "Tous",
   "Business",
-  "Luxury",
-  "SUV",
   "Van",
-  "Electric",
+  "Van Luxury",
+  "Luxury",
+  "Moto",
 ];
 
 export function DriversExplorer() {
   const params = useSearchParams();
+  const { t } = useI18n();
   const [city, setCity] = useState(params.get("city") ?? "all");
   const [category, setCategory] = useState<string>(
     params.get("category") ?? "Tous"
@@ -63,10 +65,10 @@ export function DriversExplorer() {
       >
         <span className="flex items-center gap-2">
           <SlidersHorizontal className="h-4 w-4 text-royal-400" />
-          Filtres
+          {t("drivers.filters")}
         </span>
         <span className="text-xs text-white/50">
-          {filtersOpen ? "Masquer" : "Afficher"}
+          {filtersOpen ? t("drivers.hide") : t("drivers.show")}
         </span>
       </button>
 
@@ -79,7 +81,7 @@ export function DriversExplorer() {
       >
         <div className="hidden items-center gap-2 text-sm font-semibold text-white lg:flex">
           <SlidersHorizontal className="h-4 w-4 text-royal-400" />
-          Filtres
+          {t("drivers.filters")}
         </div>
 
         <div className="relative">
@@ -87,20 +89,20 @@ export function DriversExplorer() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Nom, véhicule…"
+            placeholder={t("drivers.searchPlaceholder")}
             className="input pl-9"
           />
         </div>
 
         <div>
           <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
-            Ville
+            {t("drivers.city")}
           </p>
           <div className="space-y-1">
             <FilterRow
               active={city === "all"}
               onClick={() => setCity("all")}
-              label="Toutes les villes"
+              label={t("drivers.allCities")}
               count={drivers.length}
             />
             {cities.map((c) => (
@@ -117,7 +119,7 @@ export function DriversExplorer() {
 
         <div>
           <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
-            Catégorie
+            {t("drivers.category")}
           </p>
           <div className="flex flex-wrap gap-2">
             {categories.map((c) => (
@@ -131,14 +133,14 @@ export function DriversExplorer() {
                     : "border-white/10 text-white/60 hover:bg-white/5"
                 )}
               >
-                {c}
+                {c === "Tous" ? t("drivers.all") : c}
               </button>
             ))}
           </div>
         </div>
 
         <label className="flex cursor-pointer items-center justify-between rounded-xl bg-white/[0.03] px-4 py-3">
-          <span className="text-sm text-white/70">Disponibles uniquement</span>
+          <span className="text-sm text-white/70">{t("drivers.availableOnly")}</span>
           <span
             onClick={() => setOnlyAvailable((v) => !v)}
             className={cn(
@@ -161,18 +163,17 @@ export function DriversExplorer() {
         <div className="mb-6 flex items-center justify-between gap-4">
           <p className="text-sm text-white/50">
             <span className="font-semibold text-white">{filtered.length}</span>{" "}
-            chauffeur{filtered.length > 1 ? "s" : ""} trouvé
-            {filtered.length > 1 ? "s" : ""}
+            {filtered.length > 1 ? t("drivers.resultsMany") : t("drivers.resultsOne")}
           </p>
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value)}
             className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white outline-none [&>option]:text-ink-900"
           >
-            <option value="rating">Mieux notés</option>
-            <option value="price-asc">Prix croissant</option>
-            <option value="price-desc">Prix décroissant</option>
-            <option value="experience">Plus d'expérience</option>
+            <option value="rating">{t("drivers.sortRating")}</option>
+            <option value="price-asc">{t("drivers.sortPriceAsc")}</option>
+            <option value="price-desc">{t("drivers.sortPriceDesc")}</option>
+            <option value="experience">{t("drivers.sortExperience")}</option>
           </select>
         </div>
 
@@ -183,10 +184,10 @@ export function DriversExplorer() {
             className="grid place-items-center rounded-3xl glass p-16 text-center"
           >
             <p className="text-lg font-semibold text-white">
-              Aucun chauffeur trouvé
+              {t("drivers.noneTitle")}
             </p>
             <p className="mt-2 text-sm text-white/50">
-              Essayez d'élargir vos critères de recherche.
+              {t("drivers.noneText")}
             </p>
           </motion.div>
         ) : (

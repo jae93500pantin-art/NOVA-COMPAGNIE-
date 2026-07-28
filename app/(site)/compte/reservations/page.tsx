@@ -1,6 +1,6 @@
 import { ClientBookings } from "@/components/ClientBookings";
 
-export const metadata = { title: "Mes réservations — LumeCar" };
+export const metadata = { title: "Mes réservations — Nova Compagnie" };
 
 export default function ReservationsPage() {
   return (

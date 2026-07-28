@@ -1,4 +1,4 @@
-export const metadata = { title: "Politique de confidentialité — LumeCar" };
+export const metadata = { title: "Politique de confidentialité — Nova Compagnie" };
 
 export default function PrivacyPage() {
   return (
@@ -6,7 +6,7 @@ export default function PrivacyPage() {
       <h1>Politique de confidentialité</h1>
       <p className="updated">Dernière mise à jour : 11 juin 2026</p>
       <p className="lead">
-        LumeCar accorde la plus grande importance à la protection de vos données
+        Nova Compagnie accorde la plus grande importance à la protection de vos données
         personnelles. Cette politique explique quelles données nous collectons,
         pourquoi, et comment vous gardez le contrôle, conformément au Règlement
         général sur la protection des données (RGPD, UE 2016/679).
@@ -14,10 +14,10 @@ export default function PrivacyPage() {
 
       <h2>1. Responsable du traitement</h2>
       <p>
-        Le responsable du traitement est LumeCar (prototype de démonstration).
+        Le responsable du traitement est Nova Compagnie (prototype de démonstration).
         Pour toute question relative à vos données, contactez notre délégué à la
         protection des données :{" "}
-        <a href="mailto:privacy@lumecar.example">privacy@lumecar.example</a>.
+        <a href="mailto:contact@novacompagnie.com">contact@novacompagnie.com</a>.
       </p>
 
       <h2>2. Données que nous collectons</h2>

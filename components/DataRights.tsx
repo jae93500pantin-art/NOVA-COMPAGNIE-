@@ -51,7 +51,7 @@ export function DataRights() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "lumecar-mes-donnees.json";
+      a.download = "jw-company-mes-donnees.json";
       a.click();
       URL.revokeObjectURL(url);
       setNotice("Vos données ont été exportées.");

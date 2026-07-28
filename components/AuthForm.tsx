@@ -15,18 +15,23 @@ import {
   ArrowRight,
   Loader2,
   AlertCircle,
+  ShieldCheck,
+  BadgeCheck,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/config";
 import { matchDemoAccount } from "@/lib/demoAccounts";
 import { setDemoSession } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
 
 type Role = "client" | "driver";
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const params = useSearchParams();
   const router = useRouter();
+  const { t } = useI18n();
   const initialRole = (params.get("role") as Role) === "driver" ? "driver" : "client";
   const [role, setRole] = useState<Role>(initialRole);
   const [done, setDone] = useState(false);
@@ -38,6 +43,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     email: "",
     phone: "",
     password: "",
+    vtcCard: "",
+    insurance: "",
+    revtc: "",
   });
 
   const isRegister = mode === "register";
@@ -63,7 +71,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         const account = matchDemoAccount(fields.email, fields.password);
         setLoading(false);
         if (!account) {
-          setError("Identifiant ou mot de passe incorrect.");
+          setError(t("auth.errorCredentials"));
           return;
         }
         setDemoSession({
@@ -72,6 +80,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           firstName: account.firstName,
           lastName: account.lastName,
           driverId: account.driverId ?? null,
+          email: account.email || undefined,
         });
         setRole(account.role);
         setDone(true);
@@ -109,7 +118,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       }
       setDone(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Une erreur est survenue.");
+      setError(err instanceof Error ? err.message : t("auth.errorGeneric"));
     } finally {
       setLoading(false);
     }
@@ -124,15 +133,15 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       >
         <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-400" />
         <h2 className="mt-4 text-2xl font-semibold text-white">
-          {isRegister ? "Compte créé !" : "Connexion réussie !"}
+          {isRegister ? t("auth.doneRegister") : t("auth.doneLogin")}
         </h2>
         <p className="mt-2 text-white/60">
           {role === "driver"
-            ? "Bienvenue parmi les chauffeurs LumeCar."
-            : "Bienvenue sur LumeCar. Prêt à réserver ?"}
+            ? t("auth.welcomeDriver")
+            : t("auth.welcomeClient")}
         </p>
         <Link href="/compte" className="btn-primary mt-6">
-          Accéder à mon espace
+          {t("auth.goToAccount")}
           <ArrowRight className="h-4 w-4" />
         </Link>
       </motion.div>
@@ -142,30 +151,30 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   return (
     <div>
       <h1 className="text-3xl font-semibold tracking-tight text-white">
-        {isRegister ? "Créer un compte" : "Bon retour parmi nous"}
+        {isRegister ? t("auth.titleRegister") : t("auth.titleLogin")}
       </h1>
       <p className="mt-2 text-white/55">
         {isRegister
-          ? "Rejoignez l'expérience chauffeur privé premium."
-          : "Connectez-vous pour accéder à votre espace."}
+          ? t("auth.subtitleRegister")
+          : t("auth.subtitleLogin")}
       </p>
 
       {!isSupabaseConfigured && (
         <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs text-amber-300">
           <AlertCircle className="h-3 w-3" />
-          Mode démo · renseignez vos clés Supabase pour activer l'auth réelle
+          {t("auth.demoBadge")}
         </p>
       )}
 
       {!isSupabaseConfigured && !isRegister && (
         <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white/55">
-          <p className="font-medium text-white/70">Comptes de démonstration</p>
+          <p className="font-medium text-white/70">{t("auth.demoAccounts")}</p>
           <p className="mt-1">
-            Client — <span className="font-mono text-royal-300">test</span> /{" "}
+            {t("auth.demoClient")} — <span className="font-mono text-royal-300">test</span> /{" "}
             <span className="font-mono text-royal-300">test</span>
           </p>
           <p>
-            Chauffeur — <span className="font-mono text-royal-300">driver</span> /{" "}
+            {t("auth.demoDriver")} — <span className="font-mono text-royal-300">driver</span> /{" "}
             <span className="font-mono text-royal-300">driver</span>
           </p>
         </div>
@@ -177,13 +186,13 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           active={role === "client"}
           onClick={() => setRole("client")}
           icon={<User className="h-4 w-4" />}
-          label="Client"
+          label={t("auth.roleClient")}
         />
         <RoleTab
           active={role === "driver"}
           onClick={() => setRole("driver")}
           icon={<CarFront className="h-4 w-4" />}
-          label="Chauffeur"
+          label={t("auth.roleDriver")}
         />
       </div>
 
@@ -199,14 +208,14 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             >
               <IconInput
                 icon={<UserCircle className="h-4 w-4" />}
-                placeholder="Prénom"
+                placeholder={t("auth.firstName")}
                 value={fields.firstName}
                 onChange={set("firstName")}
                 autoComplete="given-name"
               />
               <IconInput
                 icon={<UserCircle className="h-4 w-4" />}
-                placeholder="Nom"
+                placeholder={t("auth.lastName")}
                 value={fields.lastName}
                 onChange={set("lastName")}
                 autoComplete="family-name"
@@ -218,7 +227,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         <IconInput
           icon={<Mail className="h-4 w-4" />}
           type={isRegister ? "email" : "text"}
-          placeholder={isRegister ? "Adresse e-mail" : "Identifiant ou e-mail"}
+          placeholder={isRegister ? t("auth.email") : t("auth.idOrEmail")}
           value={fields.email}
           onChange={set("email")}
           autoComplete={isRegister ? "email" : "username"}
@@ -229,7 +238,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           <IconInput
             icon={<Phone className="h-4 w-4" />}
             type="tel"
-            placeholder="Téléphone"
+            placeholder={t("auth.phone")}
             value={fields.phone}
             onChange={set("phone")}
             autoComplete="tel"
@@ -240,7 +249,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         <IconInput
           icon={<Lock className="h-4 w-4" />}
           type="password"
-          placeholder="Mot de passe"
+          placeholder={t("auth.password")}
           value={fields.password}
           onChange={set("password")}
           autoComplete={isRegister ? "new-password" : "current-password"}
@@ -251,20 +260,43 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="rounded-xl border border-royal-400/20 bg-royal-500/5 p-3 text-xs text-white/60"
+            className="space-y-3 rounded-xl border border-royal-400/20 bg-royal-500/5 p-4"
           >
-            En tant que chauffeur, vous pourrez ajouter votre véhicule, vos
-            documents et vos tarifs à l'étape suivante.
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-white/75">
+              <ShieldCheck className="h-3.5 w-3.5 text-royal-300" />
+              {t("auth.verifyTitle")}
+            </p>
+            <IconInput
+              icon={<BadgeCheck className="h-4 w-4" />}
+              placeholder={t("auth.vtcCard")}
+              value={fields.vtcCard}
+              onChange={set("vtcCard")}
+            />
+            <IconInput
+              icon={<FileText className="h-4 w-4" />}
+              placeholder={t("auth.revtc")}
+              value={fields.revtc}
+              onChange={set("revtc")}
+            />
+            <IconInput
+              icon={<ShieldCheck className="h-4 w-4" />}
+              placeholder={t("auth.insurance")}
+              value={fields.insurance}
+              onChange={set("insurance")}
+            />
+            <p className="text-[11px] leading-relaxed text-white/45">
+              {t("auth.verifyNote")}
+            </p>
           </motion.div>
         )}
 
         {!isRegister && (
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center gap-2 text-white/60">
-              <input type="checkbox" className="accent-royal-500" /> Se souvenir
+              <input type="checkbox" className="accent-royal-500" /> {t("auth.remember")}
             </label>
             <a href="#" className="text-royal-300 hover:underline">
-              Mot de passe oublié ?
+              {t("auth.forgot")}
             </a>
           </div>
         )}
@@ -280,15 +312,15 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           {isRegister
             ? role === "driver"
-              ? "Créer mon profil chauffeur"
-              : "Créer mon compte"
-            : "Se connecter"}
+              ? t("auth.submitDriver")
+              : t("auth.submitRegister")
+            : t("auth.submitLogin")}
         </button>
       </form>
 
       <div className="my-6 flex items-center gap-3 text-xs text-white/30">
         <span className="h-px flex-1 bg-white/10" />
-        ou
+        {t("auth.or")}
         <span className="h-px flex-1 bg-white/10" />
       </div>
 
@@ -300,16 +332,16 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       <p className="mt-6 text-center text-sm text-white/50">
         {isRegister ? (
           <>
-            Déjà un compte ?{" "}
+            {t("auth.alreadyAccount")}{" "}
             <Link href="/auth/login" className="font-medium text-royal-300 hover:underline">
-              Se connecter
+              {t("auth.login")}
             </Link>
           </>
         ) : (
           <>
-            Pas encore de compte ?{" "}
+            {t("auth.noAccount")}{" "}
             <Link href="/auth/register" className="font-medium text-royal-300 hover:underline">
-              S'inscrire
+              {t("auth.register")}
             </Link>
           </>
         )}

@@ -1,14 +1,44 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  getDriverOverrides,
+  DRIVER_OVERRIDES_EVENT,
+} from "@/lib/driverOverrides";
 
-export function Gallery({ photos, alt }: { photos: string[]; alt: string }) {
+export function Gallery({
+  photos,
+  alt,
+  driverId,
+}: {
+  photos: string[];
+  alt: string;
+  /** When set, live-merges the driver's locally-uploaded car photos. */
+  driverId?: string;
+}) {
+  const [list, setList] = useState<string[]>(photos);
   const [active, setActive] = useState(0);
+
+  // Reflect the driver's own uploaded photos (demo overrides in localStorage).
+  useEffect(() => {
+    if (!driverId) return;
+    const sync = () => {
+      const o = getDriverOverrides(driverId);
+      setList(o.carPhotos && o.carPhotos.length > 0 ? o.carPhotos : photos);
+      setActive(0);
+    };
+    sync();
+    window.addEventListener(DRIVER_OVERRIDES_EVENT, sync);
+    return () => window.removeEventListener(DRIVER_OVERRIDES_EVENT, sync);
+  }, [driverId, photos]);
+
   const go = (dir: number) =>
-    setActive((a) => (a + dir + photos.length) % photos.length);
+    setActive((a) => (a + dir + list.length) % list.length);
+
+  if (list.length === 0) return null;
 
   return (
     <div>
@@ -23,18 +53,19 @@ export function Gallery({ photos, alt }: { photos: string[]; alt: string }) {
             className="absolute inset-0"
           >
             <Image
-              src={photos[active]}
+              src={list[active]}
               alt={alt}
               fill
               sizes="(max-width: 1024px) 100vw, 60vw"
               className="object-cover"
               priority
+              unoptimized={list[active]?.startsWith("data:")}
             />
           </motion.div>
         </AnimatePresence>
         <div className="absolute inset-0 bg-gradient-to-t from-ink-950/40 to-transparent" />
 
-        {photos.length > 1 && (
+        {list.length > 1 && (
           <>
             <button
               onClick={() => go(-1)}
@@ -54,9 +85,9 @@ export function Gallery({ photos, alt }: { photos: string[]; alt: string }) {
         )}
       </div>
 
-      {photos.length > 1 && (
+      {list.length > 1 && (
         <div className="mt-3 flex gap-3">
-          {photos.map((p, i) => (
+          {list.map((p, i) => (
             <button
               key={i}
               onClick={() => setActive(i)}
@@ -66,7 +97,14 @@ export function Gallery({ photos, alt }: { photos: string[]; alt: string }) {
                   : "border-white/10 opacity-60 hover:opacity-100"
               }`}
             >
-              <Image src={p} alt={`${alt} ${i + 1}`} fill sizes="96px" className="object-cover" />
+              <Image
+                src={p}
+                alt={`${alt} ${i + 1}`}
+                fill
+                sizes="96px"
+                className="object-cover"
+                unoptimized={p?.startsWith("data:")}
+              />
             </button>
           ))}
         </div>

@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Cookie, ShieldCheck } from "lucide-react";
 import { getConsent, saveConsent } from "@/lib/consent";
+import { useI18n } from "@/lib/i18n";
 
 export function CookieConsent() {
+  const { t } = useI18n();
   const [visible, setVisible] = useState(false);
   const [details, setDetails] = useState(false);
   const [analytics, setAnalytics] = useState(false);
@@ -40,7 +42,7 @@ export function CookieConsent() {
           transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
           className="fixed inset-x-3 bottom-3 z-[60] mx-auto max-w-2xl pb-safe sm:inset-x-4"
           role="dialog"
-          aria-label="Gestion des cookies"
+          aria-label={t("cookie.dialogLabel")}
         >
           <div className="rounded-3xl glass-strong p-5 shadow-card sm:p-6">
             <div className="flex items-start gap-3">
@@ -49,18 +51,15 @@ export function CookieConsent() {
               </span>
               <div className="flex-1">
                 <h2 className="text-sm font-semibold text-white">
-                  Nous respectons votre vie privée
+                  {t("cookie.title")}
                 </h2>
                 <p className="mt-1 text-xs leading-relaxed text-white/55">
-                  Nous utilisons des cookies strictement nécessaires au
-                  fonctionnement du service. Avec votre accord, nous ajoutons
-                  des cookies de mesure d’audience pour améliorer l’expérience.
-                  Aucun traceur n’est activé sans votre consentement.{" "}
+                  {t("cookie.body")}{" "}
                   <Link
                     href="/legal/cookies"
                     className="text-royal-300 underline-offset-2 hover:underline"
                   >
-                    En savoir plus
+                    {t("cookie.more")}
                   </Link>
                 </p>
 
@@ -73,20 +72,20 @@ export function CookieConsent() {
                       className="mt-4 space-y-2 overflow-hidden"
                     >
                       <ConsentRow
-                        title="Strictement nécessaires"
-                        desc="Indispensables (session, sécurité). Toujours actifs."
+                        title={t("cookie.necessaryTitle")}
+                        desc={t("cookie.necessaryDesc")}
                         checked
                         disabled
                       />
                       <ConsentRow
-                        title="Mesure d’audience"
-                        desc="Statistiques anonymes d’utilisation."
+                        title={t("cookie.analyticsTitle")}
+                        desc={t("cookie.analyticsDesc")}
                         checked={analytics}
                         onChange={setAnalytics}
                       />
                       <ConsentRow
-                        title="Marketing"
-                        desc="Personnalisation et communications ciblées."
+                        title={t("cookie.marketingTitle")}
+                        desc={t("cookie.marketingDesc")}
                         checked={marketing}
                         onChange={setMarketing}
                       />
@@ -101,20 +100,20 @@ export function CookieConsent() {
                 onClick={() => setDetails((d) => !d)}
                 className="btn-ghost text-xs sm:order-1"
               >
-                Personnaliser
+                {t("cookie.customize")}
               </button>
               {details ? (
                 <button onClick={savePrefs} className="btn-ghost text-xs sm:order-2">
-                  Enregistrer mes choix
+                  {t("cookie.save")}
                 </button>
               ) : (
                 <button onClick={rejectAll} className="btn-ghost text-xs sm:order-2">
-                  Refuser
+                  {t("cookie.reject")}
                 </button>
               )}
               <button onClick={acceptAll} className="btn-primary text-xs sm:order-3">
                 <ShieldCheck className="h-4 w-4" />
-                Tout accepter
+                {t("cookie.acceptAll")}
               </button>
             </div>
           </div>

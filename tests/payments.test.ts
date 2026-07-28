@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   computeBookingAmount,
   clampHours,
-  SERVICE_FEE_RATE,
   MIN_HOURS,
   MAX_HOURS,
 } from "@/lib/payments";
@@ -32,19 +31,19 @@ describe("payments — clampHours", () => {
 });
 
 describe("payments — computeBookingAmount", () => {
-  it("calcule sous-total, frais (12%) et total", () => {
+  it("calcule sous-total et total (aucun frais de service)", () => {
     const a = computeBookingAmount(100, 3);
     expect(a.subtotal).toBe(300);
-    expect(a.serviceFee).toBe(Math.round(300 * SERVICE_FEE_RATE)); // 36
-    expect(a.total).toBe(336);
+    expect(a.serviceFee).toBe(0);
+    expect(a.total).toBe(300);
   });
 
   it("convertit le total en centimes pour Stripe", () => {
-    const a = computeBookingAmount(98, 2); // 196 + 24 = 220
+    const a = computeBookingAmount(98, 2); // 196, aucun frais
     expect(a.subtotal).toBe(196);
-    expect(a.serviceFee).toBe(24);
-    expect(a.total).toBe(220);
-    expect(a.amountCents).toBe(22000);
+    expect(a.serviceFee).toBe(0);
+    expect(a.total).toBe(196);
+    expect(a.amountCents).toBe(19600);
   });
 
   it("clampe les heures avant calcul", () => {
@@ -53,12 +52,11 @@ describe("payments — computeBookingAmount", () => {
     expect(a.subtotal).toBe(50 * MAX_HOURS);
   });
 
-  it("arrondit correctement les frais de service", () => {
-    // 95 * 1 = 95 ; 95 * 0.12 = 11.4 → arrondi 11
+  it("ne facture aucun frais de service", () => {
     const a = computeBookingAmount(95, 1);
-    expect(a.serviceFee).toBe(11);
-    expect(a.total).toBe(106);
-    expect(a.amountCents).toBe(10600);
+    expect(a.serviceFee).toBe(0);
+    expect(a.total).toBe(95);
+    expect(a.amountCents).toBe(9500);
   });
 
   it("rejette un tarif horaire invalide", () => {

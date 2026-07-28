@@ -8,11 +8,16 @@
  */
 
 import type { Driver } from "./types";
+import type { VehicleCategory } from "./types";
 
 export interface DriverOverrides {
   bio?: string;
   pricePerHour?: number;
   available?: boolean;
+  /** Data-URL (or remote) photos of the driver's vehicle. */
+  carPhotos?: string[];
+  /** Driver-selected vehicle categories. */
+  categories?: VehicleCategory[];
 }
 
 const KEY = "lumecar_driver_overrides";
@@ -34,15 +39,24 @@ export function getDriverOverrides(driverId: string): DriverOverrides {
   return readStore()[driverId] ?? {};
 }
 
+/**
+ * Persist a patch of overrides. Returns false if storage failed (e.g. the
+ * browser quota was exceeded by large photo data-URLs).
+ */
 export function saveDriverOverrides(
   driverId: string,
   patch: DriverOverrides
-): void {
-  if (typeof window === "undefined") return;
+): boolean {
+  if (typeof window === "undefined") return false;
   const store = readStore();
   store[driverId] = { ...store[driverId], ...patch };
-  localStorage.setItem(KEY, JSON.stringify(store));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(store));
+  } catch {
+    return false;
+  }
   window.dispatchEvent(new CustomEvent(DRIVER_OVERRIDES_EVENT));
+  return true;
 }
 
 /** Merge a base driver with any locally-saved overrides. */
@@ -53,5 +67,12 @@ export function applyDriverOverrides(driver: Driver): Driver {
     bio: o.bio ?? driver.bio,
     pricePerHour: o.pricePerHour ?? driver.pricePerHour,
     available: o.available ?? driver.available,
+    categories:
+      o.categories && o.categories.length > 0 ? o.categories : driver.categories,
+    car: {
+      ...driver.car,
+      photos:
+        o.carPhotos && o.carPhotos.length > 0 ? o.carPhotos : driver.car.photos,
+    },
   };
 }

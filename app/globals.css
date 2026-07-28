@@ -19,9 +19,24 @@ html {
   text-size-adjust: 100%;
 }
 
+/* Accessibility: honour the OS "reduce motion" preference everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 body {
-  background-color: #05060a;
-  color: #e7ebf3;
+  background-color: #08080a;
+  color: #e8e6e1;
   overflow-x: hidden;
   min-height: 100svh;
   /* Respect the iPhone notch / home indicator. */
@@ -36,7 +51,7 @@ body {
 
 /* Selection */
 ::selection {
-  background: rgba(47, 99, 255, 0.35);
+  background: rgba(184, 155, 104, 0.32);
   color: #fff;
 }
 
@@ -46,15 +61,15 @@ body {
   height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: #0a0c12;
+  background: #0c0c0f;
 }
 ::-webkit-scrollbar-thumb {
-  background: #252b3b;
+  background: #2a2a34;
   border-radius: 999px;
-  border: 2px solid #0a0c12;
+  border: 2px solid #0c0c0f;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a4256;
+  background: #3d3d49;
 }
 
 @layer components {
@@ -67,10 +82,10 @@ body {
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-full font-medium transition-all duration-300 ease-out select-none;
+    @apply inline-flex items-center justify-center gap-2 rounded-full font-medium transition-all duration-300 ease-out select-none active:scale-[0.97];
   }
   .btn-primary {
-    @apply btn bg-royal-500 text-white px-6 py-3 hover:bg-royal-400 shadow-glow hover:-translate-y-0.5 active:translate-y-0;
+    @apply btn bg-white text-ink-950 px-6 py-3 hover:bg-white/90 shadow-card hover:-translate-y-0.5 active:translate-y-0;
   }
   .btn-ghost {
     @apply btn text-white/80 px-6 py-3 border border-white/10 hover:bg-white/5 hover:text-white;
@@ -88,7 +103,7 @@ body {
   }
 
   .section-eyebrow {
-    @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-royal-300;
+    @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-white/55;
   }
 }
 
@@ -97,7 +112,7 @@ body {
     @apply bg-gradient-to-br from-white via-white to-white/40 bg-clip-text text-transparent;
   }
   .text-gradient-royal {
-    background: linear-gradient(120deg, #fff 0%, #8eb5ff 60%, #2f63ff 100%);
+    background: linear-gradient(120deg, #ffffff 0%, #dededa 60%, #a8a79f 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;

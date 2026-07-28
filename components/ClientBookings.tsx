@@ -20,8 +20,11 @@ import { useAuth } from "@/lib/auth";
 import { getDriver } from "@/lib/drivers";
 import { getClientId, getBookedDrivers, BOOKED_EVENT } from "@/lib/clientBookings";
 import type { Booking } from "@/lib/bookings";
-import { statusLabel } from "@/lib/bookings";
+import { statusLabel, formatWhen } from "@/lib/bookings";
+import { whatsappUrl } from "@/lib/whatsapp";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { PaymentDialog } from "./PaymentDialog";
 
 /**
  * Client view of their own course requests, with live status updates.
@@ -30,9 +33,10 @@ import { cn } from "@/lib/utils";
  */
 export function ClientBookings() {
   const { user, loading } = useAuth();
+  const { lang } = useI18n();
   const router = useRouter();
   const [byId, setById] = useState<Record<string, Booking>>({});
-  const [payingId, setPayingId] = useState<string | null>(null);
+  const [payBooking, setPayBooking] = useState<Booking | null>(null);
   const sourcesRef = useRef<EventSource[]>([]);
 
   useEffect(() => {
@@ -83,32 +87,6 @@ export function ClientBookings() {
       </div>
     );
   }
-
-  const pay = async (b: Booking) => {
-    setPayingId(b.id);
-    try {
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ driverId: b.driverId, hours: b.hours, bookingId: b.id }),
-      });
-      const data = await res.json();
-      if (data.mode === "stripe" && data.url) {
-        window.location.href = data.url; // real Stripe Checkout
-        return;
-      }
-      // Demo mode: mark the booking paid directly.
-      await fetch(`/api/bookings/${b.driverId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: b.id, status: "paid" }),
-      });
-    } catch {
-      /* ignore — user can retry */
-    } finally {
-      setPayingId(null);
-    }
-  };
 
   const bookings = Object.values(byId).sort((a, b) => b.createdAt - a.createdAt);
 
@@ -167,7 +145,7 @@ export function ClientBookings() {
                         {driver ? `${driver.firstName} ${driver.lastName}` : "Chauffeur"}
                       </p>
                       <p className="flex items-center gap-1 text-xs text-white/50">
-                        <Clock className="h-3 w-3" /> {b.hours} h · €{b.total}
+                        <Clock className="h-3 w-3" /> {b.hours} {b.unit === "day" ? "j" : "h"} · €{b.total} · {formatWhen(b.when, lang)}
                       </p>
                     </div>
                   </div>
@@ -175,26 +153,25 @@ export function ClientBookings() {
                     <StatusBadge status={b.status} />
                     {b.status === "confirmed" && (
                       <button
-                        onClick={() => pay(b)}
-                        disabled={payingId === b.id}
-                        className="btn-primary text-xs disabled:opacity-60"
+                        onClick={() => setPayBooking(b)}
+                        className="btn-primary text-xs"
                       >
-                        {payingId === b.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <CreditCard className="h-4 w-4" />
-                        )}
+                        <CreditCard className="h-4 w-4" />
                         Payer €{b.total}
                       </button>
                     )}
                     {driver && (
-                      <Link
-                        href={`/messages?driver=${driver.id}`}
-                        className="grid h-9 w-9 place-items-center rounded-full border border-white/10 text-white/70 transition hover:bg-white/5 hover:text-white"
-                        aria-label="Message"
+                      <a
+                        href={whatsappUrl(
+                          `Bonjour, au sujet de ma réservation avec ${driver.firstName}.`
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="grid h-9 w-9 place-items-center rounded-full border border-white/10 text-green-400 transition hover:bg-white/5"
+                        aria-label="WhatsApp"
                       >
                         <MessageCircle className="h-4 w-4" />
-                      </Link>
+                      </a>
                     )}
                   </div>
                 </motion.div>
@@ -202,6 +179,14 @@ export function ClientBookings() {
             })}
           </AnimatePresence>
         </div>
+      )}
+
+      {payBooking && (
+        <PaymentDialog
+          booking={payBooking}
+          onClose={() => setPayBooking(null)}
+          onPaid={() => setPayBooking(null)}
+        />
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
+import { I18nProvider } from "@/lib/i18n";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -10,20 +11,20 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "LumeCar — Chauffeurs privés d'exception",
+  title: "Nova Compagnie — Chauffeurs privés d'exception",
   description:
-    "La plateforme premium qui connecte voyageurs exigeants et chauffeurs privés vérifiés à Paris, Londres, Barcelone et New York.",
+    "La plateforme premium qui connecte voyageurs exigeants et chauffeurs privés vérifiés à Paris.",
   keywords: [
     "chauffeur privé",
     "VTC premium",
     "Uber Black",
     "transfert aéroport",
-    "LumeCar",
+    "Nova Compagnie",
   ],
-  applicationName: "LumeCar",
+  applicationName: "Nova Compagnie",
   appleWebApp: {
     capable: true,
-    title: "LumeCar",
+    title: "Nova Compagnie",
     statusBarStyle: "black-translucent",
   },
   formatDetection: {
@@ -47,7 +48,9 @@ export default function RootLayout({
   return (
     <html lang="fr" className={inter.variable}>
       <body className="min-h-screen-dvh antialiased">
-        <AuthProvider>{children}</AuthProvider>
+        <I18nProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </I18nProvider>
       </body>
     </html>
   );

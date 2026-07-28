@@ -12,16 +12,26 @@ import {
   User,
   Phone,
   Car,
-  Wallet,
   Power,
   FileText,
+  ImagePlus,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { getDriver } from "@/lib/drivers";
+import type { VehicleCategory } from "@/lib/types";
 import {
   getDriverOverrides,
   saveDriverOverrides,
 } from "@/lib/driverOverrides";
+
+const CATEGORIES: VehicleCategory[] = [
+  "Business",
+  "Moto",
+  "Van",
+  "Van Luxury",
+  "Luxury",
+];
 
 export function ProfileEditor() {
   const { user, loading, updateProfile } = useAuth();
@@ -31,8 +41,10 @@ export function ProfileEditor() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [bio, setBio] = useState("");
-  const [price, setPrice] = useState(0);
   const [available, setAvailable] = useState(true);
+  const [category, setCategory] = useState<VehicleCategory>("Business");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -50,8 +62,11 @@ export function ProfileEditor() {
     if (driver) {
       const o = getDriverOverrides(driver.id);
       setBio(o.bio ?? driver.bio);
-      setPrice(o.pricePerHour ?? driver.pricePerHour);
       setAvailable(o.available ?? driver.available);
+      setCategory((o.categories?.[0] ?? driver.categories[0]) as VehicleCategory);
+      setPhotos(
+        o.carPhotos && o.carPhotos.length > 0 ? o.carPhotos : driver.car.photos
+      );
     }
   }, [user, driver]);
 
@@ -70,11 +85,17 @@ export function ProfileEditor() {
     updateProfile({ firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim() });
     // Persist driver-specific public fields.
     if (driver) {
-      saveDriverOverrides(driver.id, {
+      const ok = saveDriverOverrides(driver.id, {
         bio: bio.trim(),
-        pricePerHour: Number(price) || driver.pricePerHour,
         available,
+        categories: [category],
+        carPhotos: photos,
       });
+      if (!ok) {
+        setPhotoError(
+          "Stockage plein : réduisez le nombre de photos et réessayez."
+        );
+      }
     }
     setTimeout(() => {
       setSaving(false);
@@ -82,6 +103,23 @@ export function ProfileEditor() {
       setTimeout(() => setSaved(false), 2500);
     }, 500);
   };
+
+  const MAX_PHOTOS = 8;
+  const onFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!files.length) return;
+    setPhotoError(null);
+    const room = Math.max(0, MAX_PHOTOS - photos.length);
+    try {
+      const urls = await Promise.all(files.slice(0, room).map((f) => fileToDataUrl(f)));
+      setPhotos((p) => [...p, ...urls].slice(0, MAX_PHOTOS));
+    } catch {
+      setPhotoError("Impossible de charger une image.");
+    }
+  };
+  const removePhoto = (i: number) =>
+    setPhotos((p) => p.filter((_, idx) => idx !== i));
 
   return (
     <div>
@@ -156,21 +194,7 @@ export function ProfileEditor() {
                 </p>
               </Field>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Tarif horaire (€)">
-                  <div className="relative">
-                    <Wallet className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                    <input
-                      className="input pl-10"
-                      type="number"
-                      min={10}
-                      max={500}
-                      value={price}
-                      onChange={(e) => setPrice(Number(e.target.value))}
-                    />
-                  </div>
-                </Field>
-
+              <div className="grid gap-4">
                 <Field label="Disponibilité">
                   <button
                     type="button"
@@ -199,6 +223,72 @@ export function ProfileEditor() {
                   </button>
                 </Field>
               </div>
+
+              <Field label="Catégorie du véhicule">
+                <div className="flex flex-wrap gap-2">
+                  {CATEGORIES.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCategory(c)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                        category === c
+                          ? "border-royal-400/50 bg-royal-500/20 text-white"
+                          : "border-white/10 text-white/60 hover:bg-white/5"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              <Field label="Photos du véhicule">
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {photos.map((p, i) => (
+                    <div
+                      key={i}
+                      className="group relative aspect-video overflow-hidden rounded-xl border border-white/10"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={p}
+                        alt={`Photo ${i + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(i)}
+                        aria-label="Retirer"
+                        className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {photos.length < MAX_PHOTOS && (
+                    <label className="grid aspect-video cursor-pointer place-items-center rounded-xl border border-dashed border-white/15 text-white/50 transition hover:border-royal-400/50 hover:text-white">
+                      <span className="flex flex-col items-center gap-1 text-[11px]">
+                        <ImagePlus className="h-5 w-5" />
+                        Ajouter
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={onFiles}
+                      />
+                    </label>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px] text-white/30">
+                  {photos.length}/{MAX_PHOTOS} photos · redimensionnées automatiquement
+                </p>
+                {photoError && (
+                  <p className="mt-1 text-xs text-red-300">{photoError}</p>
+                )}
+              </Field>
 
               <Link
                 href={`/drivers/${driver.id}`}
@@ -245,4 +335,36 @@ function Field({
       {children}
     </label>
   );
+}
+
+/**
+ * Read a File and return a downscaled JPEG data URL so photos stay small
+ * enough for localStorage (demo persistence). Max 1280px, quality 0.72.
+ */
+function fileToDataUrl(file: File, maxW = 1280, quality = 0.72): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read error"));
+    reader.onload = () => {
+      const img = new window.Image();
+      img.onerror = () => reject(new Error("decode error"));
+      img.onload = () => {
+        const scale = Math.min(1, maxW / (img.width || maxW));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(reader.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
 }

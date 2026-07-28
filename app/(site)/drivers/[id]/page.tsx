@@ -26,8 +26,8 @@ export function generateMetadata({ params }: { params: { id: string } }) {
   const driver = getDriver(params.id);
   return {
     title: driver
-      ? `${driver.firstName} ${driver.lastName} — Chauffeur privé · LumeCar`
-      : "Chauffeur — LumeCar",
+      ? `${driver.firstName} ${driver.lastName} — Chauffeur privé · Nova Compagnie`
+      : "Chauffeur — Nova Compagnie",
   };
 }
 
@@ -100,6 +100,7 @@ export default function DriverProfile({ params }: { params: { id: string } }) {
             <Gallery
               photos={driver.car.photos}
               alt={`${driver.car.make} ${driver.car.model}`}
+              driverId={driver.id}
             />
           </div>
 

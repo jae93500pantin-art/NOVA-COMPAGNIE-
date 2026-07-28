@@ -9,32 +9,32 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Premium neutral surfaces
+        // Premium neutral graphite surfaces (warm, sober).
         ink: {
-          950: "#05060a",
-          900: "#0a0c12",
-          850: "#0e1118",
-          800: "#12151e",
-          700: "#1a1e2a",
-          600: "#252b3b",
-          500: "#3a4256",
+          950: "#08080a",
+          900: "#0c0c0f",
+          850: "#101015",
+          800: "#15151b",
+          700: "#1e1e26",
+          600: "#2a2a34",
+          500: "#3d3d49",
         },
-        // Premium blue accent
+        // Sober near-monochrome accent (muted greige, almost neutral).
         royal: {
-          50: "#eef4ff",
-          100: "#d9e6ff",
-          200: "#bcd3ff",
-          300: "#8eb5ff",
-          400: "#598dff",
-          500: "#2f63ff",
-          600: "#1a45f5",
-          700: "#1535e1",
-          800: "#182db6",
-          900: "#1a2c8f",
+          50: "#f6f6f5",
+          100: "#ededeb",
+          200: "#dededa",
+          300: "#c4c3bd",
+          400: "#a8a79f",
+          500: "#8c8b82",
+          600: "#73726a",
+          700: "#5b5a54",
+          800: "#454440",
+          900: "#34332f",
         },
         gold: {
-          400: "#e8c879",
-          500: "#d4af37",
+          400: "#b9b3a4",
+          500: "#a39d8c",
         },
       },
       fontFamily: {
@@ -48,11 +48,11 @@ const config: Config = {
         "grid-faint":
           "linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px)",
         "radial-glow":
-          "radial-gradient(circle at 50% 0%, rgba(47,99,255,0.25), transparent 60%)",
+          "radial-gradient(circle at 50% 0%, rgba(255,255,255,0.06), transparent 60%)",
       },
       boxShadow: {
-        glow: "0 0 0 1px rgba(255,255,255,0.06), 0 20px 60px -20px rgba(47,99,255,0.45)",
-        card: "0 10px 40px -12px rgba(0,0,0,0.6)",
+        glow: "0 0 0 1px rgba(255,255,255,0.05), 0 18px 50px -24px rgba(0,0,0,0.7)",
+        card: "0 10px 40px -12px rgba(0,0,0,0.65)",
       },
       keyframes: {
         "fade-up": {

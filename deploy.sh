@@ -15,12 +15,16 @@
 set -euo pipefail
 
 # ── Config ───────────────────────────────────────────────
-RG="rg-lumecar"
-VM="vm-lumecar"
-HOST="20.19.186.208"
+RG="rg-nova"
+VM="vm-nova"
+HOST="20.111.46.101"
 USER="azureuser"
-APP_DIR="/var/www/lumecar"
-FQDN="lumecar-8835.francecentral.cloudapp.azure.com"
+APP_DIR="/var/www/nova"
+SERVICE="nova"
+FQDN="novacompagnie.com"
+# Ancien serveur sandbox (conservé) :
+#   RG=rg-lumecar VM=vm-lumecar HOST=20.19.186.208 APP_DIR=/var/www/lumecar
+#   SERVICE=lumecar FQDN=lumecar-8835.francecentral.cloudapp.azure.com
 # ─────────────────────────────────────────────────────────
 
 cd "$(dirname "$0")"
@@ -49,18 +53,18 @@ echo "  ✓ Archive prête"
 
 echo "▶ 4/5  Envoi + build distant + redémarrage…"
 scp -o ConnectTimeout=30 /tmp/lumecar.tar.gz "$USER@$HOST:/tmp/lumecar.tar.gz" >/dev/null
-ssh "$USER@$HOST" "APP_DIR=$APP_DIR bash -s" <<'REMOTE'
+ssh "$USER@$HOST" "APP_DIR=$APP_DIR SERVICE=$SERVICE bash -s" <<'REMOTE'
 set -e
 cd "$APP_DIR"
 tar -xzf /tmp/lumecar.tar.gz
 npm ci --no-audit --no-fund >/dev/null 2>&1
 npm run build >/dev/null 2>&1
-sudo systemctl restart lumecar
+sudo systemctl restart "$SERVICE"
 for i in $(seq 1 15); do
-  [ "$(sudo systemctl is-active lumecar)" = "active" ] && break
+  [ "$(sudo systemctl is-active "$SERVICE")" = "active" ] && break
   sleep 3
 done
-echo "  ✓ Service: $(sudo systemctl is-active lumecar)"
+echo "  ✓ Service: $(sudo systemctl is-active "$SERVICE")"
 REMOTE
 
 echo "▶ 5/5  Vérification HTTPS…"
@@ -68,7 +72,7 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "https://$FQDN/")
 if [[ "$CODE" == "200" ]]; then
   echo "  ✓ En ligne : https://$FQDN  (HTTP $CODE)"
 else
-  echo "  ⚠ Réponse inattendue : HTTP $CODE — vérifie les logs (journalctl -u lumecar)"
+  echo "  ⚠ Réponse inattendue : HTTP $CODE — vérifie les logs (journalctl -u $SERVICE)"
   exit 1
 fi
 

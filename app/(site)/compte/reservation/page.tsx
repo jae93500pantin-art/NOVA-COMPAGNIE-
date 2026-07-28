@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { CheckCircle2, MessageCircle, Home } from "lucide-react";
 import { getDriver } from "@/lib/drivers";
+import { whatsappUrl } from "@/lib/whatsapp";
 import { MarkPaid } from "@/components/MarkPaid";
 
-export const metadata = { title: "Réservation confirmée — LumeCar" };
+export const metadata = { title: "Réservation confirmée — Nova Compagnie" };
 
 export default function ReservationPage({
   searchParams,
@@ -27,16 +28,23 @@ export default function ReservationPage({
         </h1>
         <p className="mx-auto mt-3 max-w-sm text-white/60">
           {driver
-            ? `Votre course avec ${driver.firstName} ${driver.lastName} (${driver.car.make} ${driver.car.model}) est confirmée. Vous recevrez les détails par message.`
+            ? `Votre course avec ${driver.firstName} ${driver.lastName} (${driver.car.make} ${driver.car.model}) est confirmée. Vous recevrez les détails par e-mail.`
             : "Votre paiement a été traité avec succès."}
         </p>
 
         <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
           {driver && (
-            <Link href={`/messages?driver=${driver.id}`} className="btn-primary">
+            <a
+              href={whatsappUrl(
+                `Bonjour, au sujet de ma course avec ${driver.firstName} ${driver.lastName}.`
+              )}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary"
+            >
               <MessageCircle className="h-4 w-4" />
-              Contacter le chauffeur
-            </Link>
+              Contacter sur WhatsApp
+            </a>
           )}
           <Link href="/compte" className="btn-ghost">
             <Home className="h-4 w-4" />

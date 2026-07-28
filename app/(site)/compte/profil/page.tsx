@@ -1,6 +1,6 @@
 import { ProfileEditor } from "@/components/ProfileEditor";
 
-export const metadata = { title: "Éditer mon profil — LumeCar" };
+export const metadata = { title: "Éditer mon profil — Nova Compagnie" };
 
 export default function ProfileEditPage() {
   return (

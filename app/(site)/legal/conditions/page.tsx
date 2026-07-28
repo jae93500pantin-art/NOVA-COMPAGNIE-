@@ -1,4 +1,4 @@
-export const metadata = { title: "Conditions d’utilisation — LumeCar" };
+export const metadata = { title: "Conditions d’utilisation — Nova Compagnie" };
 
 export default function TermsPage() {
   return (
@@ -7,12 +7,12 @@ export default function TermsPage() {
       <p className="updated">Dernière mise à jour : 11 juin 2026</p>
       <p className="lead">
         Les présentes conditions régissent l’utilisation de la plateforme
-        LumeCar, qui met en relation des clients et des chauffeurs privés.
+        Nova Compagnie, qui met en relation des clients et des chauffeurs privés.
       </p>
 
       <h2>1. Objet</h2>
       <p>
-        LumeCar fournit une plateforme de mise en relation. Le contrat de
+        Nova Compagnie fournit une plateforme de mise en relation. Le contrat de
         transport est conclu directement entre le client et le chauffeur.
       </p>
 
@@ -44,7 +44,7 @@ export default function TermsPage() {
 
       <h2>6. Responsabilité</h2>
       <p>
-        LumeCar agit comme intermédiaire technique. Ce prototype est fourni à des
+        Nova Compagnie agit comme intermédiaire technique. Ce prototype est fourni à des
         fins de démonstration et ne constitue pas un service commercial réel.
       </p>
 

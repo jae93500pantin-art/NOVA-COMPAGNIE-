@@ -20,6 +20,8 @@ export const env = {
 export const serverEnv = {
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
+  resendApiKey: process.env.RESEND_API_KEY ?? "",
+  emailFrom: process.env.EMAIL_FROM ?? "Nova Compagnie <onboarding@resend.dev>",
 };
 
 export const isSupabaseConfigured =
@@ -40,3 +42,10 @@ export const isStripeConfigured =
 
 export const isStripeLiveMode =
   serverEnv.stripeSecretKey.startsWith("sk_live_");
+
+/**
+ * Transactional email (Resend) is configured when an API key is present.
+ * Without it, booking emails are skipped (graceful no-op) and the flow still
+ * works end-to-end in demo mode.
+ */
+export const isEmailConfigured = serverEnv.resendApiKey.startsWith("re_");

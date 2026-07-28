@@ -3,6 +3,10 @@ import {
   buildBooking,
   canTransition,
   statusLabel,
+  composeWhen,
+  isFutureBooking,
+  formatWhen,
+  todayISODate,
 } from "@/lib/bookings";
 import {
   createBooking,
@@ -115,5 +119,70 @@ describe("bookingBroker — création & cycle de vie", () => {
     createBooking({ driverId, clientId: "c", clientName: "X", hours: 1, total: 10 });
     // seul le snapshot initial reçu
     expect(events.filter((e) => e.type === "booking")).toHaveLength(0);
+  });
+});
+
+describe("bookings — planification (date exacte choisie par le client)", () => {
+  const FIXED = new Date("2026-07-01T12:00:00").getTime();
+  const now = () => FIXED;
+
+  it("todayISODate renvoie la date du jour au format YYYY-MM-DD", () => {
+    expect(todayISODate(now)).toBe("2026-07-01");
+  });
+
+  it("composeWhen combine date + heure en valeur ISO stockable", () => {
+    expect(composeWhen("2026-07-15", "14:30")).toBe("2026-07-15T14:30");
+    expect(composeWhen("2026-07-15", "")).toBe("2026-07-15");
+    expect(composeWhen("", "14:30")).toBe(""); // date obligatoire
+    expect(composeWhen("pas-une-date", "14:30")).toBe("");
+  });
+
+  it("isFutureBooking accepte une date future et refuse le passé", () => {
+    expect(isFutureBooking("2026-07-15", "", now)).toBe(true);
+    expect(isFutureBooking("2026-06-30", "", now)).toBe(false); // hier
+    expect(isFutureBooking("2026-07-01", "", now)).toBe(true); // aujourd'hui (fin de journée)
+  });
+
+  it("isFutureBooking compare l'heure le jour même", () => {
+    expect(isFutureBooking("2026-07-01", "14:00", now)).toBe(true); // plus tard aujourd'hui
+    expect(isFutureBooking("2026-07-01", "09:00", now)).toBe(false); // déjà passé
+  });
+
+  it("isFutureBooking rejette une saisie invalide", () => {
+    expect(isFutureBooking("", "", now)).toBe(false);
+    expect(isFutureBooking("2026-13-40", "", now)).toBe(false);
+  });
+
+  it("formatWhen produit un libellé localisé (FR/EN)", () => {
+    expect(formatWhen("2026-07-15", "fr")).toBe("15 juillet 2026");
+    expect(formatWhen("2026-07-15", "en")).toBe("July 15, 2026");
+    expect(formatWhen("2026-07-15T14:30", "fr")).toBe("15 juillet 2026 à 14:30");
+    expect(formatWhen("2026-07-15T14:30", "en")).toBe("July 15, 2026 at 14:30");
+  });
+
+  it("formatWhen gère le cas vide (dès que possible)", () => {
+    expect(formatWhen("", "fr")).toBe("Dès que possible");
+    expect(formatWhen("", "en")).toBe("As soon as possible");
+  });
+
+  it("formatWhen renvoie un texte libre hérité tel quel", () => {
+    expect(formatWhen("Demain matin", "fr")).toBe("Demain matin");
+  });
+
+  it("buildBooking conserve la date choisie", () => {
+    const b = buildBooking({
+      driverId: "d",
+      clientId: "c",
+      clientName: "X",
+      hours: 2,
+      total: 100,
+      when: "2026-07-15T14:30",
+    });
+    expect(b.when).toBe("2026-07-15T14:30");
+  });
+
+  it("buildBooking laisse `when` vide quand non renseigné", () => {
+    const b = buildBooking({ driverId: "d", clientId: "c", clientName: "X", hours: 1, total: 10 });
+    expect(b.when).toBe("");
   });
 });

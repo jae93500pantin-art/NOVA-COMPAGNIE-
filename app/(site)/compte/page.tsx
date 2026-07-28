@@ -1,6 +1,6 @@
 import { AccountDashboard } from "@/components/AccountDashboard";
 
-export const metadata = { title: "Mon espace — LumeCar" };
+export const metadata = { title: "Mon espace — Nova Compagnie" };
 
 export default function AccountPage() {
   return (
