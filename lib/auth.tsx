@@ -10,6 +10,7 @@ import {
 } from "react";
 import { getSupabaseBrowser } from "./supabase/client";
 import { isSupabaseConfigured } from "./config";
+import { avatarFromMetadata, nameFromMetadata } from "./identity";
 
 export type SessionRole = "client" | "driver";
 
@@ -22,6 +23,8 @@ export interface SessionUser {
   driverId: string | null;
   email?: string;
   phone?: string;
+  /** Provider profile picture (Google), when available. */
+  avatarUrl?: string;
 }
 
 const STORAGE_KEY = "lumecar_demo_session";
@@ -87,13 +90,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } = await supabase.auth.getUser();
     if (authUser) {
       const meta = authUser.user_metadata ?? {};
+      // Google returns given_name/family_name/name + picture instead of our own keys.
+      const { firstName, lastName } = nameFromMetadata(meta);
       setUser({
         username: authUser.email ?? "",
         email: authUser.email ?? undefined,
         role: (meta.role as SessionRole) ?? "client",
-        firstName: (meta.first_name as string) ?? "",
-        lastName: (meta.last_name as string) ?? "",
+        firstName,
+        lastName,
         driverId: (meta.driver_id as string) ?? null,
+        avatarUrl: avatarFromMetadata(meta),
       });
     } else {
       setUser(null);

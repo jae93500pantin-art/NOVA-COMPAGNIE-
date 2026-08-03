@@ -27,7 +27,7 @@ const securityHeaders = [
       "object-src 'none'",
       "frame-ancestors 'self'",
       "form-action 'self'",
-      "img-src 'self' data: blob: https://images.unsplash.com https://i.pravatar.cc https://*.mapbox.com",
+      "img-src 'self' data: blob: https://images.unsplash.com https://i.pravatar.cc https://*.mapbox.com https://*.googleusercontent.com",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://api.mapbox.com",
@@ -47,6 +47,8 @@ const nextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "images.unsplash.com" },
       { protocol: "https", hostname: "i.pravatar.cc" },
+      // Google account profile pictures (OAuth sign-in).
+      { protocol: "https", hostname: "lh3.googleusercontent.com" },
     ],
   },
   async headers() {

@@ -15,9 +15,6 @@ import {
   ArrowRight,
   Loader2,
   AlertCircle,
-  ShieldCheck,
-  BadgeCheck,
-  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
@@ -25,10 +22,23 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { matchDemoAccount } from "@/lib/demoAccounts";
 import { setDemoSession } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import { GoogleButton } from "./GoogleButton";
 
 type Role = "client" | "driver";
+type Mode = "login" | "register";
 
-export function AuthForm({ mode }: { mode: "login" | "register" }) {
+export function AuthForm({
+  mode,
+  embedded = false,
+  onSuccess,
+  onSwitchMode,
+}: {
+  mode: Mode;
+  /** Rendered inside the auth modal: no page title, no redirect on success. */
+  embedded?: boolean;
+  onSuccess?: () => void;
+  onSwitchMode?: (mode: Mode) => void;
+}) {
   const params = useSearchParams();
   const router = useRouter();
   const { t } = useI18n();
@@ -36,16 +46,14 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const [role, setRole] = useState<Role>(initialRole);
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Surfaced when /auth/callback bounces back after a failed OAuth round-trip.
+  const [error, setError] = useState<string | null>(params.get("auth_error"));
   const [fields, setFields] = useState({
     firstName: "",
     lastName: "",
     email: "",
     phone: "",
     password: "",
-    vtcCard: "",
-    insurance: "",
-    revtc: "",
   });
 
   const isRegister = mode === "register";
@@ -84,8 +92,8 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         });
         setRole(account.role);
         setDone(true);
-        // Land the user straight in their personal space.
-        setTimeout(() => router.push("/compte"), 900);
+        // In the modal we stay on the current page; otherwise land in the account space.
+        setTimeout(() => (embedded ? onSuccess?.() : router.push("/compte")), 900);
       }, 600);
       return;
     }
@@ -117,6 +125,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         if (signInError) throw signInError;
       }
       setDone(true);
+      if (embedded && !isRegister) setTimeout(() => onSuccess?.(), 900);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("auth.errorGeneric"));
     } finally {
@@ -150,14 +159,19 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
   return (
     <div>
-      <h1 className="text-3xl font-semibold tracking-tight text-white">
-        {isRegister ? t("auth.titleRegister") : t("auth.titleLogin")}
-      </h1>
-      <p className="mt-2 text-white/55">
-        {isRegister
-          ? t("auth.subtitleRegister")
-          : t("auth.subtitleLogin")}
-      </p>
+      {/* The modal renders its own header. */}
+      {!embedded && (
+        <>
+          <h1 className="text-3xl font-semibold tracking-tight text-white">
+            {isRegister ? t("auth.titleRegister") : t("auth.titleLogin")}
+          </h1>
+          <p className="mt-2 text-white/55">
+            {isRegister
+              ? t("auth.subtitleRegister")
+              : t("auth.subtitleLogin")}
+          </p>
+        </>
+      )}
 
       {!isSupabaseConfigured && (
         <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs text-amber-300">
@@ -256,40 +270,6 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           minLength={isRegister ? 8 : undefined}
         />
 
-        {isRegister && role === "driver" && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="space-y-3 rounded-xl border border-royal-400/20 bg-royal-500/5 p-4"
-          >
-            <p className="flex items-center gap-1.5 text-xs font-semibold text-white/75">
-              <ShieldCheck className="h-3.5 w-3.5 text-royal-300" />
-              {t("auth.verifyTitle")}
-            </p>
-            <IconInput
-              icon={<BadgeCheck className="h-4 w-4" />}
-              placeholder={t("auth.vtcCard")}
-              value={fields.vtcCard}
-              onChange={set("vtcCard")}
-            />
-            <IconInput
-              icon={<FileText className="h-4 w-4" />}
-              placeholder={t("auth.revtc")}
-              value={fields.revtc}
-              onChange={set("revtc")}
-            />
-            <IconInput
-              icon={<ShieldCheck className="h-4 w-4" />}
-              placeholder={t("auth.insurance")}
-              value={fields.insurance}
-              onChange={set("insurance")}
-            />
-            <p className="text-[11px] leading-relaxed text-white/45">
-              {t("auth.verifyNote")}
-            </p>
-          </motion.div>
-        )}
-
         {!isRegister && (
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center gap-2 text-white/60">
@@ -325,25 +305,30 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <button className="btn-ghost text-sm">Google</button>
-        <button className="btn-ghost text-sm">Apple</button>
+        <GoogleButton onError={setError} disabled={loading} />
+        <button type="button" className="btn-ghost text-sm">
+          Apple
+        </button>
       </div>
 
       <p className="mt-6 text-center text-sm text-white/50">
-        {isRegister ? (
-          <>
-            {t("auth.alreadyAccount")}{" "}
-            <Link href="/auth/login" className="font-medium text-royal-300 hover:underline">
-              {t("auth.login")}
-            </Link>
-          </>
+        {isRegister ? t("auth.alreadyAccount") : t("auth.noAccount")}{" "}
+        {embedded && onSwitchMode ? (
+          // Inside the modal, switch form instead of navigating away.
+          <button
+            type="button"
+            onClick={() => onSwitchMode(isRegister ? "login" : "register")}
+            className="font-medium text-royal-300 hover:underline"
+          >
+            {isRegister ? t("auth.login") : t("auth.register")}
+          </button>
         ) : (
-          <>
-            {t("auth.noAccount")}{" "}
-            <Link href="/auth/register" className="font-medium text-royal-300 hover:underline">
-              {t("auth.register")}
-            </Link>
-          </>
+          <Link
+            href={isRegister ? "/auth/login" : "/auth/register"}
+            className="font-medium text-royal-300 hover:underline"
+          >
+            {isRegister ? t("auth.login") : t("auth.register")}
+          </Link>
         )}
       </p>
     </div>

@@ -8,7 +8,6 @@ import {
   Menu,
   X,
   MessageCircle,
-  Sparkles,
   LayoutDashboard,
   LogOut,
   CarFront,
@@ -17,11 +16,12 @@ import {
   Calendar,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
-import { useAuth } from "@/lib/auth";
+import { useAuth, type SessionUser } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { whatsappUrl } from "@/lib/whatsapp";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { CitySwitcher } from "./CitySwitcher";
+import { AuthModal } from "./AuthModal";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -37,7 +37,15 @@ export function Navbar() {
   ];
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const openAuth = (mode: "login" | "register") => {
+    setAuthMode(mode);
+    setAuthOpen(true);
+    setOpen(false);
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -49,7 +57,13 @@ export function Navbar() {
   useEffect(() => {
     setOpen(false);
     setMenuOpen(false);
+    setAuthOpen(false);
   }, [pathname]);
+
+  // A signed-in user has nothing left to do in the auth dialog.
+  useEffect(() => {
+    if (user) setAuthOpen(false);
+  }, [user]);
 
   // Close the account dropdown on outside click.
   useEffect(() => {
@@ -79,10 +93,7 @@ export function Navbar() {
             : "px-5 py-4 lg:px-8"
         )}
       >
-        <Link href="/" className="group flex items-center gap-2.5">
-          <span className="relative grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-royal-400 to-royal-600 shadow-glow">
-            <Sparkles className="h-4 w-4 text-white" />
-          </span>
+        <Link href="/" className="group flex items-center">
           <span className="text-lg font-semibold tracking-tight">
             Nova <span className="text-royal-400">Compagnie</span>
           </span>
@@ -117,9 +128,7 @@ export function Navbar() {
                 onClick={() => setMenuOpen((m) => !m)}
                 className="flex items-center gap-2 rounded-full border border-white/10 py-1.5 pl-1.5 pr-3 transition hover:bg-white/5"
               >
-                <span className="grid h-7 w-7 place-items-center rounded-full bg-gradient-to-br from-royal-400 to-royal-600 text-xs font-semibold text-white">
-                  {initials(user.firstName, user.lastName)}
-                </span>
+                <Avatar user={user} className="h-7 w-7 text-xs" />
                 <span className="text-sm font-medium text-white">
                   {user.firstName}
                 </span>
@@ -190,12 +199,12 @@ export function Navbar() {
             </div>
           ) : (
             <>
-              <Link href="/auth/login" className="btn-ghost text-sm">
+              <button onClick={() => openAuth("login")} className="btn-ghost text-sm">
                 {t("nav.login")}
-              </Link>
-              <Link href="/auth/register" className="btn-primary text-sm">
+              </button>
+              <button onClick={() => openAuth("register")} className="btn-primary text-sm">
                 {t("nav.register")}
-              </Link>
+              </button>
             </>
           )}
         </div>
@@ -219,9 +228,7 @@ export function Navbar() {
           >
             {user && (
               <div className="mb-3 flex items-center gap-3 rounded-xl bg-white/[0.04] p-3">
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-royal-400 to-royal-600 text-sm font-semibold text-white">
-                  {initials(user.firstName, user.lastName)}
-                </span>
+                <Avatar user={user} className="h-10 w-10 text-sm" />
                 <div>
                   <p className="text-sm font-semibold text-white">
                     {user.firstName} {user.lastName}
@@ -267,17 +274,48 @@ export function Navbar() {
               </button>
             ) : (
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <Link href="/auth/login" className="btn-ghost text-sm">
+                <button onClick={() => openAuth("login")} className="btn-ghost text-sm">
                   {t("nav.login")}
-                </Link>
-                <Link href="/auth/register" className="btn-primary text-sm">
+                </button>
+                <button onClick={() => openAuth("register")} className="btn-primary text-sm">
                   {t("nav.register")}
-                </Link>
+                </button>
               </div>
             )}
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        initialMode={authMode}
+      />
     </header>
+  );
+}
+
+/** Google profile picture when the account has one, initials otherwise. */
+function Avatar({ user, className }: { user: SessionUser; className?: string }) {
+  if (user.avatarUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={user.avatarUrl}
+        alt=""
+        referrerPolicy="no-referrer"
+        className={cn("shrink-0 rounded-full object-cover", className)}
+      />
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-royal-400 to-royal-600 font-semibold text-white",
+        className
+      )}
+    >
+      {initials(user.firstName, user.lastName)}
+    </span>
   );
 }
