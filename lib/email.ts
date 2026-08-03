@@ -105,7 +105,29 @@ export function bookingConfirmedEmail(d: BookingEmailData): { subject: string; h
         ["Durée", d.durationText],
         ["Montant à régler", `€${d.total}`],
       ],
-      "Moyens de paiement : carte bancaire, PayPal, crypto ou espèces."
+      "Moyens de paiement : carte bancaire, crypto ou espèces."
+    ),
+  };
+}
+
+/**
+ * Sent when an admin approves a driver profile from the /admin back-office.
+ * `loginUrl` points at the real login route (/auth/login), not a placeholder.
+ */
+export function driverApprovedEmail(d: {
+  firstName: string;
+  loginUrl: string;
+}): { subject: string; html: string } {
+  return {
+    subject: "Votre compte chauffeur est activé — Nova Compagnie",
+    html: layout(
+      `Félicitations ${d.firstName} !`,
+      `Votre dossier a été vérifié et validé par notre équipe. Votre compte chauffeur Nova Compagnie est désormais actif : vous pouvez renseigner vos disponibilités et recevoir vos premières courses.`,
+      [
+        ["Statut du compte", "Activé"],
+        ["Espace chauffeur", `<a href="${d.loginUrl}" style="color:#c9a75f">Se connecter</a>`],
+      ],
+      "Besoin d'aide pour démarrer ? Répondez à cet e-mail ou contactez-nous sur WhatsApp."
     ),
   };
 }

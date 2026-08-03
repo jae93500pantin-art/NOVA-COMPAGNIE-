@@ -66,11 +66,13 @@ app/
     layout.tsx
     login/page.tsx            Suspense → AuthForm mode="login"
     register/page.tsx         Suspense → AuthForm mode="register"
+    callback/route.ts         OAuth return URL: exchangeCodeForSession + sync `profiles`, then redirect back (?next=)
   api/
     account/route.ts          DELETE → RGPD account erasure (service role)
     account/export/route.ts   GET → RGPD data export (JSON)
     checkout/route.ts         POST → Stripe Checkout session (test/live) or {mode:"demo"} fallback. Amount computed server-side.
-    bookings/[driverId]/route.ts  SSE (GET) live course requests + POST create + PATCH accept/refuse
+    bookings/[driverId]/route.ts  SSE (GET) live course requests + POST create + PATCH accept/refuse/complete/cancel
+    chat/[bookingId]/route.ts     SSE (GET) per-booking chat + POST send. Participants only, open only while paid.
 
 components/                   All client components unless noted
   Navbar                      Front bar = logo (Nova Compagnie) + "Réservation" (→ /drivers) + "Transfert Aéroport" + "Contact" links + CitySwitcher + LanguageSwitcher + account dropdown/login. Account dropdown has a **WhatsApp contact** link (messaging feature removed).
@@ -86,21 +88,28 @@ components/                   All client components unless noted
   MapboxMap                   Real Mapbox map (token required)
   LiveMap                     Picks Mapbox vs InteractiveMap based on token
   DriverCard, DriversExplorer, Gallery, Reviews, StarRating, BookingWidget
+  BookingChat                 Per-booking chat thread (SSE), rendered inline under a booking card in
+                              ClientBookings + DriverRequests. Locked before payment, read-only once archived.
   ContactForm                 Professional contact form (nom/prénom, e-mail, téléphone, type de demande, message) with client-side validation + animated success confirmation. Demo mode: simulated send (no email backend yet).
   TransferEstimate            Instant airport-transfer price estimate (departure airport + destination zone + vehicle → live €). Pure math in lib/transfer.ts. CTA routes to /drivers?city=<airport city>.
   TransferPickupMap           Stylised pickup-zones map (airport pins + animated rings), same aesthetic as InteractiveMap.
   CityShowcase
-  AuthForm                    Client/driver toggle, Supabase auth + demo fallback
+  AuthForm                    Client/driver toggle, Supabase auth + demo fallback. Props `embedded`/`onSuccess`/`onSwitchMode` when rendered inside AuthModal.
+  AuthModal                   Login/register dialog opened from the Navbar (portal, z-40 under the navbar): X, outside click, Escape, body scroll lock, mobile bottom-sheet. No redirect.
+  GoogleButton                "Google" OAuth button (official G logo) → supabase.auth.signInWithOAuth({provider:"google"}) → /auth/callback
   CookieConsent               GDPR consent banner (mounted in (site)/layout)
   DataRights                  RGPD self-service (export/delete/consent)
 
 lib/
   types.ts                    Domain types: Driver, City, Review
+  identity.ts                 Pure helpers normalising provider metadata (Google given_name/family_name/name/picture → firstName/lastName/avatarUrl). Unit-tested.
   i18n.tsx                    I18nProvider + useI18n() — bilingual FR/EN. Default = browser lang, persisted in localStorage `lumecar_lang`. t("a.b") with FR fallback.
   dictionaries.ts             FR + EN translation dictionaries (typed; EN must match FR shape).
   calendar.ts                 Pure calendar helpers (monthGrid, shiftMonth, isBefore, addDays, nextWeekendISO…). Unit-tested. Powers DatePicker.
   motion.ts                   Shared Apple-grade motion tokens (ease [0.22,1,0.36,1], springSoft/Snappy, reveal, popover, stagger).
-  bookings.ts                 Booking domain types + pure helpers: canTransition, statusLabel, buildBooking AND scheduling helpers (todayISODate, composeWhen, isFutureBooking, formatWhen). Unit-tested.
+  bookings.ts                 Booking domain types + pure helpers: canTransition, statusLabel, buildBooking, scheduling helpers (todayISODate, composeWhen, isFutureBooking, formatWhen) AND auto-close (bookingStartsAt, shouldAutoComplete, AUTO_COMPLETE_AFTER_MS). Unit-tested.
+  chat.ts                     Chat domain: ChatMessage, chatStateFor/chatStateForBooking (locked|open|archived), canSendMessage, participantRole, buildMessage, formatMessageTime. Pure, unit-tested.
+  chatBroker.ts               In-memory per-booking chat rooms + SSE pub/sub (postMessage, subscribeChat, closeChat, dropChat). Mirrors bookingBroker.
   transfer.ts                 Airport-transfer domain data (Paris airports, Île-de-France zone, vehicle classes) + pure estimateTransfer() pricing helper (flat fare per vehicle: Berline 100 € / Van 150 € / Première classe 200 €).
   cities.ts, drivers.ts       Mock data + accessors (getDriver, driversByCity…)
   drivers.ts                  Includes `jeremy-driver` (Jérémy Dubois, Mercedes-AMG E63 S)
@@ -135,25 +144,68 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
 - `/compte` renders a client dashboard or a driver dashboard based on the role.
 - When Supabase is configured, `useAuth` derives the session from the real auth user
   instead, and login/registration go through Supabase.
+- **Login is a modal, not a page**: the Navbar "Connexion"/"S'inscrire" buttons open
+  `AuthModal` over the current page (no navigation). `/auth/login` and
+  `/auth/register` still work as standalone pages (deep links, OAuth error returns).
+
+## Connexion Google (OAuth 2.0)
+
+- Flow: `GoogleButton` → `supabase.auth.signInWithOAuth({ provider: "google" })`
+  (PKCE) → Google consent → `GET /auth/callback?code=…&next=…` →
+  `exchangeCodeForSession` sets the session cookie → redirect back to the page the
+  visitor came from (`/compte` when they started on an `/auth/*` page).
+- `safeNext()` in the callback only accepts same-origin relative paths (no open
+  redirect). Failures bounce to `/auth/login?auth_error=…`, which `AuthForm`
+  displays in its error banner.
+- Data from Google: **email**, **given_name/family_name** (or `name`), **picture**.
+  Normalised by `lib/identity.ts`, exposed by `useAuth()` as
+  `firstName`/`lastName`/`email`/`avatarUrl`. The Navbar avatar shows the Google
+  photo when present, initials otherwise (CSP `img-src` allows
+  `*.googleusercontent.com`).
+- Persistence: the `on_auth_user_created` trigger (`supabase/schema.sql`) creates the
+  `public.profiles` row from the Google metadata (name + `avatar_url`); the callback
+  additionally syncs those columns for accounts that predate the provider link
+  (`profiles` has no insert policy — inserts go through the security-definer trigger).
+- **Setup (one-off)**:
+  1. Google Cloud Console → APIs & Services → Credentials → *OAuth client ID* →
+     Web application. Authorised redirect URI:
+     `https://<projet>.supabase.co/auth/v1/callback`. Add
+     `https://www.novacompagnie.com` and `http://localhost:3000` as authorised
+     JavaScript origins, and fill the OAuth consent screen.
+  2. Supabase dashboard → Authentication → Providers → **Google**: paste the Client
+     ID + Client Secret, enable. **The secret stays in Supabase — never in this repo.**
+  3. Supabase → Authentication → URL Configuration: Site URL
+     `https://www.novacompagnie.com`, redirect allow-list
+     `http://localhost:3000/**` + `https://www.novacompagnie.com/**`.
+  4. `.env.local` needs only `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+- Without Supabase keys the button stays visible but explains it is unavailable
+  (`auth.googleUnavailable`) — the no-keys demo keeps working.
 
 ## Contact (WhatsApp)
 
-- The in-app messaging feature (and the `/live` cross-device chat demo) was
-  **removed entirely**. All "contact" actions open the WhatsApp Business line via
+- The **general-purpose** messaging feature (and the `/live` cross-device chat
+  demo) was removed. Generic "contact" actions open the WhatsApp Business line via
   `lib/whatsapp.ts` (`whatsappUrl(message?)`, `WHATSAPP_NUMBER`, `WHATSAPP_DISPLAY`).
+  It was later replaced — for paid rides only — by the booking-scoped chat above
+  ("Messagerie de course"); WhatsApp remains the pre-booking / support channel.
 - Entry points: account dropdown (Navbar), `BookingWidget` "Contacter",
   `ClientBookings` row action, the booking-confirmation page, and the `ContactForm`
   info panel (`/contact`).
 - Deleted: `app/(site)/messages`, `app/(site)/live`, `app/api/live`,
   `RealMessages`, `LiveChat`, `ChatInterface`, `lib/liveBroker.ts`,
   `lib/realtime.ts`, `lib/conversations.ts`, `lib/contacts.ts` + its test, and the
-  `conversations`/`messages` tables in `supabase/schema.sql`.
+  `conversations` table in `supabase/schema.sql`. (A booking-scoped `messages`
+  table was reintroduced later for the course chat.)
 - Update `WHATSAPP_NUMBER` in `lib/whatsapp.ts` to change the number everywhere.
 
 ## Real-time bookings (course requests, client ↔ driver)
 
 - **Flow (realistic): client requests → driver accepts/refuses → client pays (Stripe) → paid.**
-  Status machine in `lib/bookings.ts`: pending → confirmed|refused, confirmed → paid.
+  Status machine in `lib/bookings.ts`: pending → confirmed|refused|cancelled,
+  confirmed → paid|cancelled, paid → completed|cancelled. `refused`/`completed`/
+  `cancelled` are terminal. The driver closes a ride with "Course terminée";
+  either side can "Annuler". Safety net: a paid ride auto-completes 24 h after its
+  date (`shouldAutoComplete`), swept on every read of a driver room.
 - Client clicks **Demander cette course** (`BookingWidget`, must be logged in) →
   `POST /api/bookings/[driverId]` creates a **pending** request (NO payment yet).
 - **Client picks the exact date + time** in `BookingWidget` via the premium
@@ -174,6 +226,38 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
 - Unit-tested in `tests/bookings.test.ts` (23) + `tests/calendar.test.ts` (18). Verified live end-to-end:
   request → driver receives → accept → client pays → both see "Payée" without reload.
 
+## Messagerie de course (chat client ↔ chauffeur)
+
+- **Scope: one thread per booking.** There is no free-form inbox — a conversation
+  exists only because a ride exists, and it dies with it.
+- **Lifecycle** (`chatStateFor` in `lib/chat.ts`):
+  - `pending` / `confirmed` / `refused` → **locked** (a "chat opens once the ride
+    is paid" notice; no stream is opened).
+  - `paid` → **open** (both parties write).
+  - `completed` / `cancelled` → **archived** (history readable, sending refused
+    server-side with 409). Also reached automatically 24 h after the ride date.
+- **UI**: a "Discuter" toggle on the booking card expands `BookingChat` inline —
+  in `ClientBookings` (`/compte/reservations`) and `DriverRequests`
+  (`/compte/courses` + dashboard). Bubbles grouped per sender, timestamps via
+  `formatMessageTime`, Enter sends / Shift+Enter newlines, auto-scroll.
+- **Transport**: SSE, `GET /api/chat/[bookingId]?as=<senderId>` → `snapshot` /
+  `message` / `closed` events, 15 s heartbeat. `POST` to send (rate-limited
+  30/min/IP, 1000 chars max, history capped at 200 messages/room).
+- **Authorisation**: `participantRole()` checks the sender id against the
+  booking's own `clientId`/`driverId` — a booking id alone grants nothing.
+  ⚠️ Demo-mode limitation: identity still comes from the request (localStorage
+  client id), like the bookings API. With Supabase configured, derive it from the
+  session cookie instead.
+- **Closing**: `updateBookingStatus` and the auto-complete sweep both call
+  `closeChat(bookingId)`, which pushes a `closed` event so open UIs flip to
+  read-only without a reload.
+- **Persistence**: in-memory (`lib/chatBroker.ts`), ephemeral like bookings. The
+  production path is ready but **not wired**: `public.messages` in
+  `supabase/schema.sql`, with `is_booking_participant()` /
+  `booking_chat_is_open()` enforcing the exact same rules in RLS, plus the table
+  added to the `supabase_realtime` publication.
+- i18n under `chat.*`. Tested in `tests/chat.test.ts` (17).
+
 ## Payments (Stripe — branch `stripe-test`)
 
 - Pure amount logic in `lib/payments.ts` (`computeBookingAmount`, `computeAmount`, `clampHours`, `clampDays`,
@@ -188,8 +272,8 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
   simulated confirmation. With `sk_test_…` → real test Checkout (test cards),
   redirect to `/compte/reservation?status=success`.
 - **Payment methods** (`components/PaymentDialog.tsx`): the client "Payer €X"
-  button in `ClientBookings` opens a sheet to pick **Carte (Stripe) · PayPal ·
-  Crypto · Espèces**. Card → `/api/checkout` (Stripe or demo). PayPal/Crypto/Cash
+  button in `ClientBookings` opens a sheet to pick **Carte (Stripe) ·
+  Crypto · Espèces**. Card → `/api/checkout` (Stripe or demo). Crypto/Cash
   have no backend keys → simulated in demo, then the booking is marked **paid**
   (cash = settled directly with the driver). i18n under `pay.*`.
 - To enable: put `STRIPE_SECRET_KEY=sk_test_…` in `.env.local`, restart.
