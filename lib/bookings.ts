@@ -2,7 +2,13 @@
 
 import type { BookingUnit } from "./payments";
 
-export type BookingStatus = "pending" | "confirmed" | "refused" | "paid";
+export type BookingStatus =
+  | "pending"
+  | "confirmed"
+  | "refused"
+  | "paid"
+  | "completed"
+  | "cancelled";
 
 export interface Booking {
   id: string;
@@ -37,12 +43,17 @@ export interface NewBookingInput {
 
 /**
  * Whether a status change is allowed.
- * pending → confirmed | refused (driver decision)
- * confirmed → paid          (client pays after acceptance)
+ * pending   → confirmed | refused | cancelled  (driver decision, or give up)
+ * confirmed → paid | cancelled                 (client pays after acceptance)
+ * paid      → completed | cancelled            (ride happens, or is called off)
+ * refused / completed / cancelled are terminal.
  */
 export function canTransition(from: BookingStatus, to: BookingStatus): boolean {
-  if (from === "pending") return to === "confirmed" || to === "refused";
-  if (from === "confirmed") return to === "paid";
+  if (from === "pending") {
+    return to === "confirmed" || to === "refused" || to === "cancelled";
+  }
+  if (from === "confirmed") return to === "paid" || to === "cancelled";
+  if (from === "paid") return to === "completed" || to === "cancelled";
   return false;
 }
 
@@ -56,6 +67,10 @@ export function statusLabel(status: BookingStatus): string {
       return "Refusée";
     case "paid":
       return "Payée";
+    case "completed":
+      return "Terminée";
+    case "cancelled":
+      return "Annulée";
   }
 }
 
@@ -161,5 +176,44 @@ export function formatWhen(when: string, lang: "fr" | "en" = "fr"): string {
       : `${datePart} at ${hh}:${mm}`;
   }
   return datePart;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Auto-close (safety net) — a paid ride nobody closed manually               */
+/* -------------------------------------------------------------------------- */
+
+/** Grace period after the ride before it is auto-completed. */
+export const AUTO_COMPLETE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Epoch ms the ride is considered to start.
+ * Falls back to `createdAt` for bookings with no explicit date ("dès que
+ * possible") or legacy free-text `when` values.
+ */
+export function bookingStartsAt(booking: Booking): number {
+  const m = booking.when.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/);
+  if (!m) return booking.createdAt;
+  const [, y, mo, d, hh, mm] = m;
+  const t = new Date(
+    Number(y),
+    Number(mo) - 1,
+    Number(d),
+    hh ? Number(hh) : 0,
+    mm ? Number(mm) : 0
+  ).getTime();
+  return Number.isNaN(t) ? booking.createdAt : t;
+}
+
+/**
+ * Whether a paid booking is old enough to be closed on its own, so a forgotten
+ * ride never keeps its chat open forever. Only `paid` bookings auto-complete —
+ * pending/confirmed ones are left alone (the driver may still act on them).
+ */
+export function shouldAutoComplete(
+  booking: Booking,
+  now: number = Date.now()
+): boolean {
+  if (booking.status !== "paid") return false;
+  return now >= bookingStartsAt(booking) + AUTO_COMPLETE_AFTER_MS;
 }
 

@@ -173,7 +173,14 @@ export async function PATCH(
 
   const bookingId = sanitizeText(body.bookingId, 64);
   const status = body.status as BookingStatus;
-  if (status !== "confirmed" && status !== "refused" && status !== "paid") {
+  const allowed: BookingStatus[] = [
+    "confirmed",
+    "refused",
+    "paid",
+    "completed",
+    "cancelled",
+  ];
+  if (!allowed.includes(status)) {
     return Response.json({ error: "Invalid status" }, { status: 400 });
   }
 

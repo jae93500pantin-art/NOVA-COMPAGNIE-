@@ -21,6 +21,19 @@ export function sanitizeText(input: unknown, max: number): string {
 }
 
 /**
+ * Sanitise a post-login return path (OAuth `?next=`).
+ * Only same-origin relative paths are allowed — anything else (absolute URL,
+ * protocol-relative `//host`, backslash trick) falls back to `/compte`.
+ * Auth pages redirect to `/compte` too, so nobody lands back on the login form.
+ */
+export function safeReturnPath(raw: string | null | undefined): string {
+  if (!raw || !raw.startsWith("/")) return "/compte";
+  if (raw.startsWith("//") || raw.startsWith("/\\")) return "/compte";
+  if (raw.startsWith("/auth/")) return "/compte";
+  return raw;
+}
+
+/**
  * Lightweight in-memory sliding-window rate limiter (per process).
  * Good enough to blunt floods on a single-node demo; for multi-node prod,
  * back this with Redis / a managed gateway.

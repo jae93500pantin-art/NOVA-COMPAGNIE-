@@ -10,10 +10,12 @@
 import {
   buildBooking,
   canTransition,
+  shouldAutoComplete,
   type Booking,
   type BookingStatus,
   type NewBookingInput,
 } from "./bookings";
+import { closeChat } from "./chatBroker";
 
 type Event =
   | { type: "snapshot"; bookings: Booking[] }
@@ -29,11 +31,15 @@ interface Room {
 
 interface State {
   rooms: Map<string, Room>;
+  /** bookingId → booking, so the chat API can resolve a thread in O(1). */
+  index: Map<string, Booking>;
 }
 
 const g = globalThis as unknown as { __bookingBroker?: State };
-const state: State = g.__bookingBroker ?? { rooms: new Map() };
+const state: State = g.__bookingBroker ?? { rooms: new Map(), index: new Map() };
 if (!g.__bookingBroker) g.__bookingBroker = state;
+// Older processes may hold a state object created before the index existed.
+if (!state.index) state.index = new Map();
 
 function getRoom(driverId: string): Room {
   let r = state.rooms.get(driverId);
@@ -44,14 +50,36 @@ function getRoom(driverId: string): Room {
   return r;
 }
 
+/**
+ * Close paid rides nobody closed by hand (24 h safety net) and broadcast the
+ * change. Runs on every read of a room, so the sweep needs no timer.
+ */
+function sweep(room: Room): void {
+  const now = Date.now();
+  room.bookings.forEach((b) => {
+    if (!shouldAutoComplete(b, now)) return;
+    b.status = "completed";
+    closeChat(b.id);
+    room.subscribers.forEach((fn) => safe(fn, { type: "status", booking: b }));
+  });
+}
+
 export function listBookings(driverId: string): Booking[] {
-  return getRoom(driverId).bookings;
+  const room = getRoom(driverId);
+  sweep(room);
+  return room.bookings;
+}
+
+/** Resolve a booking from its id alone (used by the chat API to authorise). */
+export function getBookingById(bookingId: string): Booking | null {
+  return state.index.get(bookingId) ?? null;
 }
 
 export function createBooking(input: NewBookingInput): Booking {
   const room = getRoom(input.driverId);
   const booking = buildBooking(input);
   room.bookings.push(booking);
+  state.index.set(booking.id, booking);
   room.subscribers.forEach((fn) => safe(fn, { type: "booking", booking }));
   return booking;
 }
@@ -66,6 +94,8 @@ export function updateBookingStatus(
   if (!booking) return null;
   if (!canTransition(booking.status, status)) return null;
   booking.status = status;
+  // The ride is over: flip every open chat stream to read-only.
+  if (status === "completed" || status === "cancelled") closeChat(booking.id);
   room.subscribers.forEach((fn) => safe(fn, { type: "status", booking }));
   return booking;
 }
@@ -75,6 +105,7 @@ export function subscribeBookings(
   fn: Subscriber
 ): () => void {
   const room = getRoom(driverId);
+  sweep(room);
   room.subscribers.add(fn);
   // Send the current snapshot immediately.
   safe(fn, { type: "snapshot", bookings: room.bookings });

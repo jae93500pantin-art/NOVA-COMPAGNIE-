@@ -7,6 +7,9 @@ import {
   isFutureBooking,
   formatWhen,
   todayISODate,
+  bookingStartsAt,
+  shouldAutoComplete,
+  AUTO_COMPLETE_AFTER_MS,
 } from "@/lib/bookings";
 import {
   createBooking,
@@ -33,11 +36,58 @@ describe("bookings — transitions de statut", () => {
     expect(canTransition("paid", "confirmed")).toBe(false);
     expect(canTransition("confirmed", "pending")).toBe(false);
   });
+  it("autorise paid → completed (course effectuée)", () => {
+    expect(canTransition("paid", "completed")).toBe(true);
+  });
+  it("autorise l'annulation tant que la course n'est pas close", () => {
+    expect(canTransition("pending", "cancelled")).toBe(true);
+    expect(canTransition("confirmed", "cancelled")).toBe(true);
+    expect(canTransition("paid", "cancelled")).toBe(true);
+  });
+  it("interdit de terminer une course non payée", () => {
+    expect(canTransition("pending", "completed")).toBe(false);
+    expect(canTransition("confirmed", "completed")).toBe(false);
+  });
+  it("interdit toute transition depuis completed/cancelled", () => {
+    expect(canTransition("completed", "paid")).toBe(false);
+    expect(canTransition("cancelled", "paid")).toBe(false);
+    expect(canTransition("completed", "cancelled")).toBe(false);
+  });
   it("a un libellé pour chaque statut", () => {
     expect(statusLabel("pending")).toBe("En attente");
     expect(statusLabel("confirmed")).toBe("Acceptée — à payer");
     expect(statusLabel("refused")).toBe("Refusée");
     expect(statusLabel("paid")).toBe("Payée");
+    expect(statusLabel("completed")).toBe("Terminée");
+    expect(statusLabel("cancelled")).toBe("Annulée");
+  });
+});
+
+describe("bookings — clôture automatique après 24 h", () => {
+  const base = buildBooking({
+    driverId: "jeremy-driver",
+    clientId: "c1",
+    clientName: "Alice",
+    hours: 2,
+    total: 200,
+    when: "2026-08-01T14:00",
+  });
+  const start = new Date(2026, 7, 1, 14, 0).getTime();
+
+  it("lit la date de course depuis `when`", () => {
+    expect(bookingStartsAt(base)).toBe(start);
+  });
+  it("retombe sur createdAt sans date exploitable", () => {
+    expect(bookingStartsAt({ ...base, when: "" })).toBe(base.createdAt);
+    expect(bookingStartsAt({ ...base, when: "dès que possible" })).toBe(base.createdAt);
+  });
+  it("ne clôture qu'une course payée, et seulement après 24 h", () => {
+    const paid = { ...base, status: "paid" as const };
+    expect(shouldAutoComplete(paid, start + AUTO_COMPLETE_AFTER_MS - 1)).toBe(false);
+    expect(shouldAutoComplete(paid, start + AUTO_COMPLETE_AFTER_MS)).toBe(true);
+    expect(
+      shouldAutoComplete({ ...base, status: "confirmed" }, start + AUTO_COMPLETE_AFTER_MS * 5)
+    ).toBe(false);
   });
 });
 

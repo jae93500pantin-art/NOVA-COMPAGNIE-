@@ -15,7 +15,9 @@ export function DriverCourses() {
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace("/auth/login");
-    else if (user.role !== "driver") router.replace("/compte");
+    // Mirror image of the guard in ClientBookings: send a client to the page
+    // that actually lists their own bookings.
+    else if (user.role !== "driver") router.replace("/compte/reservations");
   }, [loading, user, router]);
 
   if (loading || !user || user.role !== "driver") {
@@ -48,8 +50,16 @@ export function DriverCourses() {
         {driver ? (
           <DriverRequests driverId={driver.id} />
         ) : (
-          <div className="rounded-2xl glass p-8 text-center text-white/60">
-            Profil chauffeur introuvable.
+          <div className="rounded-2xl glass p-8 text-center">
+            <p className="text-sm text-white/70">
+              Aucun profil chauffeur n’est lié à ce compte.
+            </p>
+            <p className="mt-2 text-xs text-white/45">
+              Les demandes de course sont adressées à un profil public précis.
+              Tant que le compte n’y est pas rattaché
+              {user.driverId ? ` (profil « ${user.driverId} » introuvable)` : ""},
+              aucune course ne peut arriver ici.
+            </p>
           </div>
         )}
       </div>

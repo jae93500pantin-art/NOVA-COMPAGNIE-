@@ -11,8 +11,11 @@ import {
   Inbox,
   Loader2,
   MessageCircle,
+  MessagesSquare,
   CheckCircle2,
+  CheckCheck,
   XCircle,
+  Ban,
   Hourglass,
   CreditCard,
 } from "lucide-react";
@@ -21,10 +24,12 @@ import { getDriver } from "@/lib/drivers";
 import { getClientId, getBookedDrivers, BOOKED_EVENT } from "@/lib/clientBookings";
 import type { Booking } from "@/lib/bookings";
 import { statusLabel, formatWhen } from "@/lib/bookings";
+import { chatStateForBooking } from "@/lib/chat";
 import { whatsappUrl } from "@/lib/whatsapp";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { PaymentDialog } from "./PaymentDialog";
+import { BookingChat } from "./BookingChat";
 
 /**
  * Client view of their own course requests, with live status updates.
@@ -33,18 +38,36 @@ import { PaymentDialog } from "./PaymentDialog";
  */
 export function ClientBookings() {
   const { user, loading } = useAuth();
-  const { lang } = useI18n();
+  const { t, lang } = useI18n();
   const router = useRouter();
   const [byId, setById] = useState<Record<string, Booking>>({});
   const [payBooking, setPayBooking] = useState<Booking | null>(null);
+  const [openChatId, setOpenChatId] = useState<string | null>(null);
   const sourcesRef = useRef<EventSource[]>([]);
 
+  /** Client-side cancellation — the driver sees it live, the chat archives. */
+  const cancel = async (b: Booking) => {
+    if (!window.confirm(t("chat.cancelConfirm"))) return;
+    setById((prev) => ({ ...prev, [b.id]: { ...b, status: "cancelled" } }));
+    await fetch(`/api/bookings/${b.driverId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bookingId: b.id, status: "cancelled" }),
+    }).catch(() => {});
+  };
+
+  // Role guard. This page is the CLIENT view: it only streams the driver rooms
+  // this browser has booked and keeps the rows whose clientId is our own — so a
+  // driver landing here (bookmark, typed URL) would always see an empty list
+  // instead of their incoming rides. Send them to their own page.
   useEffect(() => {
-    if (!loading && !user) router.replace("/auth/login");
+    if (loading) return;
+    if (!user) router.replace("/auth/login");
+    else if (user.role === "driver") router.replace("/compte/courses");
   }, [loading, user, router]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.role === "driver") return;
 
     const connect = () => {
       // Tear down previous streams.
@@ -80,7 +103,9 @@ export function ClientBookings() {
     };
   }, [user]);
 
-  if (loading || !user) {
+  // Include the role here too, so a driver never flashes an empty client list
+  // during the redirect.
+  if (loading || !user || user.role === "driver") {
     return (
       <div className="grid min-h-[50vh] place-items-center">
         <Loader2 className="h-6 w-6 animate-spin text-white/40" />
@@ -122,58 +147,99 @@ export function ClientBookings() {
           <AnimatePresence initial={false}>
             {bookings.map((b) => {
               const driver = getDriver(b.driverId);
+              const chatState = chatStateForBooking(b);
+              const chatOpen = openChatId === b.id;
+              const cancellable =
+                b.status === "pending" ||
+                b.status === "confirmed" ||
+                b.status === "paid";
               return (
                 <motion.div
                   key={b.id}
                   layout
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="flex flex-col gap-3 rounded-2xl glass p-4 sm:flex-row sm:items-center sm:justify-between"
+                  className="rounded-2xl glass p-4"
                 >
-                  <div className="flex items-center gap-3">
-                    {driver && (
-                      <Image
-                        src={driver.avatar}
-                        alt={driver.firstName}
-                        width={48}
-                        height={48}
-                        className="h-12 w-12 rounded-xl object-cover"
-                      />
-                    )}
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        {driver ? `${driver.firstName} ${driver.lastName}` : "Chauffeur"}
-                      </p>
-                      <p className="flex items-center gap-1 text-xs text-white/50">
-                        <Clock className="h-3 w-3" /> {b.hours} {b.unit === "day" ? "j" : "h"} · €{b.total} · {formatWhen(b.when, lang)}
-                      </p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      {driver && (
+                        <Image
+                          src={driver.avatar}
+                          alt={driver.firstName}
+                          width={48}
+                          height={48}
+                          className="h-12 w-12 rounded-xl object-cover"
+                        />
+                      )}
+                      <div>
+                        <p className="text-sm font-semibold text-white">
+                          {driver ? `${driver.firstName} ${driver.lastName}` : "Chauffeur"}
+                        </p>
+                        <p className="flex items-center gap-1 text-xs text-white/50">
+                          <Clock className="h-3 w-3" /> {b.hours} {b.unit === "day" ? "j" : "h"} · €{b.total} · {formatWhen(b.when, lang)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge status={b.status} />
+                      {b.status === "confirmed" && (
+                        <button
+                          onClick={() => setPayBooking(b)}
+                          className="btn-primary text-xs"
+                        >
+                          <CreditCard className="h-4 w-4" />
+                          Payer €{b.total}
+                        </button>
+                      )}
+                      {chatState !== "locked" && (
+                        <button
+                          onClick={() => setOpenChatId(chatOpen ? null : b.id)}
+                          className="btn-ghost text-xs"
+                          aria-expanded={chatOpen}
+                        >
+                          <MessagesSquare className="h-4 w-4" />
+                          {chatOpen ? t("chat.close") : t("chat.open")}
+                        </button>
+                      )}
+                      {cancellable && (
+                        <button
+                          onClick={() => void cancel(b)}
+                          className="btn-ghost text-xs text-red-300 hover:text-red-200"
+                        >
+                          {t("chat.cancel")}
+                        </button>
+                      )}
+                      {driver && (
+                        <a
+                          href={whatsappUrl(
+                            `Bonjour, au sujet de ma réservation avec ${driver.firstName}.`
+                          )}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="grid h-9 w-9 place-items-center rounded-full border border-white/10 text-green-400 transition hover:bg-white/5"
+                          aria-label="WhatsApp"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </a>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <StatusBadge status={b.status} />
-                    {b.status === "confirmed" && (
-                      <button
-                        onClick={() => setPayBooking(b)}
-                        className="btn-primary text-xs"
-                      >
-                        <CreditCard className="h-4 w-4" />
-                        Payer €{b.total}
-                      </button>
+
+                  <AnimatePresence initial={false}>
+                    {chatOpen && (
+                      <div className="mt-3">
+                        <BookingChat
+                          booking={b}
+                          senderId={b.clientId}
+                          senderName={
+                            `${user.firstName} ${user.lastName}`.trim() || b.clientName
+                          }
+                          role="client"
+                        />
+                      </div>
                     )}
-                    {driver && (
-                      <a
-                        href={whatsappUrl(
-                          `Bonjour, au sujet de ma réservation avec ${driver.firstName}.`
-                        )}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="grid h-9 w-9 place-items-center rounded-full border border-white/10 text-green-400 transition hover:bg-white/5"
-                        aria-label="WhatsApp"
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                      </a>
-                    )}
-                  </div>
+                  </AnimatePresence>
                 </motion.div>
               );
             })}
@@ -198,6 +264,8 @@ function StatusBadge({ status }: { status: Booking["status"] }) {
     confirmed: { icon: CheckCircle2, cls: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" },
     refused: { icon: XCircle, cls: "border-red-400/30 bg-red-400/10 text-red-300" },
     paid: { icon: CreditCard, cls: "border-royal-400/30 bg-royal-500/10 text-royal-200" },
+    completed: { icon: CheckCheck, cls: "border-white/15 bg-white/5 text-white/60" },
+    cancelled: { icon: Ban, cls: "border-white/15 bg-white/5 text-white/45" },
   } as const;
   const { icon: Icon, cls } = map[status];
   return (

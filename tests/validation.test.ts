@@ -3,8 +3,29 @@ import {
   isValidRoom,
   sanitizeText,
   rateLimit,
+  safeReturnPath,
   MAX_MESSAGE_LEN,
 } from "@/lib/validation";
+
+describe("validation — retour après connexion OAuth", () => {
+  it("conserve un chemin relatif de l'application", () => {
+    expect(safeReturnPath("/drivers?city=paris")).toBe("/drivers?city=paris");
+    expect(safeReturnPath("/compte/reservations")).toBe("/compte/reservations");
+  });
+
+  it("refuse les redirections vers un domaine externe", () => {
+    expect(safeReturnPath("//evil.com")).toBe("/compte");
+    expect(safeReturnPath("https://evil.com")).toBe("/compte");
+    expect(safeReturnPath("/\\evil.com")).toBe("/compte");
+    expect(safeReturnPath("javascript:alert(1)")).toBe("/compte");
+  });
+
+  it("renvoie vers /compte plutôt que sur les pages d'auth", () => {
+    expect(safeReturnPath("/auth/login")).toBe("/compte");
+    expect(safeReturnPath(null)).toBe("/compte");
+    expect(safeReturnPath("")).toBe("/compte");
+  });
+});
 
 describe("validation — rooms de conversation", () => {
   it("accepte des noms de room valides", () => {

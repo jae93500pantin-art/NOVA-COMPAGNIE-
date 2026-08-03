@@ -2,20 +2,37 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MapPin, CheckCircle2, XCircle, Inbox, Wifi, WifiOff } from "lucide-react";
-import type { Booking } from "@/lib/bookings";
+import {
+  MapPin,
+  CheckCircle2,
+  CheckCheck,
+  XCircle,
+  Inbox,
+  Wifi,
+  WifiOff,
+  MessagesSquare,
+} from "lucide-react";
+import type { Booking, BookingStatus } from "@/lib/bookings";
 import { statusLabel, formatWhen } from "@/lib/bookings";
+import { chatStateForBooking } from "@/lib/chat";
+import { getDriver } from "@/lib/drivers";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { BookingChat } from "./BookingChat";
 
 /**
  * Live incoming course requests for a driver, over SSE.
  * The driver can accept or refuse; the client sees the result in real time.
  */
 export function DriverRequests({ driverId }: { driverId: string }) {
-  const { lang } = useI18n();
+  const { t, lang } = useI18n();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [connected, setConnected] = useState(false);
+  const [openChatId, setOpenChatId] = useState<string | null>(null);
+  const driver = getDriver(driverId);
+  const driverName = driver
+    ? `${driver.firstName} ${driver.lastName}`.trim()
+    : "Chauffeur";
 
   useEffect(() => {
     const es = new EventSource(`/api/bookings/${driverId}`);
@@ -44,7 +61,7 @@ export function DriverRequests({ driverId }: { driverId: string }) {
   }, [driverId]);
 
   const act = useCallback(
-    async (bookingId: string, status: "confirmed" | "refused") => {
+    async (bookingId: string, status: BookingStatus) => {
       // Optimistic update.
       setBookings((prev) =>
         prev.map((b) => (b.id === bookingId ? { ...b, status } : b))
@@ -93,60 +110,115 @@ export function DriverRequests({ driverId }: { driverId: string }) {
       ) : (
         <div className="space-y-2">
           <AnimatePresence initial={false}>
-            {[...pending, ...handled].map((b) => (
+            {[...pending, ...handled].map((b) => {
+              const chatState = chatStateForBooking(b);
+              const chatOpen = openChatId === b.id;
+              return (
               <motion.div
                 key={b.id}
                 layout
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="flex flex-col gap-3 rounded-2xl glass p-4 sm:flex-row sm:items-center sm:justify-between"
+                className="rounded-2xl glass p-4"
               >
-                <div className="flex items-center gap-3">
-                  <span className="grid h-10 w-10 place-items-center rounded-full bg-white/5 text-sm font-semibold text-white">
-                    {b.clientName.split(" ").map((x) => x[0]).join("").slice(0, 2)}
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-white">{b.clientName}</p>
-                    <p className="flex items-center gap-1 text-xs text-white/50">
-                      <MapPin className="h-3 w-3" /> {b.hours} {b.unit === "day" ? "j" : "h"} · {formatWhen(b.when, lang)}
-                    </p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 place-items-center rounded-full bg-white/5 text-sm font-semibold text-white">
+                      {b.clientName.split(" ").map((x) => x[0]).join("").slice(0, 2)}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-white">{b.clientName}</p>
+                      <p className="flex items-center gap-1 text-xs text-white/50">
+                        <MapPin className="h-3 w-3" /> {b.hours} {b.unit === "day" ? "j" : "h"} · {formatWhen(b.when, lang)}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-base font-semibold text-white">€{b.total}</span>
-                  {b.status === "pending" ? (
-                    <>
-                      <button
-                        onClick={() => act(b.id, "refused")}
-                        className="btn-ghost text-xs"
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-base font-semibold text-white">€{b.total}</span>
+                    {b.status === "pending" ? (
+                      <>
+                        <button
+                          onClick={() => act(b.id, "refused")}
+                          className="btn-ghost text-xs"
+                        >
+                          <XCircle className="h-4 w-4" /> Refuser
+                        </button>
+                        <button
+                          onClick={() => act(b.id, "confirmed")}
+                          className="btn-primary text-xs"
+                        >
+                          <CheckCircle2 className="h-4 w-4" /> Accepter
+                        </button>
+                      </>
+                    ) : (
+                      <span
+                        className={cn(
+                          "chip",
+                          b.status === "paid"
+                            ? "border-royal-400/30 bg-royal-500/10 text-royal-200"
+                            : b.status === "confirmed"
+                              ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                              : b.status === "completed" || b.status === "cancelled"
+                                ? "border-white/15 bg-white/5 text-white/55"
+                                : "border-red-400/30 bg-red-400/10 text-red-300"
+                        )}
                       >
-                        <XCircle className="h-4 w-4" /> Refuser
-                      </button>
+                        {statusLabel(b.status)}
+                      </span>
+                    )}
+                    {chatState !== "locked" && (
                       <button
-                        onClick={() => act(b.id, "confirmed")}
+                        onClick={() => setOpenChatId(chatOpen ? null : b.id)}
+                        className="btn-ghost text-xs"
+                        aria-expanded={chatOpen}
+                      >
+                        <MessagesSquare className="h-4 w-4" />
+                        {chatOpen ? t("chat.close") : t("chat.open")}
+                      </button>
+                    )}
+                    {b.status === "paid" && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(t("chat.completeConfirm"))) {
+                            void act(b.id, "completed");
+                          }
+                        }}
                         className="btn-primary text-xs"
                       >
-                        <CheckCircle2 className="h-4 w-4" /> Accepter
+                        <CheckCheck className="h-4 w-4" /> {t("chat.complete")}
                       </button>
-                    </>
-                  ) : (
-                    <span
-                      className={cn(
-                        "chip",
-                        b.status === "paid"
-                          ? "border-royal-400/30 bg-royal-500/10 text-royal-200"
-                          : b.status === "confirmed"
-                            ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
-                            : "border-red-400/30 bg-red-400/10 text-red-300"
-                      )}
-                    >
-                      {statusLabel(b.status)}
-                    </span>
-                  )}
+                    )}
+                    {(b.status === "confirmed" || b.status === "paid") && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(t("chat.cancelConfirm"))) {
+                            void act(b.id, "cancelled");
+                          }
+                        }}
+                        className="btn-ghost text-xs text-red-300 hover:text-red-200"
+                      >
+                        {t("chat.cancel")}
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                <AnimatePresence initial={false}>
+                  {chatOpen && (
+                    <div className="mt-3">
+                      <BookingChat
+                        booking={b}
+                        senderId={b.driverId}
+                        senderName={driverName}
+                        role="driver"
+                      />
+                    </div>
+                  )}
+                </AnimatePresence>
               </motion.div>
-            ))}
+              );
+            })}
           </AnimatePresence>
         </div>
       )}
