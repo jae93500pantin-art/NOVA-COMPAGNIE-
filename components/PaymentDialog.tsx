@@ -4,7 +4,6 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CreditCard,
-  Wallet,
   Bitcoin,
   Banknote,
   X,
@@ -16,12 +15,12 @@ import {
 import type { Booking } from "@/lib/bookings";
 import { useI18n } from "@/lib/i18n";
 
-type Method = "card" | "paypal" | "crypto" | "cash";
+type Method = "card" | "crypto" | "cash";
 
 /**
  * Client payment sheet: pick a payment method for a confirmed booking.
  * - Card → Stripe Checkout when configured, else the simulated demo flow.
- * - PayPal / Crypto / Cash → demo (no backend keys) → marks the booking paid.
+ * - Crypto / Cash → demo (no backend keys) → marks the booking paid.
  *   Cash is settled directly with the driver on pickup.
  */
 export function PaymentDialog({
@@ -65,7 +64,7 @@ export function PaymentDialog({
         }
         await markPaid();
       } else {
-        // PayPal / crypto / cash — simulated in demo, then mark the booking paid.
+        // Crypto / cash — simulated in demo, then mark the booking paid.
         await new Promise((r) => setTimeout(r, 900));
         await markPaid();
       }
@@ -81,7 +80,6 @@ export function PaymentDialog({
 
   const methods: { id: Method; icon: typeof CreditCard; label: string; desc: string }[] = [
     { id: "card", icon: CreditCard, label: t("pay.card"), desc: t("pay.cardDesc") },
-    { id: "paypal", icon: Wallet, label: "PayPal", desc: t("pay.paypalDesc") },
     { id: "crypto", icon: Bitcoin, label: t("pay.crypto"), desc: t("pay.cryptoDesc") },
     { id: "cash", icon: Banknote, label: t("pay.cash"), desc: t("pay.cashDesc") },
   ];
