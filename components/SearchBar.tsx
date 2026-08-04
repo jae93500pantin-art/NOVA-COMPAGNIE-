@@ -25,6 +25,8 @@ export function SearchBar() {
       else sessionStorage.removeItem("jw_booking_date");
       if (rangeEnd) sessionStorage.setItem("jw_booking_end", rangeEnd);
       else sessionStorage.removeItem("jw_booking_end");
+      // No time in the home search — drop any slot left by the transfer form.
+      sessionStorage.removeItem("jw_booking_time");
     } catch {
       /* ignore */
     }

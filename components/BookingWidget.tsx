@@ -19,8 +19,9 @@ import { useI18n } from "@/lib/i18n";
 import { DatePicker } from "./DatePicker";
 import { getClientId, rememberBookedDriver } from "@/lib/clientBookings";
 
-/** Session key used to carry the date chosen in the home search bar. */
+/** Session keys carrying the slot chosen upstream (home search / transfer). */
 const PREFILL_KEY = "jw_booking_date";
+const PREFILL_TIME_KEY = "jw_booking_time";
 
 export function BookingWidget({ driver }: { driver: Driver }) {
   const router = useRouter();
@@ -37,13 +38,15 @@ export function BookingWidget({ driver }: { driver: Driver }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Prefill the date(s) from the home search (sessionStorage) when present.
+  // Prefill the date(s) + pickup time from the upstream form (home search bar
+  // or airport-transfer estimate) carried in sessionStorage.
   useEffect(() => {
     try {
       const isValid = (s: string | null) =>
         !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && s >= today;
       const start = sessionStorage.getItem(PREFILL_KEY);
       const end = sessionStorage.getItem("jw_booking_end");
+      const at = sessionStorage.getItem(PREFILL_TIME_KEY);
       if (isValid(start)) {
         setDate(start as string);
         if (isValid(end) && end !== start) {
@@ -52,6 +55,7 @@ export function BookingWidget({ driver }: { driver: Driver }) {
           setRangeEnd(end as string);
         }
       }
+      if (at && /^\d{2}:\d{2}$/.test(at)) setTime(at);
     } catch {
       /* ignore */
     }
@@ -194,7 +198,6 @@ export function BookingWidget({ driver }: { driver: Driver }) {
           <DatePicker
             date={date}
             time={time}
-            showTime={false}
             min={today}
             variant="booking"
             onChange={(d, tm) => {

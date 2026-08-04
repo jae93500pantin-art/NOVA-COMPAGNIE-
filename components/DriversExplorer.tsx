@@ -1,13 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { MessageCircle, Plane, Search, SlidersHorizontal } from "lucide-react";
 import { motion } from "framer-motion";
 import { drivers } from "@/lib/drivers";
 import { cities } from "@/lib/cities";
 import { DriverCard } from "@/components/DriverCard";
-import type { VehicleCategory } from "@/lib/types";
+import type { Driver, VehicleCategory } from "@/lib/types";
+import {
+  driverServesTransferDestination,
+  getTransferDestination,
+  isKnownTransferDestination,
+  transferDestinationLabel,
+  transferDestinations,
+} from "@/lib/transfer";
+import {
+  applyDriverOverrides,
+  DRIVER_OVERRIDES_EVENT,
+} from "@/lib/driverOverrides";
+import { whatsappUrl } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 
@@ -27,16 +39,48 @@ export function DriversExplorer() {
   const [category, setCategory] = useState<string>(
     params.get("category") ?? "Tous"
   );
+  const urlTransfer = params.get("transfer") ?? "";
+  const [transfer, setTransfer] = useState(
+    isKnownTransferDestination(urlTransfer) ? urlTransfer : ""
+  );
   const [query, setQuery] = useState("");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [sort, setSort] = useState("rating");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
+  /**
+   * Drivers merged with their own saved settings, so a transfer destination
+   * ticked/unticked in the driver profile changes this listing without a
+   * reload. Runs after mount — localStorage is client-only.
+   */
+  const [pool, setPool] = useState<Driver[]>(drivers);
+  useEffect(() => {
+    const sync = () => setPool(drivers.map(applyDriverOverrides));
+    sync();
+    window.addEventListener(DRIVER_OVERRIDES_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(DRIVER_OVERRIDES_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  const transferDestination = getTransferDestination(transfer);
+
+  /** Nobody ticked this destination → the transfer booking must stop here. */
+  const transferUnserved = useMemo(
+    () =>
+      isKnownTransferDestination(transfer) &&
+      !pool.some((d) => driverServesTransferDestination(d, transfer)),
+    [pool, transfer]
+  );
+
   const filtered = useMemo(() => {
-    let list = drivers.filter((d) => {
+    let list = pool.filter((d) => {
       if (city !== "all" && d.cityId !== city) return false;
       if (category !== "Tous" && !d.categories.includes(category as VehicleCategory))
         return false;
+      if (!driverServesTransferDestination(d, transfer)) return false;
       if (onlyAvailable && !d.available) return false;
       if (query) {
         const q = query.toLowerCase();
@@ -54,7 +98,7 @@ export function DriversExplorer() {
       return 0;
     });
     return list;
-  }, [city, category, query, onlyAvailable, sort]);
+  }, [pool, city, category, transfer, query, onlyAvailable, sort]);
 
   return (
     <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
@@ -115,6 +159,30 @@ export function DriversExplorer() {
               />
             ))}
           </div>
+        </div>
+
+        <div>
+          <p className="mb-2 flex items-center gap-1.5 text-xs uppercase tracking-wider text-white/40">
+            <Plane className="h-3 w-3 text-royal-400" />
+            {t("drivers.transferFilter")}
+          </p>
+          <select
+            value={transfer}
+            onChange={(e) => setTransfer(e.target.value)}
+            className="input [&>option]:text-ink-900"
+          >
+            <option value="">{t("drivers.allTransfers")}</option>
+            {transferDestinations.map((d) => {
+              const count = pool.filter((dr) =>
+                driverServesTransferDestination(dr, d.id)
+              ).length;
+              return (
+                <option key={d.id} value={d.id}>
+                  {transferDestinationLabel(d)} ({count})
+                </option>
+              );
+            })}
+          </select>
         </div>
 
         <div>
@@ -183,12 +251,51 @@ export function DriversExplorer() {
             animate={{ opacity: 1 }}
             className="grid place-items-center rounded-3xl glass p-16 text-center"
           >
-            <p className="text-lg font-semibold text-white">
-              {t("drivers.noneTitle")}
-            </p>
-            <p className="mt-2 text-sm text-white/50">
-              {t("drivers.noneText")}
-            </p>
+            {transferUnserved ? (
+              <>
+                <span className="mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-amber-400/10 text-amber-300">
+                  <Plane className="h-5 w-5" />
+                </span>
+                <p className="text-lg font-semibold text-white">
+                  {t("drivers.noneTransferTitle")}
+                </p>
+                <p className="mt-2 max-w-md text-sm text-white/50">
+                  {transferDestination
+                    ? `${transferDestinationLabel(transferDestination)} — ${t("drivers.noneTransferText")}`
+                    : t("drivers.noneTransferText")}
+                </p>
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                  <a
+                    href={whatsappUrl(
+                      transferDestination
+                        ? `Bonjour, je cherche un transfert vers ${transferDestinationLabel(transferDestination)}.`
+                        : undefined
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary text-sm"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    {t("drivers.transferSupport")}
+                  </a>
+                  <button
+                    onClick={() => setTransfer("")}
+                    className="btn-ghost text-sm"
+                  >
+                    {t("drivers.transferReset")}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-lg font-semibold text-white">
+                  {t("drivers.noneTitle")}
+                </p>
+                <p className="mt-2 text-sm text-white/50">
+                  {t("drivers.noneText")}
+                </p>
+              </>
+            )}
           </motion.div>
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">

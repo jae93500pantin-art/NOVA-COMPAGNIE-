@@ -41,6 +41,9 @@ create table if not exists public.drivers (
   languages        text[]      default '{}',
   experience_years int         default 0,
   categories       vehicle_category[] default '{}',
+  -- Destinations « Transfert Aéroport » acceptées (ids de lib/transfer.ts :
+  -- paris, cdg, ory, lbg). Un client ne voit que les chauffeurs qui l'ont cochée.
+  transfer_destinations text[] default '{}',
   price_per_hour   numeric(10,2) default 0,
   price_per_km     numeric(10,2) default 0,
   available        boolean     default true,
@@ -62,6 +65,14 @@ create table if not exists public.drivers (
 
 create index if not exists drivers_city_idx on public.drivers (city_id);
 create index if not exists drivers_available_idx on public.drivers (available);
+-- « Quels chauffeurs desservent cette destination ? »
+--   select * from drivers where transfer_destinations @> array['cdg'];
+create index if not exists drivers_transfer_destinations_idx
+  on public.drivers using gin (transfer_destinations);
+
+-- Migration d'une base existante :
+--   alter table public.drivers
+--     add column if not exists transfer_destinations text[] default '{}';
 
 -- ── Reviews ──────────────────────────────────────────────────
 create table if not exists public.reviews (

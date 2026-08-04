@@ -18,6 +18,12 @@ export interface DriverOverrides {
   carPhotos?: string[];
   /** Driver-selected vehicle categories. */
   categories?: VehicleCategory[];
+  /**
+   * Transfer destinations the driver accepts (lib/transfer.ts). An empty array
+   * is meaningful — "I accept none" — so it is merged as-is, unlike
+   * `categories`.
+   */
+  transferDestinations?: string[];
 }
 
 const KEY = "lumecar_driver_overrides";
@@ -69,6 +75,8 @@ export function applyDriverOverrides(driver: Driver): Driver {
     available: o.available ?? driver.available,
     categories:
       o.categories && o.categories.length > 0 ? o.categories : driver.categories,
+    transferDestinations:
+      o.transferDestinations ?? driver.transferDestinations,
     car: {
       ...driver.car,
       photos:

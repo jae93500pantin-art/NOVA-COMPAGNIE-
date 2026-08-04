@@ -43,6 +43,11 @@ export interface Driver {
     photos: string[];
   };
   categories: VehicleCategory[];
+  /**
+   * Transfer destination ids (lib/transfer.ts) the driver ticked in their
+   * profile. The airport-transfer flow only proposes drivers listed here.
+   */
+  transferDestinations: string[];
   available: boolean;
   responseTime: string;
   pricePerHour: number;

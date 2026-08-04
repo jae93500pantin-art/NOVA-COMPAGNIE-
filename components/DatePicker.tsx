@@ -40,8 +40,6 @@ interface DatePickerProps {
   onRangeChange?: (start: string, end: string) => void;
 }
 
-const QUICK_TIMES = ["09:00", "12:00", "18:00", "20:00"];
-
 /**
  * Premium glass date+time picker — quick-chips, custom calendar, time chips.
  * Keyboard-accessible, reduced-motion-safe, mobile-first.
@@ -161,8 +159,9 @@ export function DatePicker({
     }
     onChange?.(iso, time);
   };
-  const pickTime = (hhmm: string) => {
-    onChange?.(date || today, hhmm === time ? "" : hhmm);
+  /** Free time entry — any hour and minute, no preset shortcuts. */
+  const setExactTime = (hhmm: string) => {
+    onChange?.(date || today, hhmm);
   };
 
   const quick = (iso: string) => {
@@ -325,18 +324,20 @@ export function DatePicker({
                 })}
               </div>
 
-              {/* Time chips */}
+              {/* Time — free entry, any hour and minute (native picker on mobile). */}
               {showTime && (
                 <div className="mt-4 border-t border-white/10 pt-3">
                   <p className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-white/40">
                     <Clock className="h-3 w-3" /> {t("datepicker.chooseTime")}
                   </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    <QuickChip label={t("datepicker.anyTime")} onClick={() => pickTime(time)} active={!time} subtle />
-                    {QUICK_TIMES.map((h) => (
-                      <QuickChip key={h} label={h} onClick={() => pickTime(h)} active={time === h} />
-                    ))}
-                  </div>
+                  <input
+                    type="time"
+                    value={time}
+                    step={60}
+                    onChange={(e) => setExactTime(e.target.value)}
+                    aria-label={t("datepicker.exactTime")}
+                    className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white outline-none transition [color-scheme:dark] focus:border-royal-400/50"
+                  />
                 </div>
               )}
 

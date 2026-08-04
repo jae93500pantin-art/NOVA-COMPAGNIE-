@@ -21,6 +21,11 @@ import { useAuth } from "@/lib/auth";
 import { getDriver } from "@/lib/drivers";
 import type { VehicleCategory } from "@/lib/types";
 import {
+  transferDestinations,
+  transferDestinationLabel,
+  sanitizeTransferDestinationIds,
+} from "@/lib/transfer";
+import {
   getDriverOverrides,
   saveDriverOverrides,
 } from "@/lib/driverOverrides";
@@ -43,6 +48,7 @@ export function ProfileEditor() {
   const [bio, setBio] = useState("");
   const [available, setAvailable] = useState(true);
   const [category, setCategory] = useState<VehicleCategory>("Business");
+  const [transfers, setTransfers] = useState<string[]>([]);
   const [photos, setPhotos] = useState<string[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -64,6 +70,11 @@ export function ProfileEditor() {
       setBio(o.bio ?? driver.bio);
       setAvailable(o.available ?? driver.available);
       setCategory((o.categories?.[0] ?? driver.categories[0]) as VehicleCategory);
+      setTransfers(
+        sanitizeTransferDestinationIds(
+          o.transferDestinations ?? driver.transferDestinations
+        )
+      );
       setPhotos(
         o.carPhotos && o.carPhotos.length > 0 ? o.carPhotos : driver.car.photos
       );
@@ -89,6 +100,7 @@ export function ProfileEditor() {
         bio: bio.trim(),
         available,
         categories: [category],
+        transferDestinations: sanitizeTransferDestinationIds(transfers),
         carPhotos: photos,
       });
       if (!ok) {
@@ -241,6 +253,47 @@ export function ProfileEditor() {
                     </button>
                   ))}
                 </div>
+              </Field>
+
+              <Field label="Transfert aéroport — destinations acceptées">
+                <p className="mb-3 text-[11px] leading-relaxed text-white/40">
+                  Cochez les destinations que vous desservez. Vous n&apos;êtes
+                  proposé sur l&apos;onglet « Transfert Aéroport » que pour
+                  celles-ci.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {transferDestinations.map((d) => {
+                    const on = transfers.includes(d.id);
+                    return (
+                      <button
+                        key={d.id}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() =>
+                          setTransfers((prev) =>
+                            prev.includes(d.id)
+                              ? prev.filter((x) => x !== d.id)
+                              : [...prev, d.id]
+                          )
+                        }
+                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                          on
+                            ? "border-royal-400/50 bg-royal-500/20 text-white"
+                            : "border-white/10 text-white/60 hover:bg-white/5"
+                        }`}
+                      >
+                        {on && <Check className="h-3 w-3" />}
+                        {transferDestinationLabel(d)}
+                      </button>
+                    );
+                  })}
+                </div>
+                {transfers.length === 0 && (
+                  <p className="mt-2 text-xs text-amber-300">
+                    Aucune destination cochée : vous n&apos;apparaîtrez sur aucune
+                    recherche de transfert.
+                  </p>
+                )}
               </Field>
 
               <Field label="Photos du véhicule">
