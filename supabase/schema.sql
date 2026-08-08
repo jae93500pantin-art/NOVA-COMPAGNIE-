@@ -41,10 +41,28 @@ create table if not exists public.drivers (
   languages        text[]      default '{}',
   experience_years int         default 0,
   categories       vehicle_category[] default '{}',
-  -- Destinations « Transfert Aéroport » acceptées (ids de lib/transfer.ts :
-  -- paris, cdg, ory, lbg). Un client ne voit que les chauffeurs qui l'ont cochée.
+  -- Trajets « Transfert Aéroport » acceptés (ids de lib/transfer.ts : paris,
+  -- cdg, ory, lbg, cdg-paris, ory-paris, lbg-paris). Un client ne voit que les
+  -- chauffeurs qui desservent le trajet demandé.
+  -- Le chauffeur coche UNE case globale dans son profil : la colonne vaut donc
+  -- soit la liste complète, soit '{}'. Volontairement pas de booléen
+  -- `accepts_airport_transfers` en plus — deux sources de vérité à garder
+  -- synchronisées finissent par diverger, et l'index GIN ci-dessous répond
+  -- déjà à « qui dessert CDG ? » sans migration.
   transfer_destinations text[] default '{}',
-  price_per_hour   numeric(10,2) default 0,
+  -- Tarifs = PRIX CLIENT TTC, saisis par le chauffeur dans la bande de sa
+  -- gamme (lib/pricing.ts). La commission plateforme (25 %) est prélevée SUR
+  -- ce montant, jamais ajoutée : le client paie le prix affiché.
+  -- Standard (Business/Moto/Van) : PRIX FIXE plateforme, non modifiable —
+  --          120 €/h et 1000 €/jour pour tous.
+  -- Premium  (Luxury/Van Luxury) : saisie libre entre 150–250 €/h
+  --          et 1500–3000 €/jour, selon le modèle du chauffeur.
+  -- Semaine  : aucun tarif stocké, uniquement sur devis (contact WhatsApp).
+  -- La contrainte volontairement large couvre les deux bandes ; la bande
+  -- exacte dépend de `categories` et reste appliquée par clampRate() côté
+  -- serveur, seule source de vérité (elle évolue sans migration SQL).
+  price_per_hour   numeric(10,2) default 0 check (price_per_hour >= 0 and price_per_hour <= 1000),
+  price_per_day    numeric(10,2) default 0 check (price_per_day  >= 0 and price_per_day  <= 10000),
   price_per_km     numeric(10,2) default 0,
   available        boolean     default true,
   response_time    text        default '≈ 5 min',
@@ -73,19 +91,96 @@ create index if not exists drivers_transfer_destinations_idx
 -- Migration d'une base existante :
 --   alter table public.drivers
 --     add column if not exists transfer_destinations text[] default '{}';
+--   alter table public.drivers
+--     add column if not exists price_per_day numeric(10,2) default 0;
+--   -- Remonter les tarifs journaliers sous le plancher de leur bande :
+--   update public.drivers set price_per_day = 1000
+--     where price_per_day < 1000 and not (categories && '{Luxury,"Van Luxury"}');
+--   update public.drivers set price_per_day = 1500
+--     where price_per_day < 1500 and categories && '{Luxury,"Van Luxury"}';
 
--- ── Reviews ──────────────────────────────────────────────────
+-- ── Reviews (avis certifiés) ─────────────────────────────────
+-- Un avis n'existe que parce qu'une course a eu lieu : il est rattaché à une
+-- réservation TERMINÉE, appartenant à son auteur, et une seule fois.
 create table if not exists public.reviews (
   id         uuid primary key default uuid_generate_v4(),
   driver_id  uuid not null references public.drivers (id) on delete cascade,
   author_id  uuid references public.profiles (id) on delete set null,
+  -- La preuve que l'avis est authentique. `unique` = 1 course, 1 avis ;
+  -- la contrainte est en base, pas seulement dans le code applicatif.
+  booking_id uuid unique references public.bookings (id) on delete cascade,
   rating     numeric(2,1) not null check (rating >= 1 and rating <= 5),
-  comment    text not null,
+  comment    text not null check (char_length(btrim(comment)) between 10 and 500),
   trip       text,
   created_at timestamptz not null default now()
 );
 
 create index if not exists reviews_driver_idx on public.reviews (driver_id);
+create index if not exists reviews_author_idx on public.reviews (author_id);
+
+alter table public.reviews enable row level security;
+
+-- Lecture publique : les avis sont l'argument de vente de la fiche.
+drop policy if exists reviews_read_all on public.reviews;
+create policy reviews_read_all on public.reviews
+  for select using (true);
+
+/**
+ * Écriture : la règle métier entière tient dans cette policy. Elle refait
+ * exactement la vérification de app/api/reviews/[driverId] — auteur = client
+ * de la réservation, réservation terminée, et chauffeur cohérent. Sans elle,
+ * un client muni de son token pourrait poster en direct sur PostgREST.
+ */
+drop policy if exists reviews_insert_after_completed_ride on public.reviews;
+create policy reviews_insert_after_completed_ride on public.reviews
+  for insert with check (
+    author_id = auth.uid()
+    and exists (
+      select 1 from public.bookings b
+       where b.id = reviews.booking_id
+         and b.client_id = auth.uid()
+         and b.driver_id = reviews.driver_id
+         and b.status = 'completed'
+    )
+  );
+
+-- Un avis publié n'est pas réécrivable : pas de policy update/delete.
+
+/**
+ * La note du chauffeur est dérivée, jamais saisie. Recalculée à chaque
+ * insertion/suppression pour que `drivers.rating` et `reviews_count` ne
+ * puissent pas diverger de la table des avis.
+ */
+create or replace function public.refresh_driver_rating()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target uuid := coalesce(new.driver_id, old.driver_id);
+begin
+  update public.drivers d
+     set rating = coalesce((
+           select round(avg(r.rating)::numeric, 2)
+             from public.reviews r where r.driver_id = target
+         ), 5.0),
+         reviews_count = (
+           select count(*) from public.reviews r where r.driver_id = target
+         )
+   where d.id = target;
+  return null;
+end;
+$$;
+
+drop trigger if exists reviews_refresh_rating on public.reviews;
+create trigger reviews_refresh_rating
+  after insert or update or delete on public.reviews
+  for each row execute function public.refresh_driver_rating();
+
+-- Migration d'une base existante :
+--   alter table public.reviews
+--     add column if not exists booking_id uuid unique references public.bookings (id) on delete cascade;
 
 -- ── Bookings ─────────────────────────────────────────────────
 create table if not exists public.bookings (

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { MessageCircle, Plane, Search, SlidersHorizontal } from "lucide-react";
+import { MessageCircle, Plane, Search, SlidersHorizontal, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { drivers } from "@/lib/drivers";
 import { cities } from "@/lib/cities";
@@ -14,6 +14,8 @@ import {
   isKnownTransferDestination,
   transferDestinationLabel,
   transferDestinations,
+  driverHasTransferVehicle,
+  getVehicle,
 } from "@/lib/transfer";
 import {
   applyDriverOverrides,
@@ -42,6 +44,11 @@ export function DriversExplorer() {
   const urlTransfer = params.get("transfer") ?? "";
   const [transfer, setTransfer] = useState(
     isKnownTransferDestination(urlTransfer) ? urlTransfer : ""
+  );
+  // Vehicle class carried over from the transfer estimate — same strict filter.
+  const urlVehicle = params.get("vehicle") ?? "";
+  const [vehicle, setVehicle] = useState(
+    getVehicle(urlVehicle) ? urlVehicle : ""
   );
   const [query, setQuery] = useState("");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
@@ -81,6 +88,7 @@ export function DriversExplorer() {
       if (category !== "Tous" && !d.categories.includes(category as VehicleCategory))
         return false;
       if (!driverServesTransferDestination(d, transfer)) return false;
+      if (!driverHasTransferVehicle(d, vehicle)) return false;
       if (onlyAvailable && !d.available) return false;
       if (query) {
         const q = query.toLowerCase();
@@ -98,7 +106,7 @@ export function DriversExplorer() {
       return 0;
     });
     return list;
-  }, [pool, city, category, transfer, query, onlyAvailable, sort]);
+  }, [pool, city, category, transfer, vehicle, query, onlyAvailable, sort]);
 
   return (
     <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
@@ -184,6 +192,23 @@ export function DriversExplorer() {
             })}
           </select>
         </div>
+
+        {/* Vehicle class, only when carried over from the transfer estimate —
+            an invisible filter is a filter the visitor cannot undo. */}
+        {vehicle && (
+          <div>
+            <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
+              {t("transfer.estVehicle")}
+            </p>
+            <button
+              onClick={() => setVehicle("")}
+              className="flex w-full items-center justify-between rounded-xl border border-royal-400/50 bg-royal-500/20 px-3 py-2 text-sm text-white transition hover:bg-royal-500/30"
+            >
+              <span>{t(`transfer.${getVehicle(vehicle)?.labelKey}`)}</span>
+              <X className="h-3.5 w-3.5 text-white/60" />
+            </button>
+          </div>
+        )}
 
         <div>
           <p className="mb-2 text-xs uppercase tracking-wider text-white/40">

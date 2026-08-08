@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  computeAmount,
   computeBookingAmount,
   clampHours,
   MIN_HOURS,
@@ -68,5 +69,32 @@ describe("payments — computeBookingAmount", () => {
   it("ne produit jamais un montant nul ou négatif pour un tarif valide", () => {
     const a = computeBookingAmount(10, 1);
     expect(a.amountCents).toBeGreaterThan(0);
+  });
+});
+
+describe("payments — forfait transfert aéroport", () => {
+  it("facture le forfait tel quel, sans multiplier par la quantité", () => {
+    const a = computeAmount(170, 900, "transfer", 5, 200);
+    expect(a.subtotal).toBe(200);
+    expect(a.total).toBe(200);
+    expect(a.hours).toBe(1); // une seule course
+    expect(a.amountCents).toBe(20000);
+  });
+
+  it("ignore complètement les tarifs horaire et journalier", () => {
+    const cheap = computeAmount(50, 300, "transfer", 1, 100);
+    const pricey = computeAmount(500, 3000, "transfer", 1, 100);
+    expect(cheap.total).toBe(pricey.total);
+  });
+
+  it("refuse un forfait absent ou invalide", () => {
+    expect(() => computeAmount(170, 900, "transfer", 1, 0)).toThrow();
+    expect(() => computeAmount(170, 900, "transfer", 1, -50)).toThrow();
+    expect(() => computeAmount(170, 900, "transfer", 1, NaN)).toThrow();
+  });
+
+  it("laisse les unités heure et jour inchangées", () => {
+    expect(computeAmount(170, 900, "hour", 3, 200).total).toBe(510);
+    expect(computeAmount(170, 900, "day", 2, 200).total).toBe(1800);
   });
 });

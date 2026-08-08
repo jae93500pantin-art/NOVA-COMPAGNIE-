@@ -1,4 +1,12 @@
 import type { Driver, Review } from "./types";
+import { ALL_TRANSFER_DESTINATION_IDS } from "./transfer";
+
+/**
+ * Airport transfers are a single global opt-in for a driver (all Paris ⇄
+ * airport routes, or none), so mock profiles only ever hold one of two values.
+ */
+const ALL_TRANSFERS = ALL_TRANSFER_DESTINATION_IDS;
+const NO_TRANSFERS: string[] = [];
 
 const car = (make: string, model: string, year: number, color: string, photos: string[]) => ({
   make,
@@ -62,11 +70,12 @@ export const drivers: Driver[] = [
     experienceYears: 12,
     car: car("Mercedes-Benz", "Classe S 580", 2024, "Noir Obsidienne", MERCEDES_S),
     categories: ["Luxury"],
-    transferDestinations: ["paris", "cdg", "ory"],
+    transferDestinations: ALL_TRANSFERS,
     available: true,
     responseTime: "≈ 2 min",
     pricePerHour: 170,
-    pricePerDay: 1000,
+    // Gamme Luxury : plancher journalier de la bande premium (1 500 €).
+    pricePerDay: 1500,
     pricePerKm: 3.2,
     bio: "Chauffeur privé depuis 12 ans, je mets l'excellence et la discrétion au cœur de chaque trajet. Spécialiste des transferts aéroport, événements VIP et déplacements d'affaires. Eau, presse et chargeurs à bord.",
     badges: ["Top Pro", "Vérifié", "Super Host"],
@@ -92,11 +101,11 @@ export const drivers: Driver[] = [
     experienceYears: 7,
     car: car("BMW", "Série 7 740e", 2023, "Gris Sophisto", BMW7),
     categories: ["Business"],
-    transferDestinations: ["paris", "cdg", "ory"],
+    transferDestinations: ALL_TRANSFERS,
     available: true,
     responseTime: "≈ 5 min",
     pricePerHour: 120,
-    pricePerDay: 600,
+    pricePerDay: 1000,
     pricePerKm: 2.9,
     bio: "Conductrice professionnelle attentionnée, je privilégie le confort et la sérénité. Idéale pour les déplacements professionnels et les clientes recherchant une chauffeure de confiance.",
     badges: ["Vérifié", "Éco-responsable"],
@@ -121,7 +130,8 @@ export const drivers: Driver[] = [
     experienceYears: 15,
     car: car("Range Rover", "Autobiography", 2024, "Blanc Fuji", RANGE_ROVER),
     categories: ["Luxury"],
-    transferDestinations: ["paris", "cdg"],
+    // Opted out — keeps the "driver not proposed for transfers" path testable.
+    transferDestinations: NO_TRANSFERS,
     available: false,
     responseTime: "≈ 8 min",
     pricePerHour: 250,
@@ -150,11 +160,11 @@ export const drivers: Driver[] = [
     experienceYears: 8,
     car: car("Mercedes-Benz", "Classe V", 2023, "Noir", VCLASS),
     categories: ["Van"],
-    transferDestinations: ["paris", "cdg", "ory"],
+    transferDestinations: ALL_TRANSFERS,
     available: true,
     responseTime: "≈ 6 min",
     pricePerHour: 120,
-    pricePerDay: 600,
+    pricePerDay: 1000,
     pricePerKm: 3.0,
     bio: "Spécialiste des groupes et familles. Van Mercedes 7 places ultra confortable, idéal pour les transferts aéroport en groupe, mariages et tournées professionnelles.",
     badges: ["Vérifié", "Groupes"],
@@ -179,11 +189,11 @@ export const drivers: Driver[] = [
     experienceYears: 9,
     car: car("Mercedes-AMG", "E63 S", 2024, "Gris Sélénite", MERCEDES_E),
     categories: ["Business"],
-    transferDestinations: ["paris", "cdg", "ory"],
+    transferDestinations: ALL_TRANSFERS,
     available: true,
     responseTime: "≈ 3 min",
     pricePerHour: 120,
-    pricePerDay: 600,
+    pricePerDay: 1000,
     pricePerKm: 3.3,
     bio: "Passionné d'automobile et de conduite sportive maîtrisée, je propose une expérience haut de gamme au volant de ma Mercedes-AMG E63 S. Confort, puissance et discrétion pour vos trajets d'affaires et événements.",
     badges: ["Top Pro", "Vérifié"],

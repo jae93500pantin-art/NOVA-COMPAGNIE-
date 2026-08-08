@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { isStripeConfigured } from "@/lib/config";
 import { computeAmount, type BookingUnit } from "@/lib/payments";
+import { transferFareForDriver } from "@/lib/transfer";
+import { clampRate } from "@/lib/pricing";
 import { getDriver } from "@/lib/drivers";
 import { sanitizeText, rateLimit } from "@/lib/validation";
 
@@ -46,14 +48,18 @@ export async function POST(req: NextRequest) {
   }
 
   // Amount is derived from the trusted server-side price, not the client.
-  const unit: BookingUnit = body.unit === "day" ? "day" : "hour";
+  const unit: BookingUnit =
+    body.unit === "day" || body.unit === "transfer" ? body.unit : "hour";
   let amount;
   try {
+    // Driver-set rates are re-clamped to their class band before charging.
+    const category = driver.categories[0];
     amount = computeAmount(
-      driver.pricePerHour,
-      driver.pricePerDay,
+      clampRate(category, "hour", driver.pricePerHour),
+      clampRate(category, "day", driver.pricePerDay),
       unit,
-      Number(body.hours ?? 1)
+      Number(body.hours ?? 1),
+      transferFareForDriver(driver)
     );
   } catch {
     return Response.json({ error: "Invalid amount" }, { status: 400 });
@@ -86,7 +92,10 @@ export async function POST(req: NextRequest) {
             unit_amount: amount.amountCents,
             product_data: {
               name: `Course avec ${driver.firstName} ${driver.lastName}`,
-              description: `${driver.car.make} ${driver.car.model} · ${amount.hours} ${unit === "day" ? "jour(s)" : "h"}`,
+              description:
+                unit === "transfer"
+                  ? `${driver.car.make} ${driver.car.model} · Transfert aéroport (forfait)`
+                  : `${driver.car.make} ${driver.car.model} · ${amount.hours} ${unit === "day" ? "jour(s)" : "h"}`,
             },
           },
         },

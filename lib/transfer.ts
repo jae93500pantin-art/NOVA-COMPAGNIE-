@@ -61,22 +61,35 @@ export const zones: TransferZone[] = [
 ];
 
 /**
- * The four destinations of the airport-transfer tab. Drivers tick the ones they
- * accept in their profile; a client is only ever proposed drivers who did.
+ * The routes of the airport-transfer tab. Drivers tick the ones they accept in
+ * their profile; a client is only ever proposed drivers who did.
+ *
+ * A route carries its **direction**: "Paris → CDG" and "CDG → Paris" are two
+ * different jobs (pickup at a terminal vs drop-off at one), so a driver opts
+ * into each side separately. `paris` predates the split and stays as the
+ * catch-all "any airport → Paris" — drivers who ticked it keep their opt-in.
  */
 export interface TransferDestination {
   id: string;
-  /** Proper noun — identical in FR and EN. */
-  name: string;
-  /** IATA code for airports. */
-  code?: string;
+  /** Where the ride starts — proper noun, identical in FR and EN. */
+  from: string;
+  /** Where it ends. */
+  to: string;
 }
 
+/** Written out often enough to be worth a constant. */
+const IDF = "Paris · Île-de-France";
+
 export const transferDestinations: TransferDestination[] = [
-  { id: "paris", name: "Paris · Île-de-France" },
-  { id: "cdg", name: "Paris · Charles de Gaulle", code: "CDG" },
-  { id: "ory", name: "Paris · Orly", code: "ORY" },
-  { id: "lbg", name: "Paris · Le Bourget", code: "LBG" },
+  { id: "paris", from: "Aéroport", to: IDF },
+  // Paris → airport (departures)
+  { id: "cdg", from: IDF, to: "Charles de Gaulle (CDG)" },
+  { id: "ory", from: IDF, to: "Orly (ORY)" },
+  { id: "lbg", from: IDF, to: "Le Bourget (LBG)" },
+  // Airport → Paris (arrivals)
+  { id: "cdg-paris", from: "Charles de Gaulle (CDG)", to: IDF },
+  { id: "ory-paris", from: "Orly (ORY)", to: IDF },
+  { id: "lbg-paris", from: "Le Bourget (LBG)", to: IDF },
 ];
 
 export const getTransferDestination = (
@@ -84,13 +97,45 @@ export const getTransferDestination = (
 ): TransferDestination | undefined =>
   transferDestinations.find((d) => d.id === id);
 
+/* -------------------------------------------------------------------------- */
+/*  Global airport opt-in                                                      */
+/*                                                                             */
+/*  Drivers opt in with a single switch: they accept every Paris ⇄ airport     */
+/*  route, or none. That stays stored as the route list (`transfer_destinations`*/
+/*  text[] + its GIN index) rather than a second boolean column — one source   */
+/*  of truth, no migration, and "which drivers serve CDG?" is still a plain    */
+/*  `transfer_destinations @> array['cdg']`.                                   */
+/* -------------------------------------------------------------------------- */
+
+/** Every bookable route — what the global opt-in expands to. */
+export const ALL_TRANSFER_DESTINATION_IDS: string[] = transferDestinations.map(
+  (d) => d.id
+);
+
+/**
+ * Whether the driver accepts airport transfers. Deliberately lenient: **one**
+ * route is enough. Profiles created before the switch existed hold partial
+ * lists, and reading those as "refuses transfers" would silently drop drivers
+ * out of every search. Saving normalises them back to the full list.
+ */
+export function acceptsAirportTransfers(driver: {
+  transferDestinations?: string[];
+}): boolean {
+  return (driver.transferDestinations ?? []).length > 0;
+}
+
+/** The route list to store for a given switch position. */
+export function transferDestinationsForOptIn(accepts: boolean): string[] {
+  return accepts ? [...ALL_TRANSFER_DESTINATION_IDS] : [];
+}
+
 export const isKnownTransferDestination = (
   id: string | null | undefined
 ): boolean => Boolean(id) && transferDestinations.some((d) => d.id === id);
 
-/** Full label with IATA code, e.g. "Paris · Orly (ORY)". */
+/** Full route label, e.g. "Orly (ORY) → Paris · Île-de-France". */
 export const transferDestinationLabel = (d: TransferDestination): string =>
-  d.code ? `${d.name} (${d.code})` : d.name;
+  `${d.from} → ${d.to}`;
 
 /** Destination id behind the zone chosen in the transfer form. */
 export const zoneDestinationId = (zoneId: string): string =>
@@ -130,6 +175,50 @@ export const vehicles: TransferVehicle[] = [
   { id: "van", labelKey: "vehVan", price: 150 },
   { id: "premium", labelKey: "vehPremium", price: 200 },
 ];
+
+/**
+ * Transfer class a driver is billed at, derived from the categories declared on
+ * their profile — the best class they can offer. Kept pure and separate from the
+ * driver record so the fare can be recomputed server-side: a client can never
+ * suggest its own transfer price.
+ */
+export function transferVehicleForCategories(
+  categories: readonly string[] | undefined
+): TransferVehicleId {
+  const list = categories ?? [];
+  if (list.includes("Luxury") || list.includes("Van Luxury")) return "premium";
+  if (list.includes("Van")) return "van";
+  return "business";
+}
+
+/**
+ * Whether the driver drives exactly this transfer class. Deliberately the same
+ * function that prices the ride, so the class shown, the drivers listed and the
+ * fare charged can never disagree.
+ */
+export function driverHasTransferVehicle(
+  driver: { categories?: readonly string[] },
+  vehicleId: string | null | undefined
+): boolean {
+  if (!vehicleId || !getVehicle(vehicleId)) return true; // no filter
+  return transferVehicleForCategories(driver.categories) === vehicleId;
+}
+
+/** Drivers of exactly this class (everyone when unfiltered). */
+export function driversForTransferVehicle<
+  T extends { categories?: readonly string[] }
+>(list: T[], vehicleId: string | null | undefined): T[] {
+  if (!vehicleId || !getVehicle(vehicleId)) return list;
+  return list.filter((d) => driverHasTransferVehicle(d, vehicleId));
+}
+
+/** Flat airport-transfer fare (euros) for a driver. */
+export function transferFareForDriver(driver: {
+  categories?: readonly string[];
+}): number {
+  const vehicle = getVehicle(transferVehicleForCategories(driver.categories));
+  return vehicle ? vehicle.price : vehicles[0].price;
+}
 
 export const getAirport = (id: string) => airports.find((a) => a.id === id);
 export const getZone = (id: string) => zones.find((z) => z.id === id);

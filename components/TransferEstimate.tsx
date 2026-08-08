@@ -35,7 +35,9 @@ import {
   vehicles,
   estimateTransfer,
   getAirport,
+  getVehicle,
   driversForTransferDestination,
+  driversForTransferVehicle,
   getTransferDestination,
   transferDestinationLabel,
   zoneDestinationId,
@@ -58,6 +60,7 @@ export function TransferEstimate() {
     () => estimateTransfer(airport, zone, vehicle),
     [airport, zone, vehicle]
   );
+  const chosenVehicle = getVehicle(vehicle);
 
   /**
    * Drivers merged with their own saved settings, so ticking/unticking a
@@ -78,17 +81,33 @@ export function TransferEstimate() {
   // The destination picked in the form drives everything below.
   const destinationId = zoneDestinationId(zone);
   const destination = getTransferDestination(destinationId);
-  const eligible = useMemo(
+  const servingDestination = useMemo(
     () => driversForTransferDestination(pool, destinationId),
     [pool, destinationId]
   );
+  /**
+   * Picking a vehicle narrows the search to that class only. Same rule that
+   * prices the ride, so the estimate below is what these drivers actually
+   * charge — not an average across classes.
+   */
+  const eligible = useMemo(
+    () => driversForTransferVehicle(servingDestination, vehicle),
+    [servingDestination, vehicle]
+  );
+  /** Told apart so the refusal can name the real cause. */
+  const blockedBy: "destination" | "vehicle" | null =
+    servingDestination.length === 0
+      ? "destination"
+      : eligible.length === 0
+      ? "vehicle"
+      : null;
 
   // Changing the form clears a previous refusal.
   useEffect(() => setBlocked(false), [zone, airport, vehicle]);
 
   const book = () => {
-    // No driver ticked this destination → the booking stops here.
-    if (eligible.length === 0) {
+    // Nobody serves this destination, or nobody drives this class → stop here.
+    if (blockedBy) {
       setBlocked(true);
       return;
     }
@@ -103,11 +122,18 @@ export function TransferEstimate() {
       sessionStorage.removeItem("jw_booking_end");
       if (time) sessionStorage.setItem("jw_booking_time", time);
       else sessionStorage.removeItem("jw_booking_time");
+      // The driver's booking widget opens on the flat transfer fare for it.
+      sessionStorage.setItem("jw_booking_transfer", destinationId);
+      sessionStorage.setItem("jw_booking_vehicle", vehicle);
     } catch {
       /* ignore */
     }
     const cityId = getAirport(airport)?.cityId ?? "paris";
-    router.push(`/drivers?city=${cityId}&transfer=${encodeURIComponent(destinationId)}`);
+    router.push(
+      `/drivers?city=${cityId}&transfer=${encodeURIComponent(
+        destinationId
+      )}&vehicle=${encodeURIComponent(vehicle)}`
+    );
   };
 
   return (
@@ -159,19 +185,54 @@ export function TransferEstimate() {
           />
         </EstField>
 
-        <EstField icon={<Car className="h-4 w-4 text-royal-400" />} label={t("transfer.estVehicle")}>
-          <select
-            value={vehicle}
-            onChange={(e) => setVehicle(e.target.value)}
-            className="w-full bg-transparent text-sm font-medium text-white outline-none [&>option]:text-ink-900"
-          >
-            {vehicles.map((v) => (
-              <option key={v.id} value={v.id}>
-                {t(`transfer.${v.labelKey}`)}
-              </option>
-            ))}
-          </select>
-        </EstField>
+        {/* Vehicle class — one card per class, each showing how many drivers
+            are actually bookable for the destination above. */}
+        <div>
+          <p className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-white/40">
+            <Car className="h-3.5 w-3.5 text-royal-400" /> {t("transfer.estVehicle")}
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {vehicles.map((v) => {
+              const count = driversForTransferVehicle(
+                servingDestination,
+                v.id
+              ).length;
+              const on = vehicle === v.id;
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setVehicle(v.id)}
+                  className={`rounded-2xl border p-3 text-left transition ${
+                    on
+                      ? "border-royal-400/50 bg-royal-500/15"
+                      : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]"
+                  } ${count === 0 ? "opacity-60" : ""}`}
+                >
+                  <span className="block text-sm font-medium text-white">
+                    {t(`transfer.${v.labelKey}`)}
+                  </span>
+                  <span className="mt-0.5 block text-sm font-semibold text-royal-200">
+                    {formatPrice(v.price)}
+                  </span>
+                  <span
+                    className={`mt-1 flex items-center gap-1 text-[11px] ${
+                      count > 0 ? "text-white/40" : "text-amber-300/80"
+                    }`}
+                  >
+                    <Users
+                      className={`h-3 w-3 ${
+                        count > 0 ? "text-emerald-400" : "text-amber-400"
+                      }`}
+                    />
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Result */}
@@ -209,10 +270,16 @@ export function TransferEstimate() {
             >
               <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-200">
                 <AlertCircle className="h-4 w-4 shrink-0" />
-                {t("transfer.estNoneTitle")}
+                {blockedBy === "vehicle"
+                  ? t("transfer.estNoneVehicleTitle")
+                  : t("transfer.estNoneTitle")}
               </p>
               <p className="mt-1 text-xs leading-relaxed text-amber-100/75">
-                {destination
+                {blockedBy === "vehicle"
+                  ? `${t(`transfer.${chosenVehicle?.labelKey ?? "vehBusiness"}`)} — ${t(
+                      "transfer.estNoneVehicleText"
+                    )}`
+                  : destination
                   ? `${transferDestinationLabel(destination)} — ${t("transfer.estNoneText")}`
                   : t("transfer.estNoneText")}
               </p>
@@ -249,8 +316,8 @@ export function TransferEstimate() {
                 <ArrowRight className="h-4 w-4" />
               </button>
               {eligible.length > 0 && (
-                <p className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-white/40">
-                  <Users className="h-3 w-3 text-emerald-400" />
+                <p className="mt-2 flex items-center justify-center gap-1.5 text-center text-[11px] leading-relaxed text-white/40">
+                  <Users className="h-3 w-3 shrink-0 text-emerald-400" />
                   {eligible.length}{" "}
                   {eligible.length > 1
                     ? t("transfer.estAvailableMany")

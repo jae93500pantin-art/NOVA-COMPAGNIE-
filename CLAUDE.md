@@ -81,17 +81,29 @@ components/                   All client components unless noted
   Footer, SectionHeader, Reveal (anim wrapper)
   Hero                        Uber-inspired homepage hero: tagline ("Trouvez votre chauffeur" / "Find your driver") + Uber-style booking card on the left, Globe focal point on the right. Left scrim keeps text legible. Below: 3 FICTIONAL client testimonials (about the SITE/reliability, not drivers). No big title/subtitle, no stats row.
   SearchBar                   Uber-style vertical booking card (Ville + premium DatePicker + full-width CTA → /drivers). Chosen date saved to sessionStorage `jw_booking_date` to prefill the BookingWidget. NO vehicle category field.
-  DatePicker                  Premium custom date+time picker (glass popover via portal). Quick-chips (Today/Tomorrow/This weekend), Monday-first calendar, time chips, keyboard nav (arrows/Esc), flips up when low on screen, reduced-motion-safe, i18n. `variant="search"|"booking"`. Calendar logic in lib/calendar.ts.
+  DatePicker                  Premium custom date+time picker (glass popover via portal). Quick-chips (Today/Tomorrow/This weekend), Monday-first calendar, time chips, keyboard nav (arrows/Esc), flips up when low on screen, reduced-motion-safe, i18n. `variant="search"|"booking"`. Calendar logic in lib/calendar.ts. **Never yields a past slot**: an hour already gone today rolls the booking to tomorrow (`rollPastTimeToNextDay`), and picking a day whose selected hour has passed drops the hour — both explained by an inline notice.
   Globe                       Animated WebGL globe (cobe) — Google-Earth "blue marble" hero backdrop, slow auto-rotation. NOTE: pin cobe to 0.6.3; v2 has a WebGL regression that renders only markers (no sphere).
   AccountDashboard            /compte client & driver dashboards
   InteractiveMap              Stylised fallback map (no token needed)
   MapboxMap                   Real Mapbox map (token required)
   LiveMap                     Picks Mapbox vs InteractiveMap based on token
-  DriverCard, DriversExplorer, Gallery, Reviews, StarRating, BookingWidget
+  DriverCard, DriversExplorer, Gallery, Reviews, StarRating
+  BookingWidget               Booking summary on a driver profile. Header shows the hourly + daily
+                              rate (TTC) and a **"Devis semaine WhatsApp"** block above the actions —
+                              week bookings are never priced online, they go to support via
+                              `whatsappUrl()` with the driver's name prefilled. Re-merges the driver
+                              through `applyDriverOverrides` after mount: the page is SSG, so without
+                              it a driver-set premium rate would be both displayed and charged stale.
+                              3-way unit toggle **À l'heure /
+                              À la journée / Aéroport**. In transfer mode the hourly line
+                              (€170 × 3 h) and the duration slider are replaced by a flat-fare block
+                              ("Forfait" + the route, e.g. "Orly (ORY) → Paris · Île-de-France" → €100)
+                              and a route select limited to the ones the driver ticked. Prefilled from
+                              the transfer page via sessionStorage `jw_booking_transfer`.
   BookingChat                 Per-booking chat thread (SSE), rendered inline under a booking card in
                               ClientBookings + DriverRequests. Locked before payment, read-only once archived.
   ContactForm                 Professional contact form (nom/prénom, e-mail, téléphone, type de demande, message) with client-side validation + animated success confirmation. Demo mode: simulated send (no email backend yet).
-  TransferEstimate            Instant airport-transfer price estimate (departure airport + destination zone + vehicle → live €). Pure math in lib/transfer.ts. CTA routes to /drivers?city=<airport city>.
+  TransferEstimate            Instant airport-transfer price estimate (departure airport + destination zone + vehicle → live €). Pure math in lib/transfer.ts. The **vehicle class is a strict filter**: one card per class showing how many drivers of that class serve the chosen destination, and the driver count + fare update on click. `driverHasTransferVehicle` uses the same class that prices the ride (`transferVehicleForCategories`), so the estimate is what those drivers actually charge. Refusals name their cause (destination unserved vs class empty). CTA routes to /drivers?city=<city>&transfer=<dest>&vehicle=<class>, also carried in sessionStorage `jw_booking_transfer` / `jw_booking_vehicle`.
   TransferPickupMap           Stylised pickup-zones map (airport pins + animated rings), same aesthetic as InteractiveMap.
   CityShowcase
   AuthForm                    Client/driver toggle, Supabase auth + demo fallback. Props `embedded`/`onSuccess`/`onSwitchMode` when rendered inside AuthModal.
@@ -107,10 +119,11 @@ lib/
   dictionaries.ts             FR + EN translation dictionaries (typed; EN must match FR shape).
   calendar.ts                 Pure calendar helpers (monthGrid, shiftMonth, isBefore, addDays, nextWeekendISO…). Unit-tested. Powers DatePicker.
   motion.ts                   Shared Apple-grade motion tokens (ease [0.22,1,0.36,1], springSoft/Snappy, reveal, popover, stagger).
+  schedule.ts                 Weekly availability planning (pure): DaySchedule/WeeklySchedule (7 entries, Monday-first), DEFAULT_SCHEDULE (= no constraint, so an unconfigured driver behaves as before), PRESET_WEEKDAYS (Mon–Fri 07:00–19:00), isWithinSchedule/isDayOpen/dayScheduleFor, sanitizeSchedule (repairs bad times and an end before its start). Unit-tested.
   bookings.ts                 Booking domain types + pure helpers: canTransition, statusLabel, buildBooking, scheduling helpers (todayISODate, composeWhen, isFutureBooking, formatWhen) AND auto-close (bookingStartsAt, shouldAutoComplete, AUTO_COMPLETE_AFTER_MS). Unit-tested.
   chat.ts                     Chat domain: ChatMessage, chatStateFor/chatStateForBooking (locked|open|archived), canSendMessage, participantRole, buildMessage, formatMessageTime. Pure, unit-tested.
   chatBroker.ts               In-memory per-booking chat rooms + SSE pub/sub (postMessage, subscribeChat, closeChat, dropChat). Mirrors bookingBroker.
-  transfer.ts                 Airport-transfer domain data (Paris airports, Île-de-France zone, vehicle classes) + pure estimateTransfer() pricing helper (flat fare per vehicle: Berline 100 € / Van 150 € / Première classe 200 €).
+  transfer.ts                 Airport-transfer domain data (Paris airports, Île-de-France zone, vehicle classes) + pure estimateTransfer() pricing helper (flat fare per vehicle: Berline 100 € / Van 150 € / Première classe 200 €). `transferVehicleForCategories` / `transferFareForDriver` derive a driver's flat transfer fare from their declared categories — the server recomputes it, the client never sends a price. `transferDestinations` are **directional routes** (`{id, from, to}`, label = "from → to"): 3 Paris→airport, 3 airport→Paris, plus the legacy catch-all `paris` ("Aéroport → Paris · Île-de-France") kept so existing driver opt-ins stay valid. Drivers opt in with **one global switch** in `ProfileEditor` ("Accepter les transferts aéroport"), so a profile holds either every route or none — `acceptsAirportTransfers` / `transferDestinationsForOptIn` / `ALL_TRANSFER_DESTINATION_IDS` do the expansion. Kept as a `text[]` (no extra boolean column) so `transfer_destinations @> array['cdg']` and its GIN index still answer "who serves CDG?" with no migration. Reading is lenient (≥1 route = opted in) so legacy partial lists don't silently drop drivers; the next save normalises them.
   cities.ts, drivers.ts       Mock data + accessors (getDriver, driversByCity…)
   drivers.ts                  Includes `jeremy-driver` (Jérémy Dubois, Mercedes-AMG E63 S)
   utils.ts                    cn(), formatPrice(), initials()
@@ -118,7 +131,7 @@ lib/
   auth.tsx                    AuthProvider + useAuth() — global session (demo localStorage or Supabase). setDemoSession/clearDemoSession
   demoAccounts.ts             Demo login accounts (test/test client, driver/driver → jeremy-driver)
   contacts.ts                 Client's contacted drivers + roomForDriver(id)="dm-<id>" (client↔driver chat room)
-  driverOverrides.ts          Driver self-edits (demo): bio, available, **carPhotos** (uploaded, compressed to data-URLs). `applyDriverOverrides` merges; `Gallery` (with `driverId`) live-reflects uploaded photos on the public profile. Price is platform-fixed (not driver-editable).
+  driverOverrides.ts          Driver self-edits (demo): bio, available, **avatar** + **car** (make/model/year/colour, typed by the driver) + **carPhotos** (uploaded, compressed to data-URLs). `applyDriverOverrides` merges, `mergeCar` handles the car (a blank field falls back to the original — never a nameless car). Price is platform-fixed (not driver-editable). The public profile is SSG, so `Gallery`, `DriverAvatar` and `DriverVehicle` re-read the overrides client-side to reflect edits without a rebuild.
   whatsapp.ts                 WHATSAPP_NUMBER + whatsappUrl() — central WhatsApp contact link (messaging feature removed)
   geo.ts                      City coords + driverCoords() for Mapbox
   consent.ts                  Consent get/save/clear (localStorage, versioned)
@@ -198,6 +211,29 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
   table was reintroduced later for the course chat.)
 - Update `WHATSAPP_NUMBER` in `lib/whatsapp.ts` to change the number everywhere.
 
+## Driver status: planning + derived "En course"
+
+- **Two separate things.** `available` (the online/offline switch) is only ever
+  about *right now*; the **weekly planning** (`lib/schedule.ts`, edited in
+  `ProfileEditor`) is what gates bookings made in advance — and since every
+  booking in Nova is scheduled, the planning is what actually matters.
+- The planning is stored per driver (`driverOverrides.schedule`, `Driver.schedule`);
+  `scheduleOf(driver)` resolves override → record → `DEFAULT_SCHEDULE` (no
+  constraint). Mock drivers define none, so the demo is unchanged until a driver
+  sets theirs.
+- `DatePicker` takes a `schedule` prop: closed days are disabled (calendar +
+  keyboard nav), the time field is bounded by the day's window and shows it, and
+  an out-of-hours time raises the `outsideHours` notice. `BookingWidget`
+  re-checks with `isWithinSchedule` on submit — a slot prefilled from the home
+  search bar or the transfer estimate can bypass the picker entirely.
+- **"En course" is derived, never stored** (`driverPresence` /
+  `isRideInProgress` in `lib/bookings.ts`): a paid booking whose window contains
+  now. A manually-toggled busy flag is one the driver forgets to switch off, and
+  they then silently vanish from the platform. It outranks the manual switch and
+  disables it in `AccountDashboard`, which reads the bookings from the SSE stream
+  `DriverRequests` already opens (`onBookingsChange`) — no second connection, and
+  the pill can never disagree with the ride list.
+
 ## Real-time bookings (course requests, client ↔ driver)
 
 - **Flow (realistic): client requests → driver accepts/refuses → client pays (Stripe) → paid.**
@@ -258,10 +294,55 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
   added to the `supabase_realtime` publication.
 - i18n under `chat.*`. Tested in `tests/chat.test.ts` (17).
 
+## Certified reviews (avis certifiés)
+
+- **A review exists only because a ride happened.** `canReviewBooking`
+  (`lib/reviews.ts`) is the single rule: the booking must be **`completed`**,
+  belong to the author (`booking.clientId`), and not already be reviewed —
+  **one ride, one review**. The API and the form both call it, so the client can
+  never be more permissive than the server.
+- Entry point: a **"Laisser un avis"** button on a completed booking in
+  `ClientBookings` (`/compte/reservations`) opening `ReviewForm` inline —
+  1–5 stars + a 10–500 character comment.
+- **The trip is derived from the booking, never typed**: a transfer names its
+  route, anything else uses pickup → dropoff. ⚠️ The booking flow does not
+  collect addresses, so `buildBooking` fills `DEFAULT_PICKUP`/`DEFAULT_DROPOFF`;
+  `tripLabelFromBooking` returns `""` for those rather than publishing
+  "Adresse de départ → Destination" as certified. Non-transfer reviews
+  therefore carry no trip until addresses are captured.
+- Display in `Reviews`: average + total, a "N avis certifiés" line, a
+  `BadgeCheck` on certified rows, and **a real distribution** computed from the
+  listed reviews (the previous bars were synthesised from the average).
+  `ratingSummary` folds the driver record's history in by weight, so one review
+  cannot swing an established reputation.
+- API `app/api/reviews/[driverId]` (GET public list, POST publish, 5/min/IP),
+  store `lib/reviewBroker.ts` (in-memory, `server-only`, 200/driver).
+  ⚠️ Same demo limitation as bookings/chat: the author id comes from the request
+  body. The production path is in `supabase/schema.sql` — `reviews.booking_id`
+  is `unique`, RLS re-checks the completed-ride rule, there is no update/delete
+  policy, and `refresh_driver_rating()` recomputes `rating`/`reviews_count` on
+  every write so they cannot drift.
+- Tested in `tests/reviews.test.ts` (25). Verified live: refusals on
+  pending/other-client/too-short/duplicate, publication on a completed ride.
+
 ## Payments (Stripe — branch `stripe-test`)
 
+- **Driver rates + commission** in `lib/pricing.ts` (pure, unit-tested). Rates are
+  **client prices TTC**. Standard classes (Business/Moto/Van) are **platform-fixed
+  and not editable**: 120 €/h, 1000 €/day — modelled as a zero-width band
+  (min = max) so nothing downstream needs a special case. Premium classes
+  (Luxury/Van Luxury) are typed freely by the driver between 150–250 €/h and
+  1500–3000 €/day. `hasFixedPricing`/`isRateEditable` drive the read-only state,
+  `boundsFor`/`isRateInBand`/
+  `rateError` drive the form, `clampRate` is the server's last word (also applied
+  in `applyDriverOverrides`, so a rate stored before a band change can never go
+  live). The **25 % platform commission** (`PLATFORM_COMMISSION_RATE`) is taken
+  **out of** the client price, never added on top — `SERVICE_FEE_RATE` stays 0 and
+  the client total is unchanged; `splitRate` derives `net` by subtraction so
+  commission + net always equals the price exactly. Week rates have no field: the
+  profile shows a WhatsApp CTA to support.
 - Pure amount logic in `lib/payments.ts` (`computeBookingAmount`, `computeAmount`, `clampHours`, `clampDays`,
-  no service fee — `SERVICE_FEE_RATE = 0`, total = subtotal, euros→cents). Bookings can be billed **by the hour or by the day** (`BookingUnit`; day uses the fixed `pricePerDay`). Fully unit-tested (`tests/payments.test.ts`).
+  no service fee — `SERVICE_FEE_RATE = 0`, total = subtotal, euros→cents). Bookings can be billed **by the hour, by the day, or as a flat airport transfer** (`BookingUnit`; day uses the fixed `pricePerDay`, `transfer` uses the flat fare from `transferFareForDriver` and ignores the quantity). Fully unit-tested (`tests/payments.test.ts`).
 - `lib/stripe.ts` = server-only Stripe client (null if no key). `lib/config.ts`
   flags: `isStripeConfigured`, `isStripeLiveMode`.
 - `POST /api/checkout` creates a Checkout Session. **Amount is computed

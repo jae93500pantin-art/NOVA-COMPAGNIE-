@@ -1,3 +1,5 @@
+import type { WeeklySchedule } from "./schedule";
+
 export type VehicleCategory = "Business" | "Moto" | "Van" | "Van Luxury" | "Luxury";
 
 export interface City {
@@ -48,7 +50,13 @@ export interface Driver {
    * profile. The airport-transfer flow only proposes drivers listed here.
    */
   transferDestinations: string[];
+  /** Online right now — about immediate rides only, never about bookings ahead. */
   available: boolean;
+  /**
+   * Weekly hours the driver accepts bookings for (lib/schedule.ts).
+   * Absent = no constraint; see `scheduleOf()`.
+   */
+  schedule?: WeeklySchedule;
   responseTime: string;
   pricePerHour: number;
   /** Fixed daily rate (euros) based on the vehicle model/category. */

@@ -6,7 +6,6 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ChevronLeft,
-  Save,
   Check,
   Loader2,
   User,
@@ -16,19 +15,44 @@ import {
   FileText,
   ImagePlus,
   X,
+  AlertCircle,
+  MessageCircle,
+  Lock,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { getDriver } from "@/lib/drivers";
 import type { VehicleCategory } from "@/lib/types";
 import {
-  transferDestinations,
-  transferDestinationLabel,
+  acceptsAirportTransfers,
+  transferDestinationsForOptIn,
   sanitizeTransferDestinationIds,
 } from "@/lib/transfer";
+import { springSnappy } from "@/lib/motion";
 import {
   getDriverOverrides,
   saveDriverOverrides,
+  mergeCar,
+  scheduleOf,
 } from "@/lib/driverOverrides";
+import {
+  PLATFORM_COMMISSION_RATE,
+  boundsFor,
+  clampRate,
+  hasFixedPricing,
+  isRateEditable,
+  rateError,
+  splitRate,
+} from "@/lib/pricing";
+import { whatsappUrl } from "@/lib/whatsapp";
+import {
+  DAY_LABELS_FR,
+  DEFAULT_SCHEDULE,
+  PRESET_WEEKDAYS,
+  cloneSchedule,
+  sanitizeSchedule,
+  type DaySchedule,
+  type WeeklySchedule,
+} from "@/lib/schedule";
 
 const CATEGORIES: VehicleCategory[] = [
   "Business",
@@ -48,11 +72,24 @@ export function ProfileEditor() {
   const [bio, setBio] = useState("");
   const [available, setAvailable] = useState(true);
   const [category, setCategory] = useState<VehicleCategory>("Business");
-  const [transfers, setTransfers] = useState<string[]>([]);
+  /** Single global opt-in — expanded to the full route list on save. */
+  const [transfers, setTransfers] = useState(false);
+  const [avatar, setAvatar] = useState("");
+  const [carMake, setCarMake] = useState("");
+  const [carModel, setCarModel] = useState("");
+  const [carYear, setCarYear] = useState("");
+  const [carColor, setCarColor] = useState("");
+  const [schedule, setSchedule] = useState<WeeklySchedule>(() =>
+    cloneSchedule(DEFAULT_SCHEDULE)
+  );
+  // Rates are typed as text so the field can be emptied while editing.
+  const [hourRate, setHourRate] = useState("");
+  const [dayRate, setDayRate] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [rateBlocked, setRateBlocked] = useState(false);
 
   const driver = user?.driverId ? getDriver(user.driverId) : undefined;
 
@@ -71,15 +108,34 @@ export function ProfileEditor() {
       setAvailable(o.available ?? driver.available);
       setCategory((o.categories?.[0] ?? driver.categories[0]) as VehicleCategory);
       setTransfers(
-        sanitizeTransferDestinationIds(
-          o.transferDestinations ?? driver.transferDestinations
-        )
+        acceptsAirportTransfers({
+          transferDestinations: sanitizeTransferDestinationIds(
+            o.transferDestinations ?? driver.transferDestinations
+          ),
+        })
       );
+      setAvatar(o.avatar ?? "");
+      setSchedule(scheduleOf(driver, o));
+      setHourRate(String(o.pricePerHour ?? driver.pricePerHour));
+      setDayRate(String(o.pricePerDay ?? driver.pricePerDay));
+      const car = mergeCar(driver, o);
+      setCarMake(car.make);
+      setCarModel(car.model);
+      setCarYear(String(car.year));
+      setCarColor(car.color);
       setPhotos(
         o.carPhotos && o.carPhotos.length > 0 ? o.carPhotos : driver.car.photos
       );
     }
   }, [user, driver]);
+
+  // Switching class switches band: snap the rates into the new one so a fixed
+  // class shows its imposed price immediately instead of a stale figure.
+  useEffect(() => {
+    if (!driver) return;
+    setHourRate((v) => String(clampRate(category, "hour", Number.parseFloat(v))));
+    setDayRate((v) => String(clampRate(category, "day", Number.parseFloat(v))));
+  }, [category, driver]);
 
   if (loading || !user) {
     return (
@@ -91,16 +147,41 @@ export function ProfileEditor() {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    // An out-of-band rate blocks the whole save: a half-saved profile whose
+    // price silently reverted is worse than a refusal.
+    if (driver && (hourError || dayError)) {
+      setRateBlocked(true);
+      return;
+    }
+    setRateBlocked(false);
     setSaving(true);
     // Persist identity on the session.
     updateProfile({ firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim() });
     // Persist driver-specific public fields.
     if (driver) {
+      const year = Number.parseInt(carYear, 10);
       const ok = saveDriverOverrides(driver.id, {
         bio: bio.trim(),
         available,
+        avatar,
+        // Validated above; clamped again so storage can only ever hold a
+        // rate inside the band.
+        pricePerHour: clampRate(category, "hour", hourValue),
+        pricePerDay: clampRate(category, "day", dayValue),
+        schedule: sanitizeSchedule(schedule),
+        car: {
+          make: carMake.trim(),
+          model: carModel.trim(),
+          // A blank or nonsense year falls back to the original in mergeCar.
+          year: Number.isFinite(year) ? year : 0,
+          color: carColor.trim(),
+        },
         categories: [category],
-        transferDestinations: sanitizeTransferDestinationIds(transfers),
+        // The switch expands to the full route list — that stays the stored
+        // shape, so every existing query and filter keeps working untouched.
+        transferDestinations: sanitizeTransferDestinationIds(
+          transferDestinationsForOptIn(transfers)
+        ),
         carPhotos: photos,
       });
       if (!ok) {
@@ -132,6 +213,35 @@ export function ProfileEditor() {
   };
   const removePhoto = (i: number) =>
     setPhotos((p) => p.filter((_, idx) => idx !== i));
+
+  /* Rates: bounds follow the selected class, so switching class re-validates. */
+  const hourBounds = boundsFor(category, "hour");
+  const dayBounds = boundsFor(category, "day");
+  const hourValue = Number.parseFloat(hourRate);
+  const dayValue = Number.parseFloat(dayRate);
+  const fixedPricing = hasFixedPricing(category);
+  const hourError = rateError(category, "hour", hourValue);
+  const dayError = rateError(category, "day", dayValue);
+  const hourSplit = splitRate(hourValue);
+  const daySplit = splitRate(dayValue);
+
+  const patchDay = (i: number, patch: Partial<DaySchedule>) =>
+    setSchedule((prev) =>
+      prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d))
+    );
+
+  /** Profile picture — kept small (320px) since it only ever renders at 96px. */
+  const onAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setPhotoError(null);
+    try {
+      setAvatar(await fileToDataUrl(file, 320, 0.8));
+    } catch {
+      setPhotoError("Impossible de charger cette image.");
+    }
+  };
 
   return (
     <div>
@@ -187,10 +297,92 @@ export function ProfileEditor() {
               <Car className="h-4 w-4 text-royal-400" /> Profil chauffeur public
             </h2>
             <p className="mt-1 text-xs text-white/45">
-              {driver.car.make} {driver.car.model} · {driver.car.year}
+              {carMake} {carModel} · {carYear}
             </p>
 
             <div className="mt-4 space-y-4">
+              <Field label="Photo de profil">
+                <div className="flex items-center gap-4">
+                  <span className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-white/15">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={avatar || driver.avatar}
+                      alt="Photo de profil"
+                      className="h-full w-full object-cover"
+                    />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <label className="btn-ghost cursor-pointer text-sm">
+                      <ImagePlus className="h-4 w-4" />
+                      Changer la photo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={onAvatarFile}
+                      />
+                    </label>
+                    {avatar && (
+                      <button
+                        type="button"
+                        onClick={() => setAvatar("")}
+                        className="ml-2 text-xs text-white/50 transition hover:text-white"
+                      >
+                        Rétablir
+                      </button>
+                    )}
+                    <p className="mt-1.5 text-[11px] leading-relaxed text-white/30">
+                      C&apos;est la photo que les clients voient en premier.
+                      Cadrez votre visage, en tenue professionnelle.
+                    </p>
+                  </div>
+                </div>
+              </Field>
+
+              <Field label="Mon véhicule">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input
+                    className="input"
+                    value={carMake}
+                    maxLength={40}
+                    placeholder="Marque (ex : Mercedes-Benz)"
+                    aria-label="Marque"
+                    onChange={(e) => setCarMake(e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    value={carModel}
+                    maxLength={40}
+                    placeholder="Modèle (ex : Classe S 580)"
+                    aria-label="Modèle"
+                    onChange={(e) => setCarModel(e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    value={carYear}
+                    type="number"
+                    inputMode="numeric"
+                    min={1990}
+                    max={new Date().getFullYear() + 1}
+                    placeholder="Année"
+                    aria-label="Année"
+                    onChange={(e) => setCarYear(e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    value={carColor}
+                    maxLength={40}
+                    placeholder="Couleur (ex : Noir Obsidienne)"
+                    aria-label="Couleur"
+                    onChange={(e) => setCarColor(e.target.value)}
+                  />
+                </div>
+                <p className="mt-1.5 text-[11px] text-white/30">
+                  Affiché sur votre profil public. Un champ laissé vide reprend
+                  la valeur d&apos;origine.
+                </p>
+              </Field>
+
               <Field label="Description">
                 <div className="relative">
                   <FileText className="absolute left-3.5 top-3 h-4 w-4 text-white/40" />
@@ -236,6 +428,164 @@ export function ProfileEditor() {
                 </Field>
               </div>
 
+              <Field label="Mes tarifs (prix client TTC)">
+                <p className="mb-3 text-[11px] leading-relaxed text-white/40">
+                  {fixedPricing ? (
+                    <>
+                      Les tarifs de la gamme{" "}
+                      <strong className="text-white/60">{category}</strong> sont
+                      fixés par la plateforme et identiques pour tous les
+                      chauffeurs. Ils ne sont pas modifiables.
+                    </>
+                  ) : (
+                    <>
+                      Vous fixez librement vos tarifs dans la fourchette de votre
+                      gamme <strong className="text-white/60">{category}</strong>{" "}
+                      : {hourBounds.min} – {hourBounds.max} € de l&apos;heure,{" "}
+                      {dayBounds.min} – {dayBounds.max} € la journée.
+                    </>
+                  )}
+                </p>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <RateInput
+                    label="Tarif horaire TTC"
+                    suffix="€ / h"
+                    value={hourRate}
+                    min={hourBounds.min}
+                    max={hourBounds.max}
+                    error={hourError}
+                    readOnly={!isRateEditable(category, "hour")}
+                    onChange={setHourRate}
+                  />
+                  <RateInput
+                    label="Tarif journalier TTC"
+                    suffix="€ / jour"
+                    value={dayRate}
+                    min={dayBounds.min}
+                    max={dayBounds.max}
+                    error={dayError}
+                    readOnly={!isRateEditable(category, "day")}
+                    onChange={setDayRate}
+                  />
+                </div>
+
+                {/* Live commission breakdown — the driver sees what lands in
+                    their pocket while they type, not after the first ride. */}
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <CommissionCard label="Sur une heure" split={hourSplit} />
+                  <CommissionCard label="Sur une journée" split={daySplit} />
+                </div>
+
+                <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                  <p className="flex items-center gap-2 text-sm font-medium text-white">
+                    Tarif à la semaine
+                    <span className="chip border-royal-400/20 bg-royal-500/10 text-royal-200">
+                      Sur devis
+                    </span>
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-white/40">
+                    Pour un tarif à la semaine, veuillez contacter le service
+                    client.
+                  </p>
+                  <a
+                    href={whatsappUrl(
+                      "Bonjour, je souhaite obtenir un tarif semaine."
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-ghost mt-3 text-sm"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Contacter le service client
+                  </a>
+                </div>
+              </Field>
+
+              <Field label="Mes horaires habituels">
+                <p className="mb-3 text-[11px] leading-relaxed text-white/40">
+                  Les clients ne peuvent réserver que dans ces créneaux. C&apos;est
+                  indépendant du bouton En ligne : vous recevez des réservations
+                  à l&apos;avance même hors ligne.
+                </p>
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSchedule(cloneSchedule(PRESET_WEEKDAYS))}
+                    className="chip transition hover:bg-white/10"
+                  >
+                    Lun–Ven · 07:00–19:00
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSchedule(cloneSchedule(DEFAULT_SCHEDULE))}
+                    className="chip transition hover:bg-white/10"
+                  >
+                    Tous les jours, sans limite
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  {schedule.map((day, i) => (
+                    <div
+                      key={i}
+                      className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 px-3 py-2"
+                    >
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={day.open}
+                        onClick={() => patchDay(i, { open: !day.open })}
+                        className="flex min-w-[110px] items-center gap-2 text-left text-sm"
+                      >
+                        <span
+                          aria-hidden
+                          className={`h-4 w-7 shrink-0 rounded-full p-0.5 transition-colors ${
+                            day.open ? "bg-emerald-500" : "bg-white/15"
+                          }`}
+                        >
+                          <span
+                            className={`block h-3 w-3 rounded-full bg-white transition-all ${
+                              day.open ? "ml-3" : ""
+                            }`}
+                          />
+                        </span>
+                        <span className={day.open ? "text-white" : "text-white/40"}>
+                          {DAY_LABELS_FR[i]}
+                        </span>
+                      </button>
+                      {day.open ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="time"
+                            value={day.start}
+                            step={60}
+                            aria-label={`${DAY_LABELS_FR[i]} — début`}
+                            onChange={(e) => patchDay(i, { start: e.target.value })}
+                            className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-white outline-none [color-scheme:dark] focus:border-royal-400/50"
+                          />
+                          <span className="text-white/30">–</span>
+                          <input
+                            type="time"
+                            value={day.end}
+                            step={60}
+                            aria-label={`${DAY_LABELS_FR[i]} — fin`}
+                            onChange={(e) => patchDay(i, { end: e.target.value })}
+                            className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-white outline-none [color-scheme:dark] focus:border-royal-400/50"
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-sm text-white/30">Fermé</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {schedule.every((d) => !d.open) && (
+                  <p className="mt-2 text-xs text-amber-300">
+                    Aucun jour ouvert : personne ne pourra vous réserver.
+                  </p>
+                )}
+              </Field>
+
               <Field label="Catégorie du véhicule">
                 <div className="flex flex-wrap gap-2">
                   {CATEGORIES.map((c) => (
@@ -255,43 +605,55 @@ export function ProfileEditor() {
                 </div>
               </Field>
 
-              <Field label="Transfert aéroport — destinations acceptées">
-                <p className="mb-3 text-[11px] leading-relaxed text-white/40">
-                  Cochez les destinations que vous desservez. Vous n&apos;êtes
-                  proposé sur l&apos;onglet « Transfert Aéroport » que pour
-                  celles-ci.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {transferDestinations.map((d) => {
-                    const on = transfers.includes(d.id);
-                    return (
-                      <button
-                        key={d.id}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() =>
-                          setTransfers((prev) =>
-                            prev.includes(d.id)
-                              ? prev.filter((x) => x !== d.id)
-                              : [...prev, d.id]
-                          )
-                        }
-                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                          on
-                            ? "border-royal-400/50 bg-royal-500/20 text-white"
-                            : "border-white/10 text-white/60 hover:bg-white/5"
-                        }`}
-                      >
-                        {on && <Check className="h-3 w-3" />}
-                        {transferDestinationLabel(d)}
-                      </button>
-                    );
-                  })}
-                </div>
-                {transfers.length === 0 && (
+              <Field label="Transfert aéroport">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={transfers}
+                  aria-describedby="transfer-optin-help"
+                  onClick={() => setTransfers((v) => !v)}
+                  className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition ${
+                    transfers
+                      ? "border-royal-400/50 bg-royal-500/10"
+                      : "border-white/10 hover:bg-white/5"
+                  }`}
+                >
+                  <span
+                    aria-hidden
+                    className={`mt-0.5 flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-colors ${
+                      transfers ? "bg-royal-500" : "bg-white/15"
+                    }`}
+                  >
+                    <motion.span
+                      layout
+                      transition={springSnappy}
+                      className={`grid h-5 w-5 place-items-center rounded-full bg-white shadow ${
+                        transfers ? "ml-auto" : ""
+                      }`}
+                    >
+                      {transfers && <Check className="h-3 w-3 text-ink-900" />}
+                    </motion.span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-white">
+                      Accepter les transferts aéroport (Paris &amp;
+                      Île-de-France)
+                    </span>
+                    <span
+                      id="transfer-optin-help"
+                      className="mt-1 block text-[11px] leading-relaxed text-white/40"
+                    >
+                      En cochant cette case, vous acceptez d&apos;être proposé
+                      pour l&apos;ensemble des trajets entre Paris /
+                      Île-de-France et les aéroports de Roissy CDG, Orly (ORY)
+                      et Le Bourget (LBG), dans les deux sens.
+                    </span>
+                  </span>
+                </button>
+                {!transfers && (
                   <p className="mt-2 text-xs text-amber-300">
-                    Aucune destination cochée : vous n&apos;apparaîtrez sur aucune
-                    recherche de transfert.
+                    Vous n&apos;apparaîtrez sur aucune recherche de transfert
+                    aéroport.
                   </p>
                 )}
               </Field>
@@ -353,10 +715,17 @@ export function ProfileEditor() {
           </section>
         )}
 
+        {rateBlocked && (hourError || dayError) && (
+          <p className="flex items-center gap-1.5 rounded-xl border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs text-red-300">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {hourError ?? dayError}
+          </p>
+        )}
+
         <div className="flex items-center gap-3">
           <button type="submit" disabled={saving} className="btn-primary disabled:opacity-60">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Enregistrer
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Valider
           </button>
           {saved && (
             <motion.span
@@ -364,11 +733,108 @@ export function ProfileEditor() {
               animate={{ opacity: 1, x: 0 }}
               className="flex items-center gap-1.5 text-sm text-emerald-400"
             >
-              <Check className="h-4 w-4" /> Profil enregistré
+              <Check className="h-4 w-4" /> Profil validé
             </motion.span>
           )}
         </div>
       </form>
+    </div>
+  );
+}
+
+/** Rate field with its band as `min`/`max` and an inline error. */
+function RateInput({
+  label,
+  suffix,
+  value,
+  min,
+  max,
+  error,
+  readOnly,
+  onChange,
+}: {
+  label: string;
+  suffix: string;
+  value: string;
+  min: number;
+  max: number;
+  error: string | null;
+  /** Platform-set rate: shown, never editable. */
+  readOnly?: boolean;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs text-white/40">{label}</span>
+      <div className="relative">
+        <input
+          className={`input pr-16 ${error ? "border-red-400/50" : ""} ${
+            readOnly ? "cursor-not-allowed text-white/60" : ""
+          }`}
+          type="number"
+          inputMode="numeric"
+          min={min}
+          max={max}
+          step={5}
+          value={value}
+          readOnly={readOnly}
+          aria-readonly={readOnly}
+          aria-invalid={!!error}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-white/40">
+          {suffix}
+        </span>
+      </div>
+      <span className="mt-1 flex items-center gap-1 text-[11px] text-white/30">
+        {readOnly ? (
+          <>
+            <Lock className="h-2.5 w-2.5" /> Tarif plateforme, non modifiable
+          </>
+        ) : (
+          <>
+            {min} – {max} € TTC
+          </>
+        )}
+      </span>
+      {error && (
+        <span className="mt-0.5 block text-[11px] text-red-300">{error}</span>
+      )}
+    </label>
+  );
+}
+
+/** Live "what the client pays / what you keep" breakdown. */
+function CommissionCard({
+  label,
+  split,
+}: {
+  label: string;
+  split: { ttc: number; commission: number; net: number };
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3 text-xs">
+      <p className="text-[11px] uppercase tracking-wider text-white/35">
+        {label}
+      </p>
+      <dl className="mt-2 space-y-1">
+        <div className="flex items-center justify-between">
+          <dt className="text-white/50">Prix client TTC</dt>
+          <dd className="font-medium text-white">€{split.ttc}</dd>
+        </div>
+        <div className="flex items-center justify-between">
+          <dt className="text-white/50">
+            Commission ({Math.round(PLATFORM_COMMISSION_RATE * 100)} %)
+          </dt>
+          <dd className="text-white/60">−€{split.commission}</dd>
+        </div>
+        <div className="flex items-center justify-between border-t border-white/10 pt-1">
+          <dt className="font-medium text-white/70">Votre revenu net</dt>
+          <dd className="text-sm font-semibold text-emerald-300">
+            €{split.net}
+          </dd>
+        </div>
+      </dl>
     </div>
   );
 }

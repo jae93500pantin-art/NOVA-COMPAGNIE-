@@ -12,11 +12,30 @@ import { getDriver } from "@/lib/drivers";
 import type { Driver } from "@/lib/types";
 import { computeAmount, type BookingUnit } from "@/lib/payments";
 import {
+  driverServesTransferDestination,
+  getTransferDestination,
+  isKnownTransferDestination,
+  transferDestinationLabel,
+  transferFareForDriver,
+} from "@/lib/transfer";
+import { clampRate } from "@/lib/pricing";
+import {
   sendEmail,
   bookingRequestEmail,
   bookingConfirmedEmail,
   paymentReceivedEmail,
 } from "@/lib/email";
+
+/** What the client booked, in one line: a duration, or the transfer itself. */
+function durationText(booking: Booking): string {
+  if (booking.unit === "transfer") {
+    const dest = getTransferDestination(booking.transfer);
+    return dest
+      ? `Transfert aéroport · ${transferDestinationLabel(dest)}`
+      : "Transfert aéroport";
+  }
+  return `${booking.hours} ${booking.unit === "day" ? "jour(s)" : "h"}`;
+}
 
 function emailData(driver: Driver, booking: Booking) {
   return {
@@ -24,7 +43,7 @@ function emailData(driver: Driver, booking: Booking) {
     driverName: `${driver.firstName} ${driver.lastName}`,
     vehicle: `${driver.car.make} ${driver.car.model}`,
     whenText: formatWhen(booking.when, "fr"),
-    durationText: `${booking.hours} ${booking.unit === "day" ? "jour(s)" : "h"}`,
+    durationText: durationText(booking),
     total: booking.total,
   };
 }
@@ -120,14 +139,35 @@ export async function POST(
   }
 
   // Amount is recomputed server-side from the trusted driver price.
-  const unit: BookingUnit = body.unit === "day" ? "day" : "hour";
+  const unit: BookingUnit =
+    body.unit === "day" || body.unit === "transfer" ? body.unit : "hour";
+
+  // A transfer is only bookable on a destination this driver actually serves,
+  // and its flat fare comes from the driver's own vehicle class.
+  let transfer: string | undefined;
+  if (unit === "transfer") {
+    transfer = sanitizeText(body.transfer, 32);
+    // `driverServesTransferDestination` is permissive on an unknown id (it means
+    // "no filter"), so the id must be checked explicitly first.
+    if (
+      !isKnownTransferDestination(transfer) ||
+      !driverServesTransferDestination(driver, transfer)
+    ) {
+      return Response.json({ error: "Unsupported destination" }, { status: 400 });
+    }
+  }
+
   let amount;
   try {
+    // Rates are driver-set, so they are re-clamped to the band of their class
+    // before anything is billed — never trusted as stored.
+    const category = driver.categories[0];
     amount = computeAmount(
-      driver.pricePerHour,
-      driver.pricePerDay,
+      clampRate(category, "hour", driver.pricePerHour),
+      clampRate(category, "day", driver.pricePerDay),
       unit,
-      Number(body.hours ?? 1)
+      Number(body.hours ?? 1),
+      transferFareForDriver(driver)
     );
   } catch {
     return Response.json({ error: "Invalid amount" }, { status: 400 });
@@ -140,6 +180,7 @@ export async function POST(
     clientEmail: sanitizeText(body.clientEmail, 120),
     hours: amount.hours,
     unit,
+    transfer,
     total: amount.total,
     pickup: sanitizeText(body.pickup, 120),
     dropoff: sanitizeText(body.dropoff, 120),

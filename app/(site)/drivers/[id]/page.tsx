@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -17,6 +16,8 @@ import { Gallery } from "@/components/Gallery";
 import { Reviews } from "@/components/Reviews";
 import { BookingWidget } from "@/components/BookingWidget";
 import { StarRating } from "@/components/StarRating";
+import { DriverAvatar } from "@/components/DriverAvatar";
+import { DriverVehicle } from "@/components/DriverVehicle";
 
 export function generateStaticParams() {
   return drivers.map((d) => ({ id: d.id }));
@@ -59,12 +60,10 @@ export default function DriverProfile({ params }: { params: { id: string } }) {
           {/* Identity header */}
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-3xl border-2 border-white/15 shadow-card">
-              <Image
-                src={driver.avatar}
+              <DriverAvatar
+                driverId={driver.id}
+                avatar={driver.avatar}
                 alt={driver.firstName}
-                fill
-                sizes="96px"
-                className="object-cover"
               />
             </div>
             <div className="flex-1">
@@ -119,14 +118,7 @@ export default function DriverProfile({ params }: { params: { id: string } }) {
           <section className="mt-8">
             <h2 className="text-lg font-semibold text-white">Le véhicule</h2>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-4 rounded-2xl glass p-5">
-              <div>
-                <p className="text-base font-medium text-white">
-                  {driver.car.make} {driver.car.model}
-                </p>
-                <p className="text-sm text-white/50">
-                  {driver.car.year} · {driver.car.color}
-                </p>
-              </div>
+              <DriverVehicle driver={driver} />
               <div className="flex flex-wrap gap-2">
                 {driver.categories.map((c) => (
                   <span key={c} className="chip">{c}</span>

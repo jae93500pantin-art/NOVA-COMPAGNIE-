@@ -1,6 +1,12 @@
 /** Booking (course request) domain types + pure helpers (unit-testable). */
 
 import type { BookingUnit } from "./payments";
+import { addDays } from "./calendar";
+import {
+  getTransferDestination,
+  isKnownTransferDestination,
+  transferDestinationLabel,
+} from "./transfer";
 
 export type BookingStatus =
   | "pending"
@@ -16,10 +22,12 @@ export interface Booking {
   clientId: string;
   clientName: string;
   clientEmail: string;
-  /** Quantity in the chosen unit (number of hours, or number of days). */
+  /** Quantity in the chosen unit (hours, days, or 1 for a transfer). */
   hours: number;
-  /** Whether the quantity is billed per hour or per day. */
+  /** Whether the quantity is billed per hour, per day, or as a flat transfer. */
   unit: BookingUnit;
+  /** Transfer destination id (lib/transfer.ts) — only set when unit = "transfer". */
+  transfer?: string;
   total: number; // euros
   pickup: string;
   dropoff: string;
@@ -35,6 +43,7 @@ export interface NewBookingInput {
   clientEmail?: string;
   hours: number;
   unit?: BookingUnit;
+  transfer?: string;
   total: number;
   pickup?: string;
   dropoff?: string;
@@ -74,14 +83,28 @@ export function statusLabel(status: BookingStatus): string {
   }
 }
 
+/**
+ * Placeholders used when no address was captured. The booking flow does not
+ * collect addresses yet, so these are labels, **not data** — anything that
+ * publishes a trip must treat them as "unknown" rather than print them.
+ */
+export const DEFAULT_PICKUP = "Adresse de départ";
+export const DEFAULT_DROPOFF = "Destination";
+
 /** Build a fully-formed Booking from raw input (applies defaults + clamps). */
 export function buildBooking(
   input: NewBookingInput,
   idFactory: () => string = defaultId,
   now: () => number = Date.now
 ): Booking {
-  const unit: BookingUnit = input.unit === "day" ? "day" : "hour";
-  const maxQty = unit === "day" ? 30 : 24;
+  const unit: BookingUnit =
+    input.unit === "day" || input.unit === "transfer" ? input.unit : "hour";
+  // A transfer is a single trip; hours/days keep their own ceilings.
+  const maxQty = unit === "transfer" ? 1 : unit === "day" ? 30 : 24;
+  const transfer =
+    unit === "transfer" && isKnownTransferDestination(input.transfer)
+      ? input.transfer
+      : undefined;
   return {
     id: idFactory(),
     driverId: input.driverId,
@@ -90,9 +113,10 @@ export function buildBooking(
     clientEmail: input.clientEmail?.trim() || "",
     hours: Math.max(1, Math.min(maxQty, Math.floor(input.hours) || 1)),
     unit,
+    transfer,
     total: Math.max(0, Math.round(input.total)),
-    pickup: input.pickup?.trim() || "Adresse de départ",
-    dropoff: input.dropoff?.trim() || "Destination",
+    pickup: input.pickup?.trim() || DEFAULT_PICKUP,
+    dropoff: input.dropoff?.trim() || DEFAULT_DROPOFF,
     when: input.when?.trim() || "",
     status: "pending",
     createdAt: now(),
@@ -154,6 +178,42 @@ export function isFutureBooking(
 }
 
 /**
+ * Compact "what was booked" label for a booking row: a duration ("3 h", "2 j")
+ * or, for a flat airport transfer, the destination itself.
+ */
+export function bookingQuantityLabel(
+  booking: Pick<Booking, "hours" | "unit" | "transfer">,
+  lang: "fr" | "en" = "fr"
+): string {
+  if (booking.unit === "transfer") {
+    const prefix = lang === "fr" ? "Transfert" : "Transfer";
+    const dest = getTransferDestination(booking.transfer);
+    return dest ? `${prefix} ${transferDestinationLabel(dest)}` : prefix;
+  }
+  const suffix = booking.unit === "day" ? (lang === "fr" ? "j" : "d") : "h";
+  return `${booking.hours} ${suffix}`;
+}
+
+/**
+ * Uber-style rescheduling: when the chosen time has already passed **today**,
+ * keep the time and move the booking to tomorrow instead of refusing it.
+ * Returns the date to use plus whether a roll happened, so the UI can say so.
+ * A future date, a past day or an incomplete input is returned untouched —
+ * `isFutureBooking` stays the safety net for those.
+ */
+export function rollPastTimeToNextDay(
+  date: string,
+  time: string,
+  now: () => number = Date.now
+): { date: string; rolled: boolean } {
+  if (!DATE_RE.test(date) || !TIME_RE.test(time)) return { date, rolled: false };
+  if (isFutureBooking(date, time, now)) return { date, rolled: false };
+  // Only today rolls forward: a date in the past is a deliberate mistake.
+  if (date !== todayISODate(now)) return { date, rolled: false };
+  return { date: addDays(date, 1), rolled: true };
+}
+
+/**
  * Human-readable label for a stored `when` value, localised.
  * Accepts ISO ("YYYY-MM-DD" / "YYYY-MM-DDTHH:mm"), empty (→ "as soon as
  * possible"), or any legacy free-text (returned as-is).
@@ -202,6 +262,53 @@ export function bookingStartsAt(booking: Booking): number {
     mm ? Number(mm) : 0
   ).getTime();
   return Number.isNaN(t) ? booking.createdAt : t;
+}
+
+/** Assumed length of a flat airport transfer when nothing else says otherwise. */
+export const TRANSFER_DURATION_MS = 2 * 60 * 60 * 1000;
+
+/** How long the ride itself lasts, from its unit and quantity. */
+export function bookingDurationMs(booking: Booking): number {
+  if (booking.unit === "transfer") return TRANSFER_DURATION_MS;
+  const hours = booking.unit === "day" ? booking.hours * 24 : booking.hours;
+  return Math.max(1, hours) * 60 * 60 * 1000;
+}
+
+/** Epoch ms the ride is considered over. */
+export function bookingEndsAt(booking: Booking): number {
+  return bookingStartsAt(booking) + bookingDurationMs(booking);
+}
+
+/**
+ * Whether this ride is happening right now. Paid only: a request the driver
+ * has not been paid for is not a ride, however close its date is.
+ */
+export function isRideInProgress(
+  booking: Booking,
+  now: number = Date.now()
+): boolean {
+  if (booking.status !== "paid") return false;
+  const start = bookingStartsAt(booking);
+  return now >= start && now < bookingEndsAt(booking);
+}
+
+/**
+ * What a driver's status pill should say.
+ *
+ * "in_ride" is **derived, never stored**: a status the driver has to toggle by
+ * hand is a status they forget to turn off, and they then vanish from the
+ * platform for days with nothing to explain it. It comes out of the bookings,
+ * so it cannot drift.
+ */
+export type DriverPresence = "in_ride" | "online" | "offline";
+
+export function driverPresence(
+  bookings: Booking[],
+  available: boolean,
+  now: number = Date.now()
+): DriverPresence {
+  if (bookings.some((b) => isRideInProgress(b, now))) return "in_ride";
+  return available ? "online" : "offline";
 }
 
 /**

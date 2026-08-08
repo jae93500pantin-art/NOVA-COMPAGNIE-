@@ -28,6 +28,7 @@ import { getCity } from "@/lib/cities";
 import { whatsappUrl } from "@/lib/whatsapp";
 import { StarRating } from "./StarRating";
 import { DriverRequests } from "./DriverRequests";
+import { driverPresence, type Booking } from "@/lib/bookings";
 import { initials } from "@/lib/utils";
 
 export function AccountDashboard() {
@@ -217,6 +218,15 @@ function ClientDashboard({ firstName }: { firstName: string }) {
 function DriverDashboard({ driverId }: { driverId: string | null }) {
   const driver = driverId ? getDriver(driverId) : undefined;
   const [available, setAvailable] = useState(driver?.available ?? true);
+  // Fed by the same SSE stream DriverRequests already opens — no second
+  // connection, and "En course" can never disagree with the ride list.
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const presence = driverPresence(bookings, available, now);
   const city = driver ? getCity(driver.cityId) : undefined;
 
   if (!driver) {
@@ -263,34 +273,60 @@ function DriverDashboard({ driverId }: { driverId: string | null }) {
           </div>
         </div>
 
+        {/* "En course" wins over the switch — it is derived from the rides. */}
         <button
           onClick={() => setAvailable((a) => !a)}
-          className={`flex items-center justify-between rounded-2xl border p-5 text-left transition ${
-            available
+          disabled={presence === "in_ride"}
+          className={`flex items-center justify-between rounded-2xl border p-5 text-left transition disabled:cursor-default ${
+            presence === "in_ride"
+              ? "border-royal-400/40 bg-royal-500/10"
+              : available
               ? "border-emerald-400/30 bg-emerald-400/10"
               : "border-white/10 bg-white/[0.03]"
           }`}
         >
           <div>
             <p className="flex items-center gap-2 text-sm font-semibold text-white">
-              <Power className={`h-4 w-4 ${available ? "text-emerald-400" : "text-white/40"}`} />
-              {available ? "Vous êtes en ligne" : "Vous êtes hors ligne"}
+              <Power
+                className={`h-4 w-4 ${
+                  presence === "in_ride"
+                    ? "text-royal-300"
+                    : available
+                    ? "text-emerald-400"
+                    : "text-white/40"
+                }`}
+              />
+              {presence === "in_ride"
+                ? "Vous êtes en course"
+                : available
+                ? "Vous êtes en ligne"
+                : "Vous êtes hors ligne"}
             </p>
             <p className="mt-0.5 text-xs text-white/50">
-              {available ? "Vous recevez des demandes" : "Touchez pour passer en ligne"}
+              {presence === "in_ride"
+                ? "Automatique jusqu'à la fin de la course"
+                : available
+                ? "Vous recevez des demandes"
+                : "Touchez pour passer en ligne"}
             </p>
           </div>
-          <span
-            className={`relative h-7 w-12 shrink-0 rounded-full transition ${
-              available ? "bg-emerald-500" : "bg-white/15"
-            }`}
-          >
+          {presence === "in_ride" ? (
+            <span className="chip shrink-0 border-royal-400/30 bg-royal-500/15 text-royal-100">
+              En course
+            </span>
+          ) : (
             <span
-              className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition-all ${
-                available ? "left-[22px]" : "left-0.5"
+              className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+                available ? "bg-emerald-500" : "bg-white/15"
               }`}
-            />
-          </span>
+            >
+              <span
+                className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition-all ${
+                  available ? "left-[22px]" : "left-0.5"
+                }`}
+              />
+            </span>
+          )}
         </button>
       </div>
 
@@ -321,7 +357,7 @@ function DriverDashboard({ driverId }: { driverId: string | null }) {
 
       {/* Requests */}
       <Section title="Demandes de course" icon={TrendingUp} href="/compte/courses">
-        <DriverRequests driverId={driver.id} />
+        <DriverRequests driverId={driver.id} onBookingsChange={setBookings} />
       </Section>
 
       {/* Recent reviews */}

@@ -13,7 +13,7 @@ import {
   MessagesSquare,
 } from "lucide-react";
 import type { Booking, BookingStatus } from "@/lib/bookings";
-import { statusLabel, formatWhen } from "@/lib/bookings";
+import { statusLabel, formatWhen, bookingQuantityLabel } from "@/lib/bookings";
 import { chatStateForBooking } from "@/lib/chat";
 import { getDriver } from "@/lib/drivers";
 import { useI18n } from "@/lib/i18n";
@@ -24,7 +24,14 @@ import { BookingChat } from "./BookingChat";
  * Live incoming course requests for a driver, over SSE.
  * The driver can accept or refuse; the client sees the result in real time.
  */
-export function DriverRequests({ driverId }: { driverId: string }) {
+export function DriverRequests({
+  driverId,
+  onBookingsChange,
+}: {
+  driverId: string;
+  /** Lets a parent derive state (e.g. "En course") off this same stream. */
+  onBookingsChange?: (bookings: Booking[]) => void;
+}) {
   const { t, lang } = useI18n();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [connected, setConnected] = useState(false);
@@ -59,6 +66,10 @@ export function DriverRequests({ driverId }: { driverId: string }) {
     };
     return () => es.close();
   }, [driverId]);
+
+  useEffect(() => {
+    onBookingsChange?.(bookings);
+  }, [bookings, onBookingsChange]);
 
   const act = useCallback(
     async (bookingId: string, status: BookingStatus) => {
@@ -130,7 +141,7 @@ export function DriverRequests({ driverId }: { driverId: string }) {
                     <div>
                       <p className="text-sm font-semibold text-white">{b.clientName}</p>
                       <p className="flex items-center gap-1 text-xs text-white/50">
-                        <MapPin className="h-3 w-3" /> {b.hours} {b.unit === "day" ? "j" : "h"} · {formatWhen(b.when, lang)}
+                        <MapPin className="h-3 w-3" /> {bookingQuantityLabel(b, lang)} · {formatWhen(b.when, lang)}
                       </p>
                     </div>
                   </div>

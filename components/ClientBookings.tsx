@@ -18,18 +18,20 @@ import {
   Ban,
   Hourglass,
   CreditCard,
+  Star,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { getDriver } from "@/lib/drivers";
 import { getClientId, getBookedDrivers, BOOKED_EVENT } from "@/lib/clientBookings";
 import type { Booking } from "@/lib/bookings";
-import { statusLabel, formatWhen } from "@/lib/bookings";
+import { statusLabel, formatWhen, bookingQuantityLabel } from "@/lib/bookings";
 import { chatStateForBooking } from "@/lib/chat";
 import { whatsappUrl } from "@/lib/whatsapp";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { PaymentDialog } from "./PaymentDialog";
 import { BookingChat } from "./BookingChat";
+import { ReviewForm } from "./ReviewForm";
 
 /**
  * Client view of their own course requests, with live status updates.
@@ -43,6 +45,9 @@ export function ClientBookings() {
   const [byId, setById] = useState<Record<string, Booking>>({});
   const [payBooking, setPayBooking] = useState<Booking | null>(null);
   const [openChatId, setOpenChatId] = useState<string | null>(null);
+  const [openReviewId, setOpenReviewId] = useState<string | null>(null);
+  /** Rides reviewed in this session — the button disappears once used. */
+  const [reviewed, setReviewed] = useState<string[]>([]);
   const sourcesRef = useRef<EventSource[]>([]);
 
   /** Client-side cancellation — the driver sees it live, the chat archives. */
@@ -149,6 +154,7 @@ export function ClientBookings() {
               const driver = getDriver(b.driverId);
               const chatState = chatStateForBooking(b);
               const chatOpen = openChatId === b.id;
+              const reviewOpen = openReviewId === b.id;
               const cancellable =
                 b.status === "pending" ||
                 b.status === "confirmed" ||
@@ -177,7 +183,7 @@ export function ClientBookings() {
                           {driver ? `${driver.firstName} ${driver.lastName}` : "Chauffeur"}
                         </p>
                         <p className="flex items-center gap-1 text-xs text-white/50">
-                          <Clock className="h-3 w-3" /> {b.hours} {b.unit === "day" ? "j" : "h"} · €{b.total} · {formatWhen(b.when, lang)}
+                          <Clock className="h-3 w-3" /> {bookingQuantityLabel(b, lang)} · €{b.total} · {formatWhen(b.when, lang)}
                         </p>
                       </div>
                     </div>
@@ -200,6 +206,19 @@ export function ClientBookings() {
                         >
                           <MessagesSquare className="h-4 w-4" />
                           {chatOpen ? t("chat.close") : t("chat.open")}
+                        </button>
+                      )}
+                      {/* A review needs a finished ride — nowhere else to start it. */}
+                      {b.status === "completed" && !reviewed.includes(b.id) && (
+                        <button
+                          onClick={() =>
+                            setOpenReviewId(reviewOpen ? null : b.id)
+                          }
+                          className="btn-ghost text-xs"
+                          aria-expanded={reviewOpen}
+                        >
+                          <Star className="h-4 w-4 text-gold-400" />
+                          Laisser un avis
                         </button>
                       )}
                       {cancellable && (
@@ -225,6 +244,18 @@ export function ClientBookings() {
                       )}
                     </div>
                   </div>
+
+                  <AnimatePresence initial={false}>
+                    {reviewOpen && (
+                      <ReviewForm
+                        booking={b}
+                        clientName={
+                          `${user.firstName} ${user.lastName}`.trim() || b.clientName
+                        }
+                        onPublished={() => setReviewed((prev) => [...prev, b.id])}
+                      />
+                    )}
+                  </AnimatePresence>
 
                   <AnimatePresence initial={false}>
                     {chatOpen && (

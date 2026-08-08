@@ -16,7 +16,19 @@ import {
   addDays,
   nextWeekendISO,
 } from "@/lib/calendar";
-import { todayISODate, formatWhen } from "@/lib/bookings";
+import {
+  todayISODate,
+  formatWhen,
+  isFutureBooking,
+  rollPastTimeToNextDay,
+} from "@/lib/bookings";
+import {
+  dayScheduleFor,
+  formatDayWindow,
+  isDayOpen,
+  isWithinSchedule,
+  type WeeklySchedule,
+} from "@/lib/schedule";
 import { useI18n } from "@/lib/i18n";
 import { ease, springSnappy } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -33,6 +45,11 @@ interface DatePickerProps {
   variant?: "booking" | "search";
   /** Hide the time chooser when false. */
   showTime?: boolean;
+  /**
+   * Driver's weekly hours. Closed days are disabled and the time field is
+   * bounded by the chosen day's window. Omit for no constraint.
+   */
+  schedule?: WeeklySchedule;
   /** "range" enables start→end selection (uses endDate + onRangeChange). */
   mode?: "single" | "range";
   /** End date in range mode ("YYYY-MM-DD"). */
@@ -51,6 +68,7 @@ export function DatePicker({
   min,
   variant = "booking",
   showTime = true,
+  schedule,
   mode = "single",
   endDate = "",
   onRangeChange,
@@ -62,6 +80,15 @@ export function DatePicker({
 
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  /**
+   * Explains an automatic adjustment: "rolled" → tomorrow, "cleared" → time
+   * dropped, "outside" → outside the driver's working hours.
+   */
+  const [notice, setNotice] = useState<"" | "rolled" | "cleared" | "outside">("");
+
+  /** Working hours of the currently selected day, when a schedule is given. */
+  const dayWindow = schedule ? dayScheduleFor(schedule, date || today) : null;
+  const closedOn = (iso: string) => !!schedule && !isDayOpen(schedule, iso);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{
@@ -157,17 +184,37 @@ export function DatePicker({
       else onRangeChange?.(date, iso);
       return;
     }
+    // The user just expressed intent about the DAY: honour it and drop an hour
+    // that has already passed, rather than moving them to another day.
+    if (time && !isFutureBooking(iso, time)) {
+      setNotice("cleared");
+      onChange?.(iso, "");
+      return;
+    }
+    setNotice("");
     onChange?.(iso, time);
   };
-  /** Free time entry — any hour and minute, no preset shortcuts. */
+  /**
+   * Free time entry — any hour and minute, no preset shortcuts.
+   * An hour already gone today rolls the booking to tomorrow (Uber-style)
+   * instead of leaving a slot the form will reject on submit.
+   */
   const setExactTime = (hhmm: string) => {
-    onChange?.(date || today, hhmm);
+    const { date: next, rolled } = rollPastTimeToNextDay(date || today, hhmm);
+    const outside =
+      !!schedule && !!hhmm && !isWithinSchedule(schedule, next, hhmm);
+    setNotice(outside ? "outside" : rolled ? "rolled" : "");
+    if (rolled) {
+      const p = parseISO(next);
+      if (p) setView({ year: p.year, month: p.month });
+    }
+    onChange?.(next, hhmm);
   };
 
   const quick = (iso: string) => {
     const p = parseISO(iso)!;
     setView({ year: p.year, month: p.month });
-    onChange?.(iso, time);
+    pickDate(iso);
   };
 
   // Keyboard navigation inside the grid (arrows = days, PageUp/Dn = months).
@@ -179,7 +226,7 @@ export function DatePicker({
     else if (e.key === "ArrowUp") next = addDays(iso, -7);
     else return;
     e.preventDefault();
-    if (isBefore(next, minDate)) return;
+    if (isBefore(next, minDate) || closedOn(next)) return;
     const p = parseISO(next)!;
     setView({ year: p.year, month: p.month });
     requestAnimationFrame(() => {
@@ -275,7 +322,8 @@ export function DatePicker({
               <div role="grid" className="mt-1 grid grid-cols-7 gap-0.5">
                 {grid.map((cell, i) => {
                   if (!cell.inMonth) return <span key={i} aria-hidden />;
-                  const disabled = isBefore(cell.iso, minDate);
+                  const disabled =
+                    isBefore(cell.iso, minDate) || closedOn(cell.iso);
                   const isStart = cell.iso === date;
                   const isEnd = mode === "range" && !!endDate && cell.iso === endDate;
                   const endpoint = isStart || isEnd;
@@ -327,19 +375,52 @@ export function DatePicker({
               {/* Time — free entry, any hour and minute (native picker on mobile). */}
               {showTime && (
                 <div className="mt-4 border-t border-white/10 pt-3">
-                  <p className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-white/40">
-                    <Clock className="h-3 w-3" /> {t("datepicker.chooseTime")}
+                  <p className="mb-2 flex items-center justify-between gap-2 text-[11px] uppercase tracking-wider text-white/40">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="h-3 w-3" /> {t("datepicker.chooseTime")}
+                    </span>
+                    {dayWindow?.open && (
+                      <span className="normal-case tracking-normal text-white/30">
+                        {formatDayWindow(dayWindow)}
+                      </span>
+                    )}
                   </p>
                   <input
                     type="time"
                     value={time}
                     step={60}
+                    min={dayWindow?.open ? dayWindow.start : undefined}
+                    max={dayWindow?.open ? dayWindow.end : undefined}
                     onChange={(e) => setExactTime(e.target.value)}
                     aria-label={t("datepicker.exactTime")}
                     className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white outline-none transition [color-scheme:dark] focus:border-royal-400/50"
                   />
                 </div>
               )}
+
+              {/* Why the picker just moved something under the user's hands. */}
+              <AnimatePresence initial={false}>
+                {notice && (
+                  <motion.p
+                    key={notice}
+                    initial={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                    transition={{ duration: 0.2, ease }}
+                    className="mt-2 rounded-xl border border-royal-400/20 bg-royal-400/10 px-3 py-2 text-[11px] leading-relaxed text-royal-100"
+                  >
+                    {notice === "outside"
+                      ? `${t("datepicker.outsideHours")} ${formatDayWindow(
+                          dayWindow
+                        )}`
+                      : t(
+                          notice === "rolled"
+                            ? "datepicker.movedTomorrow"
+                            : "datepicker.timePassed"
+                        )}
+                  </motion.p>
+                )}
+              </AnimatePresence>
 
               {/* Footer */}
               <div className="mt-4 flex items-center justify-between gap-2">

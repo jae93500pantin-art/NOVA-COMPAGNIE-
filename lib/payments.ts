@@ -11,8 +11,11 @@ export const MAX_HOURS = 24;
 export const MIN_DAYS = 1;
 export const MAX_DAYS = 30;
 
-/** Booking duration unit: charged either by the hour or by the day. */
-export type BookingUnit = "hour" | "day";
+/**
+ * How a booking is billed: by the hour, by the day, or as a flat airport
+ * transfer (a single trip, priced per vehicle class — see lib/transfer.ts).
+ */
+export type BookingUnit = "hour" | "day" | "transfer";
 
 export interface BookingAmount {
   hours: number;
@@ -63,16 +66,31 @@ export function clampDays(days: number): number {
 }
 
 /**
- * Compute a booking amount for either unit. Hours use the hourly rate; days use
- * the (cheaper) fixed daily rate. Throws on an invalid rate for the chosen unit.
+ * Compute a booking amount for any unit. Hours use the hourly rate; days use
+ * the (cheaper) fixed daily rate; a transfer is a flat fare and ignores
+ * `quantity` (one trip). Throws on an invalid rate for the chosen unit.
  * `quantity` = number of hours or number of days depending on `unit`.
  */
 export function computeAmount(
   pricePerHour: number,
   pricePerDay: number,
   unit: BookingUnit,
-  quantity: number
+  quantity: number,
+  transferFare = 0
 ): BookingAmount {
+  if (unit === "transfer") {
+    if (!Number.isFinite(transferFare) || transferFare <= 0) {
+      throw new Error("Invalid transferFare");
+    }
+    const subtotal = Math.round(transferFare);
+    return {
+      hours: 1, // one trip — the quantity slider does not apply
+      subtotal,
+      serviceFee: 0,
+      total: subtotal,
+      amountCents: Math.round(subtotal * 100),
+    };
+  }
   if (unit === "day") {
     if (!Number.isFinite(pricePerDay) || pricePerDay <= 0) {
       throw new Error("Invalid pricePerDay");

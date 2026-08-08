@@ -5,11 +5,17 @@ import {
   statusLabel,
   composeWhen,
   isFutureBooking,
+  rollPastTimeToNextDay,
   formatWhen,
   todayISODate,
   bookingStartsAt,
   shouldAutoComplete,
   AUTO_COMPLETE_AFTER_MS,
+  bookingDurationMs,
+  isRideInProgress,
+  driverPresence,
+  TRANSFER_DURATION_MS,
+  type Booking,
 } from "@/lib/bookings";
 import {
   createBooking,
@@ -203,6 +209,57 @@ describe("bookings — planification (date exacte choisie par le client)", () =>
     expect(isFutureBooking("2026-13-40", "", now)).toBe(false);
   });
 
+  it("rollPastTimeToNextDay reporte à demain une heure déjà passée aujourd'hui", () => {
+    // 1er juillet 12:00 — 09:00 est passé, on garde l'heure et on change de jour.
+    expect(rollPastTimeToNextDay("2026-07-01", "09:00", now)).toEqual({
+      date: "2026-07-02",
+      rolled: true,
+    });
+  });
+
+  it("rollPastTimeToNextDay ne touche pas à un créneau encore valable", () => {
+    expect(rollPastTimeToNextDay("2026-07-01", "14:00", now)).toEqual({
+      date: "2026-07-01",
+      rolled: false,
+    });
+    expect(rollPastTimeToNextDay("2026-07-15", "09:00", now)).toEqual({
+      date: "2026-07-15",
+      rolled: false,
+    });
+  });
+
+  it("rollPastTimeToNextDay laisse passer une date passée ou une saisie incomplète", () => {
+    // Un jour révolu n'est pas un oubli d'heure : isFutureBooking doit le refuser.
+    expect(rollPastTimeToNextDay("2026-06-30", "09:00", now)).toEqual({
+      date: "2026-06-30",
+      rolled: false,
+    });
+    expect(rollPastTimeToNextDay("2026-07-01", "", now)).toEqual({
+      date: "2026-07-01",
+      rolled: false,
+    });
+    expect(rollPastTimeToNextDay("", "09:00", now)).toEqual({
+      date: "",
+      rolled: false,
+    });
+  });
+
+  it("rollPastTimeToNextDay franchit correctement fin de mois et fin d'année", () => {
+    const endOfMonth = () => new Date("2026-07-31T23:00:00").getTime();
+    expect(rollPastTimeToNextDay("2026-07-31", "08:00", endOfMonth).date).toBe(
+      "2026-08-01"
+    );
+    const newYearEve = () => new Date("2026-12-31T23:00:00").getTime();
+    expect(rollPastTimeToNextDay("2026-12-31", "08:00", newYearEve).date).toBe(
+      "2027-01-01"
+    );
+  });
+
+  it("le créneau reporté redevient valide pour isFutureBooking", () => {
+    const { date } = rollPastTimeToNextDay("2026-07-01", "09:00", now);
+    expect(isFutureBooking(date, "09:00", now)).toBe(true);
+  });
+
   it("formatWhen produit un libellé localisé (FR/EN)", () => {
     expect(formatWhen("2026-07-15", "fr")).toBe("15 juillet 2026");
     expect(formatWhen("2026-07-15", "en")).toBe("July 15, 2026");
@@ -234,5 +291,62 @@ describe("bookings — planification (date exacte choisie par le client)", () =>
   it("buildBooking laisse `when` vide quand non renseigné", () => {
     const b = buildBooking({ driverId: "d", clientId: "c", clientName: "X", hours: 1, total: 10 });
     expect(b.when).toBe("");
+  });
+});
+
+describe("bookings — statut « En course » dérivé", () => {
+  const NOW = new Date("2026-07-01T12:00:00").getTime();
+  const ride = (over: Partial<Booking> = {}): Booking =>
+    buildBooking({
+      driverId: "jeremy-driver",
+      clientId: "c1",
+      clientName: "Client",
+      hours: 3,
+      total: 300,
+      when: "2026-07-01T11:00",
+      ...over,
+    } as never);
+
+  const paid = (b: Booking): Booking => ({ ...b, status: "paid" });
+
+  it("calcule la durée selon l'unité", () => {
+    expect(bookingDurationMs(ride())).toBe(3 * 3600_000);
+    expect(bookingDurationMs(ride({ unit: "day", hours: 2 }))).toBe(48 * 3600_000);
+    expect(bookingDurationMs(ride({ unit: "transfer", hours: 1 }))).toBe(
+      TRANSFER_DURATION_MS
+    );
+  });
+
+  it("est en course entre le début et la fin", () => {
+    const b = paid(ride()); // 11:00 → 14:00
+    expect(isRideInProgress(b, NOW)).toBe(true);
+  });
+
+  it("n'est pas en course avant le début ni après la fin", () => {
+    const b = paid(ride({ when: "2026-07-01T15:00" }));
+    expect(isRideInProgress(b, NOW)).toBe(false);
+    const past = paid(ride({ when: "2026-07-01T06:00" })); // finie à 09:00
+    expect(isRideInProgress(past, NOW)).toBe(false);
+  });
+
+  it("ignore une course non payée, même à l'heure dite", () => {
+    for (const status of ["pending", "confirmed", "refused", "completed", "cancelled"] as const) {
+      const b = { ...ride(), status };
+      expect(isRideInProgress(b, NOW), status).toBe(false);
+    }
+  });
+
+  it("« En course » prime sur le statut manuel", () => {
+    const b = paid(ride());
+    expect(driverPresence([b], true, NOW)).toBe("in_ride");
+    // même si le chauffeur s'est mis hors ligne
+    expect(driverPresence([b], false, NOW)).toBe("in_ride");
+  });
+
+  it("retombe sur le statut manuel hors course", () => {
+    const later = paid(ride({ when: "2026-07-01T20:00" }));
+    expect(driverPresence([later], true, NOW)).toBe("online");
+    expect(driverPresence([later], false, NOW)).toBe("offline");
+    expect(driverPresence([], true, NOW)).toBe("online");
   });
 });
