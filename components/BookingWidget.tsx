@@ -42,6 +42,9 @@ const PREFILL_TRANSFER_KEY = "jw_booking_transfer";
 
 const units: BookingUnit[] = ["hour", "day", "transfer"];
 
+/** A start time is only usable once it reads HH:MM. */
+const TIME_RE = /^\d{2}:\d{2}$/;
+
 export function BookingWidget({ driver: base }: { driver: Driver }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -138,6 +141,9 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
   /** The route the flat fare applies to — replaces the hourly line. */
   const chosenDestination = servedDestinations.find((d) => d.id === transfer);
 
+  /** Hourly rides cannot be sent without a start time. */
+  const missingStartTime = unit === "hour" && !TIME_RE.test(time);
+
   const contact = () => {
     window.open(
       whatsappUrl(
@@ -155,6 +161,13 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
     }
     if (unit === "transfer" && !transfer) {
       setError(t("booking.transferNone"));
+      return;
+    }
+    // An hourly ride must start at a stated hour. `isFutureBooking` falls back
+    // to 23:59 when the time is blank, so without this an "à l'heure" booking
+    // could be validated — and sent to the driver — with no start time at all.
+    if (unit === "hour" && !TIME_RE.test(time)) {
+      setError(t("booking.timeRequired"));
       return;
     }
     const effectiveTime = unit === "day" ? "" : time;
@@ -322,6 +335,11 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
             }}
           />
         )}
+        {missingStartTime && (
+          <p className="pt-1 text-[11px] text-white/45">
+            {t("booking.timeRequired")}
+          </p>
+        )}
       </div>
 
       {/* Hours slider (hour mode only) */}
@@ -433,7 +451,7 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
             )}
             <button
               onClick={reserve}
-              disabled={loading}
+              disabled={loading || missingStartTime}
               className="btn-primary w-full disabled:opacity-60"
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}

@@ -78,7 +78,7 @@ export const drivers: Driver[] = [
     pricePerDay: 1500,
     pricePerKm: 3.2,
     bio: "Chauffeur privé depuis 12 ans, je mets l'excellence et la discrétion au cœur de chaque trajet. Spécialiste des transferts aéroport, événements VIP et déplacements d'affaires. Eau, presse et chargeurs à bord.",
-    badges: ["Top Pro", "Vérifié", "Super Host"],
+    badges: ["Top Pro", "Vérifié", "Grand Service"],
     mapX: 52,
     mapY: 41,
     reviews: [

@@ -93,17 +93,10 @@ export function DriverCard({ driver, index = 0 }: { driver: Driver; index?: numb
           </div>
 
           <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-4">
-            <div>
-              <div>
-                <span className="text-lg font-semibold text-white">
-                  €{driver.pricePerHour}
-                </span>
-                <span className="text-xs text-white/40"> {t("drivers.perHour")}</span>
-              </div>
-              <p className="mt-0.5 text-[11px] text-white/40">
-                €{driver.pricePerDay} {t("drivers.perDay")} · {t("drivers.quoteWeek")}
-              </p>
-            </div>
+            <p className="text-sm text-white/50">
+              {t("drivers.fromPrice")}{" "}
+              <span className="font-medium text-white">€{driver.pricePerHour}</span>
+            </p>
             <span className="rounded-full bg-white/5 px-4 py-2 text-xs font-medium text-white transition group-hover:bg-royal-500 group-hover:text-white">
               {t("drivers.viewProfile")}
             </span>

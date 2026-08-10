@@ -100,8 +100,6 @@ export function DriversExplorer() {
     });
     list = [...list].sort((a, b) => {
       if (sort === "rating") return b.rating - a.rating;
-      if (sort === "price-asc") return a.pricePerHour - b.pricePerHour;
-      if (sort === "price-desc") return b.pricePerHour - a.pricePerHour;
       if (sort === "experience") return b.experienceYears - a.experienceYears;
       return 0;
     });
@@ -264,8 +262,6 @@ export function DriversExplorer() {
             className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white outline-none [&>option]:text-ink-900"
           >
             <option value="rating">{t("drivers.sortRating")}</option>
-            <option value="price-asc">{t("drivers.sortPriceAsc")}</option>
-            <option value="price-desc">{t("drivers.sortPriceDesc")}</option>
             <option value="experience">{t("drivers.sortExperience")}</option>
           </select>
         </div>
