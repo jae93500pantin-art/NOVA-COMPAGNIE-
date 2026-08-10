@@ -141,8 +141,14 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
   /** The route the flat fare applies to — replaces the hourly line. */
   const chosenDestination = servedDestinations.find((d) => d.id === transfer);
 
-  /** Hourly rides cannot be sent without a start time. */
-  const missingStartTime = unit === "hour" && !TIME_RE.test(time);
+  /**
+   * Every unit that runs on a clock needs one. Only "day" is exempt — it books
+   * whole days and deliberately sends no time at all.
+   */
+  const missingStartTime = unit !== "day" && !TIME_RE.test(time);
+  const timeRequiredMessage = t(
+    unit === "transfer" ? "booking.timeRequiredTransfer" : "booking.timeRequired"
+  );
 
   const contact = () => {
     window.open(
@@ -163,11 +169,11 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
       setError(t("booking.transferNone"));
       return;
     }
-    // An hourly ride must start at a stated hour. `isFutureBooking` falls back
-    // to 23:59 when the time is blank, so without this an "à l'heure" booking
-    // could be validated — and sent to the driver — with no start time at all.
-    if (unit === "hour" && !TIME_RE.test(time)) {
-      setError(t("booking.timeRequired"));
+    // A ride booked on the clock must state its hour. `isFutureBooking` falls
+    // back to 23:59 when the time is blank, so without this an hourly ride —
+    // or worse, an airport pickup — could be sent to the driver with no time.
+    if (unit !== "day" && !TIME_RE.test(time)) {
+      setError(timeRequiredMessage);
       return;
     }
     const effectiveTime = unit === "day" ? "" : time;
@@ -336,9 +342,7 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
           />
         )}
         {missingStartTime && (
-          <p className="pt-1 text-[11px] text-white/45">
-            {t("booking.timeRequired")}
-          </p>
+          <p className="pt-1 text-[11px] text-white/45">{timeRequiredMessage}</p>
         )}
       </div>
 
