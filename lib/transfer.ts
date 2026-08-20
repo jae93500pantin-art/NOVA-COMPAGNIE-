@@ -171,6 +171,8 @@ export function sanitizeTransferDestinationIds(ids: unknown): string[] {
 }
 
 export const vehicles: TransferVehicle[] = [
+  // "business" is the entry class: berline **and** moto, same flat fare — a
+  // moto transfer is a vehicle option, not a different price.
   { id: "business", labelKey: "vehBusiness", price: 100 },
   { id: "van", labelKey: "vehVan", price: 150 },
   { id: "premium", labelKey: "vehPremium", price: 200 },
