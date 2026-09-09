@@ -76,8 +76,15 @@ export function AccountDashboard() {
       </motion.div>
 
       <div className="mt-5">
-        <Link href="/compte/profil" className="btn-ghost text-sm">
-          Éditer mon profil
+        {/* Un chauffeur n'a plus de fiche préexistante : l'annuaire ne contient
+            que de vrais inscrits. « Éditer » laissait croire qu'il y avait
+            quelque chose à modifier — le bouton l'envoie constituer son
+            dossier, là où il se crée réellement. */}
+        <Link
+          href={user.role === "driver" ? "/compte/onboarding" : "/compte/profil"}
+          className="btn-ghost text-sm"
+        >
+          {user.role === "driver" ? "Créer mon profil" : "Éditer mon profil"}
         </Link>
       </div>
 
