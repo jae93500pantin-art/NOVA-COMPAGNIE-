@@ -216,7 +216,6 @@ const fr = {
     submitDriver: "Créer mon profil chauffeur",
     submitRegister: "Créer mon compte",
     submitLogin: "Se connecter",
-    or: "ou",
     alreadyAccount: "Déjà un compte ?",
     noAccount: "Pas encore de compte ?",
     login: "Se connecter",
@@ -224,10 +223,6 @@ const fr = {
     errorCredentials: "Identifiant ou mot de passe incorrect.",
     errorGeneric: "Une erreur est survenue.",
     close: "Fermer",
-    google: "Google",
-    googleUnavailable:
-      "Connexion Google indisponible : l'authentification n'est pas configurée sur ce serveur.",
-    errorOauth: "La connexion avec Google a échoué. Réessayez.",
     passwordHint: "8 caractères minimum, dont une lettre et un chiffre.",
     // Inscription avec confirmation d'e-mail activée : aucune session n'est
     // ouverte tant que le lien n'est pas cliqué.
@@ -762,7 +757,6 @@ const en: Dict = {
     submitDriver: "Create my chauffeur profile",
     submitRegister: "Create my account",
     submitLogin: "Log in",
-    or: "or",
     alreadyAccount: "Already have an account?",
     noAccount: "No account yet?",
     login: "Log in",
@@ -770,10 +764,6 @@ const en: Dict = {
     errorCredentials: "Incorrect username or password.",
     errorGeneric: "Something went wrong.",
     close: "Close",
-    google: "Google",
-    googleUnavailable:
-      "Google sign-in unavailable: authentication is not configured on this server.",
-    errorOauth: "Google sign-in failed. Please try again.",
     passwordHint: "At least 8 characters, including one letter and one digit.",
     checkInbox: "Check your inbox",
     checkInboxBody:

@@ -7,9 +7,16 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * OAuth return URL (Google & any other Supabase provider).
- * Exchanges the one-time code for a session cookie, mirrors the provider
- * profile into `public.profiles`, then sends the user back where they were.
+ * Point de retour des liens à usage unique envoyés par Supabase.
+ *
+ * ⚠️ Il ne sert plus à la connexion Google : les fournisseurs externes ont été
+ * retirés. Il reste **indispensable** au mot de passe oublié — c'est ici que le
+ * code de récupération est échangé contre une session avant que le visiteur
+ * n'atteigne `/auth/nouveau-mot-de-passe` (cf. `RECOVERY_PATH`). Le supprimer
+ * casserait la réinitialisation, en silence.
+ *
+ * La recopie du profil est conservée : elle ne dépend d'aucun fournisseur et
+ * remet simplement `profiles` en phase avec les métadonnées du compte.
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);

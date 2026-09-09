@@ -30,7 +30,6 @@ import {
   type AuthField,
   type FieldErrors,
 } from "@/lib/authValidation";
-import { GoogleButton } from "./GoogleButton";
 
 type Role = "client" | "driver";
 type Mode = "login" | "register";
@@ -56,7 +55,8 @@ export function AuthForm({
   const [role, setRole] = useState<Role>(initialRole);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [loading, setLoading] = useState(false);
-  // Surfaced when /auth/callback bounces back after a failed OAuth round-trip.
+  // Affiché quand /auth/callback renvoie ici après un lien de récupération
+  // invalide ou expiré (les fournisseurs externes ont été retirés).
   const [error, setError] = useState<string | null>(params.get("auth_error"));
   /** Per-field messages, rendered under the input they belong to. */
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -426,19 +426,6 @@ export function AuthForm({
             : t("auth.submitLogin")}
         </button>
       </form>
-
-      <div className="my-6 flex items-center gap-3 text-xs text-white/30">
-        <span className="h-px flex-1 bg-white/10" />
-        {t("auth.or")}
-        <span className="h-px flex-1 bg-white/10" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <GoogleButton onError={setError} disabled={loading} />
-        <button type="button" className="btn-ghost text-sm">
-          Apple
-        </button>
-      </div>
 
       <p className="mt-6 text-center text-sm text-white/50">
         {isRegister ? t("auth.alreadyAccount") : t("auth.noAccount")}{" "}

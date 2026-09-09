@@ -120,7 +120,7 @@ app/
     layout.tsx
     login/page.tsx            Suspense → AuthForm mode="login"
     register/page.tsx         Suspense → AuthForm mode="register"
-    callback/route.ts         OAuth return URL: exchangeCodeForSession + sync `profiles`, then redirect back (?next=)
+    callback/route.ts         Lien Supabase à usage unique : exchangeCodeForSession + sync `profiles`. Ne sert plus à OAuth, mais reste requis par le mot de passe oublié.
   api/
     account/route.ts          DELETE → RGPD account erasure (service role)
     account/export/route.ts   GET → RGPD data export (JSON)
@@ -162,7 +162,6 @@ components/                   All client components unless noted
   CityShowcase
   AuthForm                    Client/driver toggle, Supabase auth + demo fallback. Props `embedded`/`onSuccess`/`onSwitchMode` when rendered inside AuthModal.
   AuthModal                   Login/register dialog opened from the Navbar (portal, z-40 under the navbar): X, outside click, Escape, body scroll lock, mobile bottom-sheet. No redirect.
-  GoogleButton                "Google" OAuth button (official G logo) → supabase.auth.signInWithOAuth({provider:"google"}) → /auth/callback
   CookieConsent               GDPR consent banner (mounted in (site)/layout)
   DataRights                  RGPD self-service (export/delete/consent)
 
@@ -267,38 +266,31 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
   payload: `validateRegistration` forces anything that is not `driver` to
   `client`, and the `profiles_protect_privileged` trigger blocks self-promotion.
 
-## Connexion Google (OAuth 2.0)
+## Fournisseurs externes : retirés (Google, Apple)
 
-- Flow: `GoogleButton` → `supabase.auth.signInWithOAuth({ provider: "google" })`
-  (PKCE) → Google consent → `GET /auth/callback?code=…&next=…` →
-  `exchangeCodeForSession` sets the session cookie → redirect back to the page the
-  visitor came from (`/compte` when they started on an `/auth/*` page).
-- `safeNext()` in the callback only accepts same-origin relative paths (no open
-  redirect). Failures bounce to `/auth/login?auth_error=…`, which `AuthForm`
-  displays in its error banner.
-- Data from Google: **email**, **given_name/family_name** (or `name`), **picture**.
-  Normalised by `lib/identity.ts`, exposed by `useAuth()` as
-  `firstName`/`lastName`/`email`/`avatarUrl`. The Navbar avatar shows the Google
-  photo when present, initials otherwise (CSP `img-src` allows
-  `*.googleusercontent.com`).
-- Persistence: the `on_auth_user_created` trigger (`supabase/schema.sql`) creates the
-  `public.profiles` row from the Google metadata (name + `avatar_url`); the callback
-  additionally syncs those columns for accounts that predate the provider link
-  (`profiles` has no insert policy — inserts go through the security-definer trigger).
-- **Setup (one-off)**:
-  1. Google Cloud Console → APIs & Services → Credentials → *OAuth client ID* →
-     Web application. Authorised redirect URI:
-     `https://<projet>.supabase.co/auth/v1/callback`. Add
-     `https://www.novacompagnie.com` and `http://localhost:3000` as authorised
-     JavaScript origins, and fill the OAuth consent screen.
-  2. Supabase dashboard → Authentication → Providers → **Google**: paste the Client
-     ID + Client Secret, enable. **The secret stays in Supabase — never in this repo.**
-  3. Supabase → Authentication → URL Configuration: Site URL
-     `https://www.novacompagnie.com`, redirect allow-list
-     `http://localhost:3000/**` + `https://www.novacompagnie.com/**`.
-  4. `.env.local` needs only `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-- Without Supabase keys the button stays visible but explains it is unavailable
-  (`auth.googleUnavailable`) — the no-keys demo keeps working.
+**Il n'y a plus qu'une seule façon de créer un compte et de se connecter :
+l'adresse e-mail et le mot de passe, via nos routes `/api/auth/*`.** Les boutons
+Google et Apple ont été retirés du formulaire (connexion **et** inscription :
+c'est le même composant), et `components/GoogleButton.tsx` supprimé.
+
+Ce qui reste en place, volontairement :
+
+- **`/auth/callback` est conservé.** Il ne sert plus à OAuth mais il reste
+  indispensable au **mot de passe oublié** : c'est là que le code de
+  récupération est échangé contre une session avant `/auth/nouveau-mot-de-passe`
+  (`RECOVERY_PATH`). ⚠️ Le supprimer casserait la réinitialisation en silence.
+- **`lib/identity.ts` est conservé** : il normalise les métadonnées d'un compte
+  (prénom/nom/avatar) quelle qu'en soit l'origine, y compris nos propres
+  inscriptions. Ses tests couvrent encore les formes Google.
+- **`*.googleusercontent.com` reste autorisé** dans la CSP `img-src` et les
+  hôtes d'images : des comptes créés avant ce retrait portent encore un
+  `avatar_url` Google, et le retirer afficherait une image cassée sur leur
+  profil.
+- Le provider Google peut rester activé côté Supabase — plus rien ne l'appelle.
+  Le désactiver dans le dashboard est propre mais facultatif.
+
+Pour le réactiver un jour : recréer un bouton appelant
+`supabase.auth.signInWithOAuth({ provider })`, le callback fait déjà le reste.
 
 ## Contact (WhatsApp)
 
