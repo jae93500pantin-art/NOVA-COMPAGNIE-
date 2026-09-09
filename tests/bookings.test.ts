@@ -128,24 +128,24 @@ describe("bookings — buildBooking (défauts & clamps)", () => {
 });
 
 describe("bookingBroker — création & cycle de vie", () => {
-  it("crée une réservation et la liste pour le chauffeur", () => {
+  it("crée une réservation et la liste pour le chauffeur", async () => {
     const driverId = `d-${Math.random()}`;
-    const b = createBooking({ driverId, clientId: "c1", clientName: "Sophie", hours: 3, total: 300 });
-    expect(listBookings(driverId)).toHaveLength(1);
-    expect(listBookings(driverId)[0].id).toBe(b.id);
+    const b = await createBooking({ driverId, clientId: "c1", clientName: "Sophie", hours: 3, total: 300 });
+    expect(await listBookings(driverId)).toHaveLength(1);
+    expect((await listBookings(driverId))[0].id).toBe(b.id);
   });
 
-  it("notifie les abonnés à la création et au changement de statut", () => {
+  it("notifie les abonnés à la création et au changement de statut", async () => {
     const driverId = `d-${Math.random()}`;
     const events: BookingEvent[] = [];
-    const unsub = subscribeBookings(driverId, (e) => events.push(e));
+    const unsub = await subscribeBookings(driverId, (e) => events.push(e));
     // snapshot initial
     expect(events[0].type).toBe("snapshot");
 
-    const b = createBooking({ driverId, clientId: "c1", clientName: "Sophie", hours: 2, total: 200 });
+    const b = await createBooking({ driverId, clientId: "c1", clientName: "Sophie", hours: 2, total: 200 });
     expect(events.some((e) => e.type === "booking")).toBe(true);
 
-    updateBookingStatus(driverId, b.id, "confirmed");
+    await updateBookingStatus(driverId, b.id, "confirmed");
     const statusEvt = events.find((e) => e.type === "status");
     expect(statusEvt).toBeTruthy();
     if (statusEvt && statusEvt.type === "status") {
@@ -154,25 +154,25 @@ describe("bookingBroker — création & cycle de vie", () => {
     unsub();
   });
 
-  it("refuse une transition invalide", () => {
+  it("refuse une transition invalide", async () => {
     const driverId = `d-${Math.random()}`;
-    const b = createBooking({ driverId, clientId: "c1", clientName: "X", hours: 1, total: 50 });
-    expect(updateBookingStatus(driverId, b.id, "confirmed")).not.toBeNull();
+    const b = await createBooking({ driverId, clientId: "c1", clientName: "X", hours: 1, total: 50 });
+    expect(await updateBookingStatus(driverId, b.id, "confirmed")).not.toBeNull();
     // confirmée → on peut payer, mais plus refuser
-    expect(updateBookingStatus(driverId, b.id, "refused")).toBeNull();
-    expect(updateBookingStatus(driverId, b.id, "paid")).not.toBeNull();
+    expect(await updateBookingStatus(driverId, b.id, "refused")).toBeNull();
+    expect(await updateBookingStatus(driverId, b.id, "paid")).not.toBeNull();
   });
 
-  it("retourne null pour une réservation inconnue", () => {
-    expect(updateBookingStatus("ghost", "nope", "confirmed")).toBeNull();
+  it("retourne null pour une réservation inconnue", async () => {
+    expect(await updateBookingStatus("ghost", "nope", "confirmed")).toBeNull();
   });
 
-  it("n'envoie plus d'événement après désabonnement", () => {
+  it("n'envoie plus d'événement après désabonnement", async () => {
     const driverId = `d-${Math.random()}`;
     const events: BookingEvent[] = [];
-    const unsub = subscribeBookings(driverId, (e) => events.push(e));
+    const unsub = await subscribeBookings(driverId, (e) => events.push(e));
     unsub();
-    createBooking({ driverId, clientId: "c", clientName: "X", hours: 1, total: 10 });
+    await createBooking({ driverId, clientId: "c", clientName: "X", hours: 1, total: 10 });
     // seul le snapshot initial reçu
     expect(events.filter((e) => e.type === "booking")).toHaveLength(0);
   });

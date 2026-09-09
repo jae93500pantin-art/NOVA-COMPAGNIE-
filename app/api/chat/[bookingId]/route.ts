@@ -44,7 +44,7 @@ function driverDisplayName(driverId: string): string {
 /** Resolve + authorise a request. Returns the booking and the sender's role. */
 async function authorise(bookingId: string, claimedSenderId: string) {
   if (!isValidRoom(bookingId)) return { error: "Invalid booking", status: 400 } as const;
-  const booking = getBookingById(bookingId);
+  const booking = await getBookingById(bookingId);
   if (!booking) return { error: "Unknown booking", status: 404 } as const;
 
   const session = await getServerUser();
@@ -93,7 +93,7 @@ export async function GET(
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       let closed = false;
       const send = (e: ChatEvent | { type: "ping" }) => {
         if (closed) return;
@@ -104,7 +104,19 @@ export async function GET(
         }
       };
 
-      const unsub = subscribeChat(bookingId, send);
+      // L'historique est relu en base au premier accès : comme pour les
+      // courses, un abonné dont le client a déjà raccroché doit repartir.
+      const unsub = await subscribeChat(bookingId, auth.booking, send);
+      if (req.signal.aborted) {
+        unsub();
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
+        return;
+      }
+
       const heartbeat = setInterval(() => send({ type: "ping" }), 15000);
 
       const cleanup = () => {
@@ -180,13 +192,22 @@ export async function POST(
           claimedName
       : claimedName;
 
-  const message = postMessage({
-    bookingId: params.bookingId,
-    role: auth.role,
-    senderId: auth.senderId,
-    senderName,
-    text,
-  });
+  // Le compte auteur est ce que la base conserve : le slug d'un chauffeur peut
+  // changer, son compte non. Vide en démo, où aucune session n'existe.
+  const authorAccountId =
+    auth.session.state === "ok" ? auth.session.user.id : "";
+
+  const message = await postMessage(
+    {
+      bookingId: params.bookingId,
+      role: auth.role,
+      senderId: auth.senderId,
+      senderName,
+      text,
+    },
+    authorAccountId,
+    auth.booking
+  );
 
   return Response.json({ ok: true, message });
 }
@@ -199,8 +220,9 @@ export async function HEAD(
   const senderId = sanitizeText(req.nextUrl.searchParams.get("as"), 64);
   const auth = await authorise(params.bookingId, senderId);
   if ("error" in auth) return new Response(null, { status: auth.status });
+  const history = await listMessages(params.bookingId, auth.booking);
   return new Response(null, {
     status: 200,
-    headers: { "X-Chat-Messages": String(listMessages(params.bookingId).length) },
+    headers: { "X-Chat-Messages": String(history.length) },
   });
 }

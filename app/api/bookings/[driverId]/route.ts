@@ -71,7 +71,7 @@ export async function GET(
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       let closed = false;
       const send = (e: BookingEvent | { type: "ping" }) => {
         if (closed) return;
@@ -82,7 +82,20 @@ export async function GET(
         }
       };
 
-      const unsub = subscribeBookings(driverId, send);
+      // La salle est relue en base au premier accès, donc l'abonnement est
+      // asynchrone. Un client qui raccroche pendant cette lecture laisserait
+      // sinon un abonné orphelin, qui écrirait dans un flux déjà fermé.
+      const unsub = await subscribeBookings(driverId, send);
+      if (req.signal.aborted) {
+        unsub();
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
+        return;
+      }
+
       const heartbeat = setInterval(() => send({ type: "ping" }), 15000);
 
       const cleanup = () => {
@@ -185,7 +198,7 @@ export async function POST(
     return Response.json({ error: "Invalid amount" }, { status: 400 });
   }
 
-  const booking = createBooking({
+  const booking = await createBooking({
     driverId,
     clientId,
     // Nom et e-mail viennent aussi de la session quand elle existe : les
@@ -263,7 +276,7 @@ export async function PATCH(
     if (session.state === "anonymous") {
       return Response.json({ error: "Authentification requise" }, { status: 401 });
     }
-    const target = getBookingById(bookingId);
+    const target = await getBookingById(bookingId);
     if (!target || target.driverId !== driverId) {
       return Response.json({ error: "Cannot update" }, { status: 409 });
     }
@@ -279,7 +292,7 @@ export async function PATCH(
     }
   }
 
-  const updated = updateBookingStatus(driverId, bookingId, status);
+  const updated = await updateBookingStatus(driverId, bookingId, status);
   if (!updated) {
     return Response.json({ error: "Cannot update" }, { status: 409 });
   }

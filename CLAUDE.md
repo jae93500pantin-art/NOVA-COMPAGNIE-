@@ -363,8 +363,12 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
   if `STRIPE_SECRET_KEY` set, else demo) → on success the booking is marked **paid**
   (`PATCH status:paid`, via `MarkPaid` on the Stripe return page, or directly in demo).
 - Nav: drivers get "Mes courses", clients get "Mes réservations" in the account menu.
-- In-memory broker `lib/bookingBroker.ts` (per-driver rooms, SSE), pure logic + types in
-  `lib/bookings.ts`. Client identity via `lib/clientBookings.ts`.
+- Broker `lib/bookingBroker.ts` (salles par chauffeur, SSE) = copie vive ;
+  durabilité dans `public.bookings` via `lib/persistence.ts` (§ Persistance).
+  Logique pure + types dans `lib/bookings.ts`. Identité client :
+  `clientIdOf()` dans `lib/clientBookings.ts` — il doit choisir **exactement**
+  comme le serveur, sinon le filtre d'affichage ne correspond plus à ce que la
+  session a écrit et la page se vide sans erreur.
 - Unit-tested in `tests/bookings.test.ts` (23) + `tests/calendar.test.ts` (18). Verified live end-to-end:
   request → driver receives → accept → client pays → both see "Payée" without reload.
 
@@ -408,6 +412,45 @@ chauffeur s'attribuerait la salle de réservations d'un autre.
 ⚠️ **Mode démo préservé** : sans clés Supabase le serveur ne voit aucune session,
 et ces contrôles se désactivent plutôt que de bloquer la démonstration.
 
+## Persistance (réservations, messages, avis)
+
+- **Les brokers ne sont plus la seule copie.** `lib/persistence.ts`
+  (`server-only`) écrit et relit `bookings` / `messages` / `reviews` ; les
+  brokers gardent la copie vive et le pub/sub SSE. Chaque salle est **relue au
+  premier accès** puis tenue à jour **en écriture immédiate**. Un redémarrage
+  n'efface plus l'historique d'un client, ses fils et ses avis.
+- **Le temps réel ne traverse pas le process** : deux serveurs ne se verraient
+  pas l'un l'autre. Assumé tant que le déploiement est une VM à un process ; le
+  jour venu c'est Supabase Realtime qui remplacera le pub/sub, pas ce module.
+- **Service role assumé.** Les routes vérifient déjà identité + légitimité et
+  font autorité, donc elles écrivent avec le service role (comme `/admin`). La
+  RLS ne saurait de toute façon pas exprimer la règle : un chauffeur y est
+  désigné par un **slug d'annuaire en dur**, pas par une ligne qu'il possède.
+  Les policies d'écriture destinées à un jeton utilisateur ont été retirées —
+  elles ne protégeaient rien de plus et laissaient une seconde porte,
+  directement sur PostgREST, contournant ces règles. La lecture reste ouverte
+  aux parties.
+- **`lib/dbRows.ts` est le mapping pur** (testé, `tests/dbRows.test.ts`, 17).
+  Les trois pièges qu'il neutralise : `numeric` revient de PostgREST en
+  **chaîne** (un total recopié tel quel casse toute comparaison) ; `Number("")`
+  vaut **0**, donc une colonne vide passerait pour une course de zéro heure ;
+  l'heure de prise en charge est **locale et sans fuseau** — elle est conservée
+  telle quelle dans `when_local`, `start_at` ne servant qu'au tri.
+- **Les identifiants viennent de Postgres.** Deux générateurs concurrents
+  finiraient par désigner la même course sous deux ids, or le chat et les avis
+  s'y rattachent. Les uuid passent `ROOM_RE` (36 car. ≤ 40), donc rien à changer
+  côté validation. En démo, les ids `bk-…` d'origine sont conservés.
+- **Migration** : bloc 4 de `supabase/schema.sql` (additif et rejouable), à
+  appliquer avec `scripts/apply-schema.ps1`. Il ajoute `driver_slug` sur
+  `bookings`/`reviews` — l'annuaire étant encore en dur, aucune clé étrangère
+  vers `drivers` ne peut tenir — plus les colonnes que le domaine porte déjà
+  (nom/e-mail client, unité, transfert, adresses).
+- ⚠️ **Sans `SUPABASE_SERVICE_ROLE_KEY`, rien de tout cela ne s'active** :
+  `isPersistenceEnabled` est faux et le comportement éphémère d'origine est
+  conservé. Une écriture ratée est journalisée sans faire échouer la requête —
+  perdre la course d'un client parce que la base a hoqueté serait pire que
+  perdre sa durabilité.
+
 ## Messagerie de course (chat client ↔ chauffeur)
 
 - **Scope: one thread per booking.** There is no free-form inbox — a conversation
@@ -438,11 +481,12 @@ et ces contrôles se désactivent plutôt que de bloquer la démonstration.
 - **Closing**: `updateBookingStatus` and the auto-complete sweep both call
   `closeChat(bookingId)`, which pushes a `closed` event so open UIs flip to
   read-only without a reload.
-- **Persistence**: in-memory (`lib/chatBroker.ts`), ephemeral like bookings. The
-  production path is ready but **not wired**: `public.messages` in
-  `supabase/schema.sql`, with `is_booking_participant()` /
-  `booking_chat_is_open()` enforcing the exact same rules in RLS, plus the table
-  added to the `supabase_realtime` publication.
+- **Persistance** : `lib/chatBroker.ts` garde la copie vive et le pub/sub,
+  `public.messages` la durabilité — historique relu au premier accès, écriture
+  immédiate (voir § Persistance). Le broker reçoit les deux ids de la
+  réservation : en base un message porte le **compte** de son auteur, alors que
+  l'interface raisonne sur les parties de la course, et `rowToMessage` fait la
+  traduction. Éphémère sans clé de service, comme avant.
 - i18n under `chat.*`. Tested in `tests/chat.test.ts` (17).
 
 ## Certified reviews (avis certifiés)
@@ -467,7 +511,10 @@ et ces contrôles se désactivent plutôt que de bloquer la démonstration.
   `ratingSummary` folds the driver record's history in by weight, so one review
   cannot swing an established reputation.
 - API `app/api/reviews/[driverId]` (GET public list, POST publish, 5/min/IP),
-  store `lib/reviewBroker.ts` (in-memory, `server-only`, 200/driver).
+  store `lib/reviewBroker.ts` (copie vive, `server-only`, 200/chauffeur),
+  persisté dans `public.reviews` (voir § Persistance). La durabilité compte plus
+  ici qu'ailleurs : un avis est le seul contenu que son auteur ne peut pas
+  reproduire — il faudrait recommencer une course.
   L'auteur vient de la **session** (`getServerUser`), jamais du corps : « avis
   certifié » ne veut dire quelque chose que si seule la personne qui a
   réellement commandé ce chauffeur peut publier. Le nom signé suit l'auteur.
@@ -614,8 +661,11 @@ runtime; never hard-require a key.
 - **Booking date/time** is processing necessary for the service (Art. 6(1)(b));
   no extra consent. The home-search date prefill uses sessionStorage
   `jw_booking_date` — strictly-necessary functional storage (no tracking,
-  cleared on tab close), so it needs no consent. Bookings stay ephemeral
-  (in-memory broker), no new persistence.
+  cleared on tab close), so it needs no consent. ⚠️ Les réservations, messages
+  et avis sont désormais **persistés** (§ Persistance) : ils entrent donc dans
+  le périmètre de l'export et de l'effacement RGPD — `delete_my_account()`
+  s'appuie sur les `on delete cascade` depuis `profiles`, à revérifier si la
+  route d'export doit les inclure.
 
 ## Internationalisation (FR / EN)
 

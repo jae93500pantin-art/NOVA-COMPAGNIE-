@@ -544,3 +544,153 @@ begin
   return new;
 end;
 $$;
+
+
+-- ─────────────────────────────────────────────────────────────
+-- BLOC 4 — Persistance des réservations, messages et avis
+--
+-- Les trois vivaient dans des brokers en mémoire : un redémarrage du process
+-- les effaçait. Le schéma les prévoyait, mais trois écarts empêchaient de les
+-- y écrire telles quelles.
+--
+-- 1. `bookings.driver_id` référence `public.drivers`, or l'annuaire est encore
+--    constitué de données fixes (`lib/drivers.ts`) : la table est vide, donc
+--    aucune clé étrangère ne peut tenir. On stocke le slug, exactement comme
+--    `profiles.driver_slug` rattache déjà un compte chauffeur à sa fiche.
+-- 2. La réservation applicative porte plus que la table : nom et e-mail du
+--    client (les e-mails de confirmation en dépendent), unité de facturation,
+--    destination de transfert, adresses.
+-- 3. L'heure de prise en charge est saisie en heure LOCALE, sans fuseau
+--    (« 2026-09-12T14:30 »). La convertir en timestamptz à l'écriture ferait
+--    dériver l'affichage d'un fuseau à l'autre : on conserve la chaîne telle
+--    quelle et `start_at` ne sert plus qu'au tri.
+--
+-- Migration additive et rejouable : rien n'est supprimé, les colonnes
+-- d'origine deviennent seulement facultatives.
+-- ─────────────────────────────────────────────────────────────
+
+alter table public.bookings
+  add column if not exists driver_slug  text,
+  add column if not exists client_name  text not null default '',
+  add column if not exists client_email text not null default '',
+  add column if not exists unit         text not null default 'hour',
+  add column if not exists transfer     text,
+  add column if not exists pickup       text not null default '',
+  add column if not exists dropoff      text not null default '',
+  add column if not exists when_local   text not null default '';
+
+alter table public.bookings alter column driver_id drop not null;
+alter table public.bookings alter column start_at  drop not null;
+
+do $$ begin
+  alter table public.bookings add constraint bookings_unit_known
+    check (unit in ('hour', 'day', 'transfer'));
+exception when duplicate_object then null; end $$;
+
+-- Les deux lectures de l'application : la salle d'un chauffeur, l'historique
+-- d'un client. Toutes deux du plus récent au plus ancien.
+create index if not exists bookings_driver_slug_idx
+  on public.bookings (driver_slug, created_at desc);
+create index if not exists bookings_client_idx
+  on public.bookings (client_id, created_at desc);
+
+-- ── Messages : qui parle, et sous quel nom ───────────────────
+-- `sender_id` est le compte auteur. Le rôle est stocké à part parce que
+-- l'interface n'affiche pas un compte mais une PARTIE de la course : côté
+-- chauffeur, la bulle porte le nom de la fiche publique, pas celui du compte.
+alter table public.messages
+  add column if not exists sender_role text not null default 'client',
+  add column if not exists sender_name text not null default '';
+
+do $$ begin
+  alter table public.messages add constraint messages_sender_role_known
+    check (sender_role in ('client', 'driver'));
+exception when duplicate_object then null; end $$;
+
+-- ── Avis : même pont vers l'annuaire en dur ──────────────────
+alter table public.reviews
+  add column if not exists driver_slug text,
+  add column if not exists author_name text not null default '';
+
+alter table public.reviews alter column driver_id drop not null;
+
+create index if not exists reviews_driver_slug_idx
+  on public.reviews (driver_slug, created_at desc);
+
+/**
+ * `refresh_driver_rating()` met à jour `public.drivers`, qui est vide tant que
+ * l'annuaire n'est pas migré : le trigger ne trouve alors aucune ligne et ne
+ * fait rien. On le rend explicitement tolérant à un `driver_id` nul plutôt que
+ * de le laisser dépendre du hasard d'un `update` sans correspondance.
+ */
+create or replace function public.refresh_driver_rating()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target uuid := coalesce(new.driver_id, old.driver_id);
+begin
+  if target is null then return null; end if;
+  update public.drivers d
+     set rating = coalesce((
+           select round(avg(r.rating)::numeric, 2)
+             from public.reviews r where r.driver_id = target
+         ), 5.0),
+         reviews_count = (
+           select count(*) from public.reviews r where r.driver_id = target
+         )
+   where d.id = target;
+  return null;
+end;
+$$;
+
+/**
+ * RLS : l'API est le seul auteur.
+ *
+ * Les routes vérifient déjà l'identité (session) puis la légitimité
+ * (`bookingActor`/`canActOn`, `canReviewBooking`) et écrivent avec le service
+ * role, qui contourne la RLS — comme le back-office. Les policies d'écriture
+ * destinées à un jeton utilisateur sont donc retirées : elles ne protégeaient
+ * rien de plus et laissaient une seconde porte, directement sur PostgREST,
+ * qui ne passait par aucune de ces règles.
+ *
+ * La LECTURE reste ouverte aux parties, pour qu'un futur accès direct (ou un
+ * export RGPD) n'ait pas besoin du service role. Un chauffeur est reconnu par
+ * le slug porté par son profil, seul lien disponible vers l'annuaire en dur.
+ */
+drop policy if exists "bookings_select"         on public.bookings;
+drop policy if exists "bookings_insert"         on public.bookings;
+drop policy if exists "bookings_update_parties" on public.bookings;
+create policy "bookings_select" on public.bookings for select using (
+  auth.uid() = client_id
+  or exists (
+    select 1 from public.profiles p
+     where p.id = auth.uid()
+       and p.driver_slug is not null
+       and p.driver_slug = bookings.driver_slug
+  )
+);
+
+drop policy if exists "messages_select_parties" on public.messages;
+drop policy if exists "messages_insert_open"    on public.messages;
+create policy "messages_select_parties" on public.messages for select using (
+  exists (
+    select 1 from public.bookings b
+     where b.id = messages.booking_id
+       and (
+         b.client_id = auth.uid()
+         or exists (
+           select 1 from public.profiles p
+            where p.id = auth.uid()
+              and p.driver_slug is not null
+              and p.driver_slug = b.driver_slug
+         )
+       )
+  )
+);
+
+-- Les avis restent en lecture publique : ils sont l'argument de la fiche.
+drop policy if exists "reviews_insert" on public.reviews;
+drop policy if exists reviews_insert_after_completed_ride on public.reviews;

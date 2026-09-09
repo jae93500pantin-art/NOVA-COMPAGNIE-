@@ -145,48 +145,53 @@ describe("chat — affichage", () => {
 });
 
 describe("chatBroker — diffusion temps réel", () => {
-  it("envoie l'historique à l'abonnement puis chaque nouveau message", () => {
+  // Les deux parties de la course, telles que le broker les reçoit désormais :
+  // il en a besoin pour retraduire un message relu en base vers les ids que
+  // l'interface compare.
+  const PARTIES = { clientId: CLIENT, driverId: DRIVER };
+
+  it("envoie l'historique à l'abonnement puis chaque nouveau message", async () => {
     const id = `bk-test-${Math.random().toString(36).slice(2)}`;
-    postMessage({ bookingId: id, role: "client", senderId: CLIENT, text: "Bonjour" });
+    await postMessage({ bookingId: id, role: "client", senderId: CLIENT, text: "Bonjour" }, "", PARTIES);
 
     const events: ChatEvent[] = [];
-    const unsub = subscribeChat(id, (e) => events.push(e));
+    const unsub = await subscribeChat(id, PARTIES, (e) => events.push(e));
 
     expect(events[0]).toMatchObject({ type: "snapshot" });
     expect((events[0] as { messages: ChatMessage[] }).messages).toHaveLength(1);
 
-    postMessage({ bookingId: id, role: "driver", senderId: DRIVER, text: "J'arrive" });
+    await postMessage({ bookingId: id, role: "driver", senderId: DRIVER, text: "J'arrive" }, "", PARTIES);
     expect(events[1]).toMatchObject({ type: "message" });
-    expect(listMessages(id)).toHaveLength(2);
+    expect(await listMessages(id, PARTIES)).toHaveLength(2);
 
     unsub();
-    postMessage({ bookingId: id, role: "client", senderId: CLIENT, text: "ignoré" });
+    await postMessage({ bookingId: id, role: "client", senderId: CLIENT, text: "ignoré" }, "", PARTIES);
     expect(events).toHaveLength(2); // plus d'événement après désabonnement
     dropChat(id);
   });
 
-  it("prévient les abonnés quand la course est clôturée", () => {
+  it("prévient les abonnés quand la course est clôturée", async () => {
     const id = `bk-test-${Math.random().toString(36).slice(2)}`;
     const fn = vi.fn();
-    const unsub = subscribeChat(id, fn);
+    const unsub = await subscribeChat(id, PARTIES, fn);
     closeChat(id);
     expect(fn).toHaveBeenLastCalledWith({ type: "closed", bookingId: id });
     unsub();
     dropChat(id);
   });
 
-  it("conserve l'historique après clôture (archivage, pas suppression)", () => {
+  it("conserve l'historique après clôture (archivage, pas suppression)", async () => {
     const id = `bk-test-${Math.random().toString(36).slice(2)}`;
-    postMessage({ bookingId: id, role: "client", senderId: CLIENT, text: "a" });
+    await postMessage({ bookingId: id, role: "client", senderId: CLIENT, text: "a" }, "", PARTIES);
     closeChat(id);
-    expect(listMessages(id)).toHaveLength(1);
+    expect(await listMessages(id, PARTIES)).toHaveLength(1);
     dropChat(id);
   });
 
-  it("supprime tout le fil avec dropChat (effacement RGPD)", () => {
+  it("supprime tout le fil avec dropChat (effacement RGPD)", async () => {
     const id = `bk-test-${Math.random().toString(36).slice(2)}`;
-    postMessage({ bookingId: id, role: "client", senderId: CLIENT, text: "a" });
+    await postMessage({ bookingId: id, role: "client", senderId: CLIENT, text: "a" }, "", PARTIES);
     dropChat(id);
-    expect(listMessages(id)).toHaveLength(0);
+    expect(await listMessages(id, PARTIES)).toHaveLength(0);
   });
 });

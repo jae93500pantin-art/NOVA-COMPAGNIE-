@@ -1,10 +1,13 @@
 /**
- * In-memory store + pub/sub for booking chat threads (demo, server-side).
+ * Store + pub/sub des fils de discussion, un par réservation.
  *
- * One room per booking id. Messages live only in the Node process and are
- * broadcast over SSE so the client and the driver see them in real time on
- * different devices. Ephemeral by design (GDPR-friendly demo) — the persistent
- * version is the Supabase `messages` table in supabase/schema.sql.
+ * Comme pour les courses, la salle en mémoire reste la copie vive qui alimente
+ * le SSE, mais elle n'est plus la seule : quand la persistance est configurée,
+ * l'historique est relu depuis `public.messages` au premier accès puis écrit
+ * au fil de l'eau. Un redémarrage ne fait plus disparaître la conversation
+ * d'une course payée sous les yeux de ses deux participants.
+ *
+ * Sans clés de service, le comportement éphémère d'origine est conservé.
  */
 
 import {
@@ -13,6 +16,11 @@ import {
   type ChatMessage,
   type NewMessageInput,
 } from "./chat";
+import type { Booking } from "./bookings";
+import { insertMessage, isPersistenceEnabled, loadMessages } from "./persistence";
+
+/** Les deux ids par lesquels l'interface reconnaît une partie de la course. */
+type Parties = Pick<Booking, "clientId" | "driverId">;
 
 type Event =
   | { type: "snapshot"; messages: ChatMessage[] }
@@ -24,6 +32,9 @@ type Subscriber = (e: Event) => void;
 interface Room {
   messages: ChatMessage[];
   subscribers: Set<Subscriber>;
+  /** Historique relu depuis la base. Une seule fois : ce process est seul à écrire. */
+  hydrated: boolean;
+  hydrating?: Promise<void>;
 }
 
 interface State {
@@ -37,19 +48,59 @@ if (!g.__chatBroker) g.__chatBroker = state;
 function getRoom(bookingId: string): Room {
   let r = state.rooms.get(bookingId);
   if (!r) {
-    r = { messages: [], subscribers: new Set() };
+    r = {
+      messages: [],
+      subscribers: new Set(),
+      hydrated: !isPersistenceEnabled,
+    };
     state.rooms.set(bookingId, r);
   }
   return r;
 }
 
-export function listMessages(bookingId: string): ChatMessage[] {
-  return getRoom(bookingId).messages;
+/**
+ * Salle prête à être lue.
+ *
+ * Les parties de la course sont nécessaires pour relire l'historique : en base
+ * un message porte le compte de son auteur, alors que l'interface raisonne sur
+ * les deux ids de la réservation. La traduction se fait ici, une fois.
+ */
+async function ready(bookingId: string, parties: Parties): Promise<Room> {
+  const room = getRoom(bookingId);
+  if (room.hydrated) return room;
+  if (!room.hydrating) {
+    room.hydrating = (async () => {
+      const stored = await loadMessages(bookingId, parties);
+      const known = new Set(room.messages.map((m) => m.id));
+      const merged = stored.filter((m) => !known.has(m.id)).concat(room.messages);
+      room.messages = merged.slice(-MAX_CHAT_HISTORY);
+      room.hydrated = true;
+    })().finally(() => {
+      room.hydrating = undefined;
+    });
+  }
+  await room.hydrating;
+  return room;
 }
 
-export function postMessage(input: NewMessageInput): ChatMessage {
-  const room = getRoom(input.bookingId);
-  const message = buildMessage(input);
+export async function listMessages(
+  bookingId: string,
+  parties: Parties
+): Promise<ChatMessage[]> {
+  return (await ready(bookingId, parties)).messages;
+}
+
+export async function postMessage(
+  input: NewMessageInput,
+  authorAccountId: string,
+  parties: Parties
+): Promise<ChatMessage> {
+  const room = await ready(input.bookingId, parties);
+  const draft = buildMessage(input);
+  // Comme pour une course, l'identifiant vient de la base quand elle répond :
+  // deux générateurs concurrents rendraient l'historique impossible à
+  // dédoublonner à la relecture.
+  const message = (await insertMessage(draft, authorAccountId, parties)) ?? draft;
   room.messages.push(message);
   // Bound the history so a long-lived process can't grow without limit.
   if (room.messages.length > MAX_CHAT_HISTORY) {
@@ -59,8 +110,12 @@ export function postMessage(input: NewMessageInput): ChatMessage {
   return message;
 }
 
-export function subscribeChat(bookingId: string, fn: Subscriber): () => void {
-  const room = getRoom(bookingId);
+export async function subscribeChat(
+  bookingId: string,
+  parties: Parties,
+  fn: Subscriber
+): Promise<() => void> {
+  const room = await ready(bookingId, parties);
   room.subscribers.add(fn);
   // Send the current history immediately.
   safe(fn, { type: "snapshot", messages: room.messages });

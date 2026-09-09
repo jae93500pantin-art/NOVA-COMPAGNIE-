@@ -43,7 +43,7 @@ export async function GET(
   if (!isValidRoom(driverId) || !getDriver(driverId)) {
     return Response.json({ error: "Invalid driver" }, { status: 400 });
   }
-  return Response.json({ reviews: listReviews(driverId) });
+  return Response.json({ reviews: await listReviews(driverId) });
 }
 
 export async function POST(
@@ -89,8 +89,8 @@ export async function POST(
   }
 
   // Then the rule that certifies the review: a completed ride, theirs, unreviewed.
-  const booking = getBookingById(bookingId);
-  const existing = hasReviewForBooking(driverId, bookingId)
+  const booking = await getBookingById(bookingId);
+  const existing = (await hasReviewForBooking(driverId, bookingId))
     ? [{ bookingId }]
     : [];
   const verdict = canReviewBooking(
@@ -107,7 +107,7 @@ export async function POST(
     );
   }
 
-  const review = addReview({
+  const review = await addReview({
     bookingId,
     driverId,
     clientId,
