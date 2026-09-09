@@ -17,7 +17,9 @@ interface SendArgs {
 }
 
 export async function sendEmail({ to, subject, html }: SendArgs): Promise<boolean> {
-  if (!isEmailConfigured || !to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+  if (!isEmailConfigured) return false;
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    console.warn(`[email] adresse invalide, envoi ignoré : ${to}`);
     return false;
   }
   try {
@@ -29,8 +31,31 @@ export async function sendEmail({ to, subject, html }: SendArgs): Promise<boolea
       },
       body: JSON.stringify({ from: serverEnv.emailFrom, to, subject, html }),
     });
-    return res.ok;
-  } catch {
+
+    // Le corps de la réponse est la seule trace exploitable d'un envoi : sans
+    // lui, un refus de Resend (domaine non vérifié, destinataire interdit,
+    // quota) se réduit à `false` et devient indiagnosticable. On le journalise
+    // — sans jamais écrire la clé, qui ne circule que dans l'en-tête.
+    const body = (await res.json().catch(() => null)) as
+      | { id?: string; message?: string; name?: string }
+      | null;
+
+    if (!res.ok) {
+      console.error(
+        `[email] Resend a refusé l'envoi vers ${to} (HTTP ${res.status})` +
+          `${body?.name ? ` ${body.name}` : ""}${body?.message ? ` : ${body.message}` : ""}`
+      );
+      return false;
+    }
+
+    // L'id permet de retrouver la livraison dans les journaux Resend. Accepté
+    // n'est pas livré : un rebond ou un classement en spam arrive après.
+    console.info(`[email] accepté par Resend pour ${to} — id ${body?.id ?? "?"}`);
+    return true;
+  } catch (err) {
+    console.error(
+      `[email] échec réseau vers Resend : ${err instanceof Error ? err.message : String(err)}`
+    );
     return false;
   }
 }
