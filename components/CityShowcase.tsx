@@ -5,6 +5,19 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 import { cities } from "@/lib/cities";
+import { driversByCity } from "@/lib/drivers";
+
+/**
+ * Le compte affiché est **dérivé de l'annuaire réel**, jamais saisi.
+ * `city.driversCount` annonçait 248 chauffeurs à Paris alors qu'il n'y en avait
+ * cinq, inventés : sur un site où l'on peut réserver, c'est une affirmation
+ * commerciale fausse. Tant que personne n'est inscrit, la carte le dit.
+ */
+function driversLabel(cityId: string): string {
+  const n = driversByCity(cityId).length;
+  if (n === 0) return "Bientôt disponible";
+  return `${n} chauffeur${n > 1 ? "s" : ""}`;
+}
 
 export function CityShowcase() {
   return (
@@ -42,7 +55,7 @@ export function CityShowcase() {
               <div>
                 <h3 className="text-xl font-semibold text-white">{c.name}</h3>
                 <p className="mt-0.5 text-sm text-white/50">
-                  {c.country} · {c.driversCount} chauffeurs
+                  {c.country} · {driversLabel(c.id)}
                 </p>
               </div>
               <span className="grid h-10 w-10 place-items-center rounded-full glass transition group-hover:bg-royal-500">

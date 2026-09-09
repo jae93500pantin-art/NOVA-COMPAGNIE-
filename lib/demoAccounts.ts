@@ -37,9 +37,14 @@ export const demoAccounts: DemoAccount[] = [
     username: "driver",
     password: "driver",
     role: "driver",
-    firstName: "Jérémy",
-    lastName: "Dubois",
-    driverId: "jeremy-driver",
+    firstName: "Compte",
+    lastName: "Chauffeur",
+    // ⚠️ Plus aucune fiche publique rattachée. Ce compte pointait vers
+    // `jeremy-driver`, l'un des cinq profils inventés retirés de l'annuaire.
+    // Sans fiche, le tableau de bord chauffeur n'a pas de salle de
+    // réservations à écouter : c'est la conséquence assumée d'un annuaire qui
+    // n'accueille plus que de vrais inscrits.
+    driverId: undefined,
   },
 ];
 

@@ -307,6 +307,26 @@ export function DriversExplorer() {
                   </button>
                 </div>
               </>
+            ) : drivers.length === 0 ? (
+              // Annuaire entièrement vide : ce n'est pas un filtre trop
+              // restrictif, il n'y a encore personne. Le dire franchement vaut
+              // mieux que d'inviter à « élargir la recherche » pour rien.
+              <>
+                <p className="text-lg font-semibold text-white">
+                  {t("drivers.emptyTitle")}
+                </p>
+                <p className="mt-2 max-w-md text-sm text-white/50">
+                  {t("drivers.emptyText")}
+                </p>
+                <a
+                  href={whatsappUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-primary mt-6 text-sm"
+                >
+                  {t("drivers.transferSupport")}
+                </a>
+              </>
             ) : (
               <>
                 <p className="text-lg font-semibold text-white">

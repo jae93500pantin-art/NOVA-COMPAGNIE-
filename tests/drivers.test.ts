@@ -1,33 +1,28 @@
 import { describe, it, expect } from "vitest";
 import { driverCoords, cityCoords } from "@/lib/geo";
-import { getDriver, drivers, driversByCity } from "@/lib/drivers";
+import { drivers, getDriver, driversByCity } from "@/lib/drivers";
+import { LUXURY_DRIVER, FIXTURE_DRIVERS } from "./fixtures/drivers";
 
-describe("drivers — données & accesseurs", () => {
-  it("inclut le chauffeur Jérémy avec sa Mercedes E63", () => {
-    const j = getDriver("jeremy-driver");
-    expect(j).toBeTruthy();
-    expect(j?.firstName).toBe("Jérémy");
-    expect(j?.car.model).toContain("E63");
+/**
+ * L'annuaire en dur a été vidé : un site marchand accessible ne peut pas
+ * présenter de faux professionnels. Ce qui reste à vérifier ici, ce n'est plus
+ * son contenu mais son **comportement à vide** — c'est désormais l'état par
+ * défaut de l'application, et c'est lui qui doit ne rien casser.
+ */
+describe("annuaire — vide par défaut", () => {
+  it("ne contient aucun chauffeur inventé", () => {
+    expect(drivers).toHaveLength(0);
   });
 
-  it("retourne undefined pour un id inconnu", () => {
+  it("retourne undefined plutôt que de lever pour un id quelconque", () => {
     expect(getDriver("inconnu")).toBeUndefined();
+    // Les anciens profils fictifs ne doivent plus répondre.
+    expect(getDriver("jeremy-driver")).toBeUndefined();
   });
 
-  it("filtre les chauffeurs par ville", () => {
-    const paris = driversByCity("paris");
-    expect(paris.length).toBeGreaterThan(0);
-    expect(paris.every((d) => d.cityId === "paris")).toBe(true);
-  });
-
-  it("chaque chauffeur a des champs cohérents", () => {
-    for (const d of drivers) {
-      expect(d.id).toBeTruthy();
-      expect(d.rating).toBeGreaterThanOrEqual(0);
-      expect(d.rating).toBeLessThanOrEqual(5);
-      expect(d.pricePerHour).toBeGreaterThan(0);
-      expect(d.car.photos.length).toBeGreaterThan(0);
-    }
+  it("renvoie une liste vide pour une ville, jamais undefined", () => {
+    // Les appelants itèrent dessus sans garde : un undefined casserait la page.
+    expect(driversByCity("paris")).toEqual([]);
   });
 });
 
@@ -37,16 +32,20 @@ describe("geo — coordonnées carte", () => {
   });
 
   it("place un chauffeur près du centre de sa ville", () => {
-    const j = getDriver("jeremy-driver")!;
-    const [lng, lat] = driverCoords(j);
+    const [lng, lat] = driverCoords(LUXURY_DRIVER);
     const [clng, clat] = cityCoords.paris;
-    // dispersion < ~0.1° autour du centre
+    // dispersion < ~0.15° autour du centre
     expect(Math.abs(lng - clng)).toBeLessThan(0.15);
     expect(Math.abs(lat - clat)).toBeLessThan(0.15);
   });
 
   it("est déterministe (mêmes coords pour le même chauffeur)", () => {
-    const j = getDriver("jeremy-driver")!;
-    expect(driverCoords(j)).toEqual(driverCoords(j));
+    expect(driverCoords(LUXURY_DRIVER)).toEqual(driverCoords(LUXURY_DRIVER));
+  });
+
+  it("disperse deux chauffeurs différents", () => {
+    const a = driverCoords(FIXTURE_DRIVERS[0]);
+    const b = driverCoords(FIXTURE_DRIVERS[1]);
+    expect(a).not.toEqual(b);
   });
 });

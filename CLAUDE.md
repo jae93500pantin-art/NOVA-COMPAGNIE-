@@ -771,11 +771,38 @@ runtime; never hard-require a key.
 > `lib/geo.ts`, `lib/transfer.ts`, `lib/drivers.ts` and the dictionaries to
 > expand again.
 
-`lib/drivers.ts` has 5 realistic Paris drivers (incl. `jeremy-driver`)
-with reviews, vehicles, categories (Business/Moto/Van/Van Luxury/Luxury) and
-fixed rates (`pricePerHour` + `pricePerDay`, weekly on quote), languages,
-availability, map coords. `getDriver(id)`, `driversByCity(cityId)`.
-Driver profile pages are statically generated from these ids.
+### ⚠️ L'annuaire est VIDE — ne pas le repeupler
+
+`lib/drivers.ts` contenait 5 chauffeurs parisiens inventés (nom, photo,
+véhicule, note **et avis clients fabriqués**). Ils ont été retirés : présenter
+de faux professionnels et de faux avis sur un site marchand où l'on peut
+réserver relève de la pratique commerciale trompeuse (directive Omnibus), et un
+bandeau « démonstration » n'y change rien.
+
+Ce qui a disparu avec eux, et pourquoi il ne faut pas le remettre :
+
+- les 5 profils + leurs avis (`getDriver` / `driversByCity` renvoient
+  désormais `undefined` / `[]` — les appelants itèrent sans garde, d'où le
+  tableau vide plutôt qu'`undefined`) ;
+- `city.driversCount: 248` → **dérivé** de l'annuaire réel dans `CityShowcase`
+  (« Bientôt disponible » quand personne n'est inscrit) ;
+- les 6 témoignages clients inventés des dictionnaires (`hero.*`,
+  `transfer.*`) et `AuthQuote.tsx` — tous déjà orphelins côté rendu ;
+- le lien `driverId` du compte démo `driver`/`driver`, qui pointait vers
+  `jeremy-driver`.
+
+**Les seuls avis publiables sont ceux que `lib/reviews.ts` certifie** :
+rattachés à une course réellement terminée, par son client.
+
+Conséquences assumées : `/drivers` affiche un état vide dédié
+(`drivers.emptyTitle`, distinct du « aucun résultat » des filtres),
+`generateStaticParams` ne produit aucune page, un ancien id renvoie 404, et
+l'estimation de transfert compte zéro chauffeur par classe.
+
+**Les tests utilisent `tests/fixtures/drivers.ts`** — ils vérifient des
+fonctions pures (tarifs, transferts, surcharges), pas des données marketing.
+Ne pas les faire lire l'annuaire réel : ils deviendraient dépendants du contenu
+de la base.
 
 ## Testing UI on a real mobile viewport
 

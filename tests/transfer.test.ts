@@ -19,7 +19,7 @@ import {
   driverHasTransferVehicle,
   driversForTransferVehicle,
 } from "@/lib/transfer";
-import { drivers } from "@/lib/drivers";
+import { FIXTURE_DRIVERS as drivers } from "./fixtures/drivers";
 
 const driver = (list: string[]) => ({ transferDestinations: list });
 
@@ -132,7 +132,7 @@ describe("sanitizeTransferDestinationIds", () => {
   });
 });
 
-describe("mock drivers", () => {
+describe("chauffeurs (fixtures)", () => {
   it("only reference declared destinations", () => {
     for (const d of drivers) {
       for (const id of d.transferDestinations) {
@@ -197,7 +197,7 @@ describe("flat transfer fare charged for a driver", () => {
     expect(transferFareForDriver({ categories: ["Luxury"] })).toBe(price("premium"));
   });
 
-  it("gives every mock driver a bookable transfer fare", () => {
+  it("gives every driver a bookable transfer fare", () => {
     for (const d of drivers) {
       expect(transferFareForDriver(d), d.id).toBeGreaterThan(0);
     }
@@ -267,7 +267,7 @@ describe("strict filtering by vehicle class", () => {
     expect(driversForTransferVehicle(drivers, "")).toHaveLength(drivers.length);
   });
 
-  it("splits the mock drivers across classes without losing any", () => {
+  it("splits the drivers across classes without losing any", () => {
     const total = vehicles.reduce(
       (n, v) => n + driversForTransferVehicle(drivers, v.id).length,
       0

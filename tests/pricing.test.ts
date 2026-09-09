@@ -13,7 +13,7 @@ import {
   rateError,
   splitRate,
 } from "@/lib/pricing";
-import { drivers } from "@/lib/drivers";
+import { FIXTURE_DRIVERS as drivers } from "./fixtures/drivers";
 
 describe("pricing — bandes tarifaires par gamme", () => {
   it("impose un prix unique à Business, Moto et Van", () => {
@@ -124,7 +124,7 @@ describe("pricing — commission plateforme (25 %)", () => {
   });
 });
 
-describe("pricing — cohérence des chauffeurs de démo", () => {
+describe("pricing — cohérence des tarifs chauffeur", () => {
   it("place chaque tarif dans la bande de sa gamme", () => {
     for (const d of drivers) {
       const c = d.categories[0];

@@ -36,19 +36,11 @@ const fr = {
     statRating: "Note moyenne",
     statTrips: "Trajets premium",
     statCities: "Villes",
-    reviewsTitle: "Ils nous font confiance",
-    review1Text:
-      "Une plateforme fiable et intuitive. La réservation se fait en quelques secondes et tout est clair. Je l'utilise sans hésiter.",
-    review1Name: "Camille R.",
-    review1Role: "Cliente · Paris",
-    review2Text:
-      "Site sérieux et rassurant : paiement sécurisé, chauffeurs vérifiés, suivi en temps réel. Exactement ce qu'on attend d'un service premium.",
-    review2Name: "Julien M.",
-    review2Role: "Client · Paris",
-    review3Text:
-      "Interface élégante et sans accroc. Tout fonctionne parfaitement, du premier clic à la confirmation. Une vraie confiance.",
-    review3Name: "Sofia L.",
-    review3Role: "Cliente · Paris",
+    // ⚠️ Ne pas réintroduire de témoignages écrits par nous. Les trois qui
+    // vivaient ici (« Camille R. », « Julien M. », « Sofia L. ») étaient
+    // inventés : de faux avis sur un site marchand accessible relèvent de la
+    // pratique commerciale trompeuse. Les seuls avis publiables sont ceux que
+    // `lib/reviews.ts` certifie — rattachés à une course réellement terminée.
   },
   search: {
     city: "Ville",
@@ -168,6 +160,9 @@ const fr = {
     resultsMany: "chauffeurs disponibles",
     sortRating: "Mieux notés",
     sortExperience: "Plus d'expérience",
+    emptyTitle: "Aucun chauffeur inscrit pour le moment",
+    emptyText:
+      "Les profils affichés ici sont ceux de chauffeurs réels, vérifiés un par un. La sélection parisienne ouvre bientôt — écrivez-nous pour organiser votre trajet dès maintenant.",
     noneTitle: "Aucune disponibilité sur ce créneau",
     noneText: "Contactez-nous, nous organisons votre trajet.",
     transferFilter: "Transfert aéroport",
@@ -269,11 +264,6 @@ const fr = {
         "L'authentification n'est pas configurée sur ce serveur.",
       network: "Connexion au serveur impossible. Vérifiez votre réseau.",
     },
-  },
-  authSide: {
-    quote:
-      "« Nova Compagnie a transformé mes déplacements professionnels. Un niveau de service que je ne pensais pas possible. »",
-    role: "Directeur, Paris",
   },
   booking: {
     date: "Date",
@@ -504,19 +494,8 @@ const fr = {
     packConciergeF4: "Transfert premium jusqu'à destination",
     packConciergeF5: "",
     reviewsEyebrow: "Ils ont été accueillis",
-    reviewsTitle: "L'excellence, dès la sortie de l'avion",
-    review1Text:
-      "Accueil impeccable à Roissy : mon chauffeur m'attendait avec la pancarte, a pris mes bagages et ajusté l'heure malgré mon retard de vol.",
-    review1Name: "Thomas B.",
-    review1Role: "Dirigeant · Paris",
-    review2Text:
-      "Le Pack Famille est parfait : sièges enfants installés, van spacieux, zéro stress après un long vol. Un vrai soulagement.",
-    review2Name: "Marina K.",
-    review2Role: "Cliente · Paris",
-    review3Text:
-      "Service Concierge VIP à la hauteur : accompagné dès l'avion jusqu'à la voiture. Le luxe, c'est de ne penser à rien.",
-    review3Name: "Alexandre D.",
-    review3Role: "Client · Paris",
+    // Trois témoignages inventés retiraient ici aussi (« Thomas B. »,
+    // « Marina K. », « Alexandre D. »). Voir la note dans `hero`.
     teaserEyebrow: "Nouveau · Transfert Aéroport",
     teaserTitle: "Un chauffeur privé vous attend dès l'atterrissage",
     teaserText:
@@ -577,19 +556,6 @@ const en: Dict = {
     statRating: "Average rating",
     statTrips: "Premium trips",
     statCities: "Cities",
-    reviewsTitle: "Trusted by our clients",
-    review1Text:
-      "A reliable, intuitive platform. Booking takes just seconds and everything is clear. I use it without hesitation.",
-    review1Name: "Camille R.",
-    review1Role: "Client · Paris",
-    review2Text:
-      "A serious, reassuring site: secure payment, verified chauffeurs, real-time tracking. Exactly what you expect from a premium service.",
-    review2Name: "Julien M.",
-    review2Role: "Client · Paris",
-    review3Text:
-      "Sleek and seamless interface. Everything works perfectly, from the first click to confirmation. Real peace of mind.",
-    review3Name: "Sofia L.",
-    review3Role: "Client · Paris",
   },
   search: {
     city: "City",
@@ -709,6 +675,9 @@ const en: Dict = {
     resultsMany: "chauffeurs available",
     sortRating: "Top rated",
     sortExperience: "Most experience",
+    emptyTitle: "No chauffeur registered yet",
+    emptyText:
+      "Every profile listed here belongs to a real, individually vetted chauffeur. Our Paris selection opens shortly — message us and we will arrange your journey now.",
     noneTitle: "No availability for this slot",
     noneText: "Get in touch — we'll arrange your journey.",
     transferFilter: "Airport transfer",
@@ -806,11 +775,7 @@ const en: Dict = {
       network: "Can't reach the server. Check your connection.",
     },
   },
-  authSide: {
-    quote:
-      "\u201cNova Compagnie transformed my business travel. A level of service I didn't think was possible.\u201d",
-    role: "Director, Paris",
-  },  booking: {
+  booking: {
     date: "Date",
     time: "Time",
     departure: "Departure",
@@ -1039,19 +1004,6 @@ const en: Dict = {
     packConciergeF4: "Premium transfer to your destination",
     packConciergeF5: "",
     reviewsEyebrow: "They were welcomed",
-    reviewsTitle: "Excellence, right off the plane",
-    review1Text:
-      "Flawless welcome at the airport: my chauffeur was waiting with the sign, took my luggage and adjusted the time despite my flight delay.",
-    review1Name: "Thomas B.",
-    review1Role: "Executive · Paris",
-    review2Text:
-      "The Family Pack is perfect: child seats installed, spacious van, zero stress after a long flight. A real relief.",
-    review2Name: "Marina K.",
-    review2Role: "Client · Paris",
-    review3Text:
-      "The VIP Concierge service lived up to it: escorted from the plane to the car. True luxury is worrying about nothing.",
-    review3Name: "Alexandre D.",
-    review3Role: "Client · Paris",
     teaserEyebrow: "New · Airport Transfer",
     teaserTitle: "A private chauffeur waiting the moment you land",
     teaserText:

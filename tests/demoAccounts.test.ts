@@ -13,11 +13,13 @@ describe("demoAccounts — authentification (création/connexion de compte démo
     expect(acc?.role).toBe("client");
   });
 
-  it("connecte le chauffeur avec driver/driver et le lie à un profil", () => {
+  it("connecte le chauffeur avec driver/driver, sans fiche publique", () => {
     const acc = matchDemoAccount("driver", "driver");
     expect(acc).not.toBeNull();
     expect(acc?.role).toBe("driver");
-    expect(acc?.driverId).toBe("jeremy-driver");
+    // L'annuaire en dur a été vidé : ce compte ne pointe plus vers un profil
+    // inventé. Il ouvre l'espace chauffeur, il ne fabrique pas de chauffeur.
+    expect(acc?.driverId).toBeUndefined();
   });
 
   it("est insensible à la casse sur l'identifiant", () => {
