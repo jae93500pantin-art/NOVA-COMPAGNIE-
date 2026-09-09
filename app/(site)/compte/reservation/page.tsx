@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { CheckCircle2, MessageCircle, Home } from "lucide-react";
-import { getDriver } from "@/lib/drivers";
+import { getDirectoryDriver } from "@/lib/driverDirectory";
 import { whatsappUrl } from "@/lib/whatsapp";
 import { MarkPaid } from "@/components/MarkPaid";
 import { requireUser } from "@/lib/session";
@@ -14,7 +14,7 @@ export default async function ReservationPage({
 }) {
   await requireUser("/compte/reservation");
 
-  const driver = searchParams.driver ? getDriver(searchParams.driver) : undefined;
+  const driver = searchParams.driver ? await getDirectoryDriver(searchParams.driver) : undefined;
   const success = searchParams.status === "success";
 
   return (

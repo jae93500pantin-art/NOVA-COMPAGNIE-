@@ -52,15 +52,38 @@ export async function POST(
   }
 
   // 2. Status update (service role — RLS scopes profile writes to their owner).
+  /**
+   * Validation = trois écritures indissociables : la ligne d'annuaire, son
+   * slug, et le `driver_slug` du profil. `approve_driver()` les fait dans UNE
+   * transaction côté base.
+   *
+   * Les séparer ici serait un piège : un slug posé sur `drivers` sans son
+   * pendant sur `profiles` donnerait un chauffeur visible publiquement mais
+   * incapable d'accepter la moindre course — `bookingActor()` ne le
+   * reconnaîtrait pas. Une panne qu'on ne découvre qu'à la première
+   * réservation.
+   */
+  const { data: slug, error: approveError } = await db.rpc("approve_driver", {
+    p_profile: driverId,
+  });
+
+  if (approveError) {
+    return NextResponse.json(
+      { error: `Échec de la validation : ${approveError.message}` },
+      { status: 500 }
+    );
+  }
+
   const { error: updateError } = await db
     .from("profiles")
-    .update({ status: "approved", approved_at: new Date().toISOString() })
+    .update({ approved_at: new Date().toISOString() })
     .eq("id", driverId);
 
   if (updateError) {
-    return NextResponse.json(
-      { error: "Échec de la mise à jour du statut chauffeur" },
-      { status: 500 }
+    // Le chauffeur EST validé (la transaction a réussi) ; seule l'horodatage
+    // a échoué. On le journalise sans transformer un succès en erreur.
+    console.error(
+      `[admin] approved_at non enregistré pour ${driverId} : ${updateError.message}`
     );
   }
 
@@ -76,6 +99,9 @@ export async function POST(
   return NextResponse.json({
     success: true,
     emailed,
+    // Le slug est l'URL publique du chauffeur : le renvoyer permet à la console
+    // d'y renvoyer directement, et de vérifier qu'il a bien été attribué.
+    slug,
     message: emailed
       ? "Chauffeur validé et e-mail d'activation envoyé"
       : "Chauffeur validé (e-mail non envoyé)",

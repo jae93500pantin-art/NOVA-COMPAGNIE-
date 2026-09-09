@@ -4,7 +4,7 @@ import { isStripeConfigured } from "@/lib/config";
 import { computeAmount, type BookingUnit } from "@/lib/payments";
 import { transferFareForDriver } from "@/lib/transfer";
 import { clampRate } from "@/lib/pricing";
-import { getDriver } from "@/lib/drivers";
+import { getDirectoryDriver } from "@/lib/driverDirectory";
 import { sanitizeText, rateLimit } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
   const driverId = sanitizeText(body.driverId, 64);
   const bookingId = sanitizeText(body.bookingId, 64);
-  const driver = getDriver(driverId);
+  const driver = await getDirectoryDriver(driverId);
   if (!driver) {
     return Response.json({ error: "Unknown driver" }, { status: 404 });
   }

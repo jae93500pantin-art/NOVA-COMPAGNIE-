@@ -10,7 +10,7 @@ import {
   Clock,
   Sparkles,
 } from "lucide-react";
-import { drivers, getDriver } from "@/lib/drivers";
+import { getDirectoryDriver, listDirectorySlugs } from "@/lib/driverDirectory";
 import { getCity } from "@/lib/cities";
 import { Gallery } from "@/components/Gallery";
 import { Reviews } from "@/components/Reviews";
@@ -19,12 +19,17 @@ import { StarRating } from "@/components/StarRating";
 import { DriverAvatar } from "@/components/DriverAvatar";
 import { DriverVehicle } from "@/components/DriverVehicle";
 
-export function generateStaticParams() {
-  return drivers.map((d) => ({ id: d.id }));
+/**
+ * Les fiches sont pré-générées pour les chauffeurs déjà validés, et les
+ * suivantes rendues à la demande (`dynamicParams` est vrai par défaut) : un
+ * chauffeur validé après le build doit être joignable sans reconstruction.
+ */
+export async function generateStaticParams() {
+  return (await listDirectorySlugs()).map((id) => ({ id }));
 }
 
-export function generateMetadata({ params }: { params: { id: string } }) {
-  const driver = getDriver(params.id);
+export async function generateMetadata({ params }: { params: { id: string } }) {
+  const driver = await getDirectoryDriver(params.id);
   return {
     title: driver
       ? `${driver.firstName} ${driver.lastName} — Chauffeur privé · Nova Compagnie`
@@ -32,8 +37,10 @@ export function generateMetadata({ params }: { params: { id: string } }) {
   };
 }
 
-export default function DriverProfile({ params }: { params: { id: string } }) {
-  const driver = getDriver(params.id);
+export default async function DriverProfile({ params }: { params: { id: string } }) {
+  // `getDirectoryDriver` ne rend que les chauffeurs VALIDÉS : un profil en
+  // attente répond 404, il n'est pas encore public.
+  const driver = await getDirectoryDriver(params.id);
   if (!driver) notFound();
   const city = getCity(driver.cityId);
 

@@ -10,7 +10,7 @@ import type { BookingStatus, Booking } from "@/lib/bookings";
 import { formatWhen, bookingActor, canActOn } from "@/lib/bookings";
 import { getServerUser } from "@/lib/session";
 import { isValidRoom, sanitizeText, rateLimit } from "@/lib/validation";
-import { getDriver } from "@/lib/drivers";
+import { getDirectoryDriver } from "@/lib/driverDirectory";
 import type { Driver } from "@/lib/types";
 import { computeAmount, type BookingUnit } from "@/lib/payments";
 import {
@@ -65,7 +65,7 @@ export async function GET(
   { params }: { params: { driverId: string } }
 ) {
   const driverId = params.driverId;
-  if (!isValidRoom(driverId) || !getDriver(driverId)) {
+  if (!isValidRoom(driverId) || !await getDirectoryDriver(driverId)) {
     return new Response("Invalid driver", { status: 400 });
   }
 
@@ -128,7 +128,7 @@ export async function POST(
   { params }: { params: { driverId: string } }
 ) {
   const driverId = params.driverId;
-  const driver = getDriver(driverId);
+  const driver = await getDirectoryDriver(driverId);
   if (!isValidRoom(driverId) || !driver) {
     return Response.json({ error: "Invalid driver" }, { status: 400 });
   }
@@ -235,7 +235,7 @@ export async function PATCH(
   { params }: { params: { driverId: string } }
 ) {
   const driverId = params.driverId;
-  if (!isValidRoom(driverId) || !getDriver(driverId)) {
+  if (!isValidRoom(driverId) || !await getDirectoryDriver(driverId)) {
     return Response.json({ error: "Invalid driver" }, { status: 400 });
   }
 
@@ -298,7 +298,7 @@ export async function PATCH(
   }
 
   // Status-change confirmation e-mail (no-op when email isn't configured).
-  const driver = getDriver(driverId);
+  const driver = await getDirectoryDriver(driverId);
   if (driver && updated.clientEmail) {
     const data = emailData(driver, updated);
     if (status === "confirmed") {

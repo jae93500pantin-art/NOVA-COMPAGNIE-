@@ -7,9 +7,9 @@ import {
 import { BUSINESS_DRIVER, LUXURY_DRIVER } from "./fixtures/drivers";
 
 /**
- * L.annuaire en dur est vide : ces tests portent sur la fusion des surcharges,
- * pas sur les profils. Ils s.appuient donc sur des fixtures — une gamme a
- * tarif impose (Business) et une gamme premium a tarif libre (Luxury).
+ * L'annuaire en dur est vide : ces tests portent sur la fusion des surcharges,
+ * pas sur les profils. Ils s'appuient donc sur des fixtures — une gamme à
+ * tarif imposé (Business) et une gamme premium à tarif libre (Luxury).
  */
 const getDriver = (id: string) =>
   id === LUXURY_DRIVER.id ? LUXURY_DRIVER : BUSINESS_DRIVER;

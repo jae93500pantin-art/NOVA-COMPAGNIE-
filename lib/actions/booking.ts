@@ -6,7 +6,7 @@ import { getStripe } from "@/lib/stripe";
 import { isStripeConfigured } from "@/lib/config";
 import { createBooking as createBookingRecord } from "@/lib/bookingBroker";
 import { isPersistenceEnabled } from "@/lib/persistence";
-import { getDriver } from "@/lib/drivers";
+import { getDirectoryDriver } from "@/lib/driverDirectory";
 import { clampRate } from "@/lib/pricing";
 import { computeAmount, type BookingUnit } from "@/lib/payments";
 import {
@@ -127,7 +127,7 @@ export async function createBooking(
     const user = session.user;
 
     const driverId = sanitizeText(input.driverId, 64);
-    const driver = getDriver(driverId);
+    const driver = await getDirectoryDriver(driverId);
     if (!driver) return fail("unknown-driver");
 
     const unit: BookingUnit =

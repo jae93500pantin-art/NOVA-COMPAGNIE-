@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { MessageCircle, Plane, Search, SlidersHorizontal, X } from "lucide-react";
 import { motion } from "framer-motion";
-import { drivers } from "@/lib/drivers";
 import { cities } from "@/lib/cities";
 import { DriverCard } from "@/components/DriverCard";
 import type { Driver, VehicleCategory } from "@/lib/types";
@@ -34,7 +33,13 @@ const categories: (VehicleCategory | "Tous")[] = [
   "Moto",
 ];
 
-export function DriversExplorer() {
+/**
+ * L'annuaire vient du serveur : `lib/drivers.ts` est vide et la vraie source
+ * est `public.drivers`, lue avec le service role (voir `lib/driverDirectory`).
+ * Ce composant est client — il ne peut pas interroger la base lui-même, la
+ * page la lui passe.
+ */
+export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
   const params = useSearchParams();
   const { t } = useI18n();
   const [city, setCity] = useState(params.get("city") ?? "all");
@@ -70,7 +75,7 @@ export function DriversExplorer() {
       window.removeEventListener(DRIVER_OVERRIDES_EVENT, sync);
       window.removeEventListener("storage", sync);
     };
-  }, []);
+  }, [drivers]);
 
   const transferDestination = getTransferDestination(transfer);
 

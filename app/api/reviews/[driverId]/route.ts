@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getDriver } from "@/lib/drivers";
+import { getDirectoryDriver } from "@/lib/driverDirectory";
 import { getBookingById } from "@/lib/bookingBroker";
 import {
   addReview,
@@ -40,7 +40,7 @@ export async function GET(
   { params }: { params: { driverId: string } }
 ) {
   const { driverId } = params;
-  if (!isValidRoom(driverId) || !getDriver(driverId)) {
+  if (!isValidRoom(driverId) || !await getDirectoryDriver(driverId)) {
     return Response.json({ error: "Invalid driver" }, { status: 400 });
   }
   return Response.json({ reviews: await listReviews(driverId) });
@@ -51,7 +51,7 @@ export async function POST(
   { params }: { params: { driverId: string } }
 ) {
   const { driverId } = params;
-  const driver = getDriver(driverId);
+  const driver = await getDirectoryDriver(driverId);
   if (!isValidRoom(driverId) || !driver) {
     return Response.json({ error: "Invalid driver" }, { status: 400 });
   }

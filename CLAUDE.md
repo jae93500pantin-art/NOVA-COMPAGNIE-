@@ -804,6 +804,49 @@ fonctions pures (tarifs, transferts, surcharges), pas des données marketing.
 Ne pas les faire lire l'annuaire réel : ils deviendraient dépendants du contenu
 de la base.
 
+### La vraie source : `public.drivers` (bloc 6 du schéma)
+
+**`lib/driverDirectory.ts` (`server-only`) est le seul lecteur de l'annuaire.**
+`listDirectory()`, `getDirectoryDriver(slug)`, `listDirectorySlugs()`.
+
+- ⚠️ **Il lit avec le service role, et ce n'est pas un raccourci.** `drivers`
+  est en lecture publique, mais le **statut de validation vit dans
+  `profiles`**, que la RLS réserve à son propriétaire. Une lecture anon sur
+  `drivers` seule publierait donc les chauffeurs **en attente de validation** —
+  exactement ce que la validation sert à empêcher. Ne pas « simplifier » ça.
+- `Driver.id` porte le **slug**, pas l'uuid : c'est l'identifiant que les URL,
+  les réservations, le chat et les avis manipulent déjà.
+- Les tarifs sont re-clampés **à la lecture** : un tarif écrit avant un
+  changement de barème ne doit ni s'afficher ni se facturer hors bande.
+- Sans clé de service, l'annuaire est vide plutôt qu'en erreur.
+
+**Le parcours d'un chauffeur** : inscription (`role=driver`, `status=pending`)
+→ il remplit sa fiche sur `/compte/profil` (`POST /api/driver/profile`, ouvert
+**même en attente** — c'est cette fiche que l'admin examine) → un admin valide
+dans `/admin` → `approve_driver()` crée la ligne d'annuaire, attribue le slug
+et pose `profiles.driver_slug`, **dans une seule transaction**.
+
+⚠️ Cette transaction est indivisible pour une raison précise : un slug posé sur
+`drivers` sans son pendant sur `profiles` donnerait un chauffeur visible
+publiquement mais incapable d'accepter la moindre course — `bookingActor()` ne
+le reconnaîtrait pas. Une panne qu'on ne découvre qu'à la première réservation.
+
+**Ce que le chauffeur ne décide pas** : son slug (ce serait choisir la clé qui
+l'autorise sur une salle de réservations — il pourrait prendre celle d'un
+autre), son statut, ni un tarif hors bande (`clampRate` est le dernier mot du
+serveur).
+
+**Pages** : `/drivers` est `force-dynamic` et lit côté serveur, puis passe la
+liste à `DriversExplorer` (client, il ne peut pas interroger la base).
+`/drivers/[id]` pré-génère les fiches validées et rend les suivantes à la
+demande — un chauffeur validé après le build doit être joignable sans
+reconstruction. Un profil non validé répond 404.
+
+⚠️ **Reste en dur** : les composants client qui n'ont pas de page serveur pour
+les alimenter (`AccountDashboard`, `DriverRequests`, `ClientBookings`,
+`TransferEstimate`) lisent encore `lib/drivers.ts`, donc rien. Ils n'en tirent
+que des noms d'affichage et retombent sur des libellés génériques.
+
 ## Testing UI on a real mobile viewport
 
 The integrated VS Code browser ignores `setViewportSize`. To emulate iPhone,

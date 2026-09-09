@@ -20,7 +20,6 @@ import {
   Lock,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { getDriver } from "@/lib/drivers";
 import type { VehicleCategory } from "@/lib/types";
 import {
   acceptsAirportTransfers,
@@ -31,8 +30,6 @@ import { springSnappy } from "@/lib/motion";
 import {
   getDriverOverrides,
   saveDriverOverrides,
-  mergeCar,
-  scheduleOf,
 } from "@/lib/driverOverrides";
 import {
   PLATFORM_COMMISSION_RATE,
@@ -53,6 +50,23 @@ import {
   type DaySchedule,
   type WeeklySchedule,
 } from "@/lib/schedule";
+
+/** Fiche d'annuaire telle que la renvoie `/api/driver/profile`. */
+interface DriverProfileDto {
+  slug: string | null;
+  bio: string | null;
+  categories: string[] | null;
+  transfer_destinations: string[] | null;
+  price_per_hour: number | null;
+  price_per_day: number | null;
+  available: boolean | null;
+  car_make: string | null;
+  car_model: string | null;
+  car_year: number | null;
+  car_color: string | null;
+  car_photos: string[] | null;
+  schedule: WeeklySchedule | null;
+}
 
 const CATEGORIES: VehicleCategory[] = [
   "Business",
@@ -91,7 +105,42 @@ export function ProfileEditor() {
   const [saved, setSaved] = useState(false);
   const [rateBlocked, setRateBlocked] = useState(false);
 
-  const driver = user?.driverId ? getDriver(user.driverId) : undefined;
+  /**
+   * La fiche d'annuaire du chauffeur, chargée depuis la base.
+   *
+   * ⚠️ Elle ne vient plus de `lib/drivers.ts`, qui est vide : se fier à
+   * `getDriver(user.driverId)` masquerait tout le formulaire chauffeur, y
+   * compris pour un compte parfaitement valide.
+   *
+   * Le formulaire s'ouvre pour **tout compte chauffeur**, y compris en
+   * attente de validation : c'est justement cette fiche que l'administrateur
+   * examine avant d'approuver. Une fiche absente est l'état normal d'une
+   * inscription récente, pas une erreur.
+   */
+  const isDriver = user?.role === "driver";
+  const [driverProfile, setDriverProfile] = useState<DriverProfileDto | null>(
+    null
+  );
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!isDriver) return;
+    let cancelled = false;
+    fetch("/api/driver/profile")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        setDriverProfile((data?.profile as DriverProfileDto) ?? null);
+        setProfileLoaded(true);
+      })
+      .catch(() => !cancelled && setProfileLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [isDriver]);
+
+  /** Le slug public, connu seulement après validation par un administrateur. */
+  const publicSlug = driverProfile?.slug ?? user?.driverId ?? null;
 
   useEffect(() => {
     if (!loading && !user) router.replace("/auth/login");
@@ -102,40 +151,60 @@ export function ProfileEditor() {
     setFirstName(user.firstName);
     setLastName(user.lastName);
     setPhone(user.phone ?? "");
-    if (driver) {
-      const o = getDriverOverrides(driver.id);
-      setBio(o.bio ?? driver.bio);
-      setAvailable(o.available ?? driver.available);
-      setCategory((o.categories?.[0] ?? driver.categories[0]) as VehicleCategory);
-      setTransfers(
-        acceptsAirportTransfers({
-          transferDestinations: sanitizeTransferDestinationIds(
-            o.transferDestinations ?? driver.transferDestinations
-          ),
-        })
-      );
-      setAvatar(o.avatar ?? "");
-      setSchedule(scheduleOf(driver, o));
-      setHourRate(String(o.pricePerHour ?? driver.pricePerHour));
-      setDayRate(String(o.pricePerDay ?? driver.pricePerDay));
-      const car = mergeCar(driver, o);
-      setCarMake(car.make);
-      setCarModel(car.model);
-      setCarYear(String(car.year));
-      setCarColor(car.color);
-      setPhotos(
-        o.carPhotos && o.carPhotos.length > 0 ? o.carPhotos : driver.car.photos
-      );
-    }
-  }, [user, driver]);
+    if (!isDriver || !profileLoaded) return;
+
+    // La base fait foi ; les surcharges locales ne servent plus que de repli
+    // hors ligne (et en mode démo sans clés, où la route n'existe pas).
+    const p = driverProfile;
+    const o = getDriverOverrides(publicSlug ?? "");
+    const category0 = (p?.categories?.[0] ??
+      o.categories?.[0] ??
+      "Business") as VehicleCategory;
+
+    setBio(p?.bio ?? o.bio ?? "");
+    setAvailable(p?.available ?? o.available ?? false);
+    setCategory(category0);
+    setTransfers(
+      acceptsAirportTransfers({
+        transferDestinations: sanitizeTransferDestinationIds(
+          p?.transfer_destinations ?? o.transferDestinations ?? []
+        ),
+      })
+    );
+    setAvatar(o.avatar ?? "");
+    setSchedule(
+      p?.schedule
+        ? sanitizeSchedule(p.schedule)
+        : o.schedule
+        ? sanitizeSchedule(o.schedule)
+        : DEFAULT_SCHEDULE
+    );
+    // Une fiche neuve n'a pas de tarif : on propose le plancher de la gamme
+    // plutôt que zéro, qui ne serait jamais facturable.
+    setHourRate(
+      String(p?.price_per_hour ?? o.pricePerHour ?? boundsFor(category0, "hour").min)
+    );
+    setDayRate(
+      String(p?.price_per_day ?? o.pricePerDay ?? boundsFor(category0, "day").min)
+    );
+    setCarMake(p?.car_make ?? o.car?.make ?? "");
+    setCarModel(p?.car_model ?? o.car?.model ?? "");
+    setCarYear(String(p?.car_year ?? o.car?.year ?? ""));
+    setCarColor(p?.car_color ?? o.car?.color ?? "");
+    setPhotos(
+      p?.car_photos && p.car_photos.length > 0
+        ? p.car_photos
+        : o.carPhotos ?? []
+    );
+  }, [user, isDriver, profileLoaded, driverProfile, publicSlug]);
 
   // Switching class switches band: snap the rates into the new one so a fixed
   // class shows its imposed price immediately instead of a stale figure.
   useEffect(() => {
-    if (!driver) return;
+    if (!isDriver) return;
     setHourRate((v) => String(clampRate(category, "hour", Number.parseFloat(v))));
     setDayRate((v) => String(clampRate(category, "day", Number.parseFloat(v))));
-  }, [category, driver]);
+  }, [category, isDriver]);
 
   if (loading || !user) {
     return (
@@ -149,7 +218,7 @@ export function ProfileEditor() {
     e.preventDefault();
     // An out-of-band rate blocks the whole save: a half-saved profile whose
     // price silently reverted is worse than a refusal.
-    if (driver && (hourError || dayError)) {
+    if (isDriver && (hourError || dayError)) {
       setRateBlocked(true);
       return;
     }
@@ -157,10 +226,37 @@ export function ProfileEditor() {
     setSaving(true);
     // Persist identity on the session.
     updateProfile({ firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim() });
-    // Persist driver-specific public fields.
-    if (driver) {
+    // La fiche publique part au serveur, qui reclampe les tarifs et refuse
+    // tout ce qui n'appartient pas au chauffeur (slug, statut).
+    if (isDriver) {
+      void fetch("/api/driver/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bio: bio.trim(),
+          available,
+          category,
+          acceptsTransfers: transfers,
+          pricePerHour: hourValue,
+          pricePerDay: dayValue,
+          carMake: carMake.trim(),
+          carModel: carModel.trim(),
+          carYear,
+          carColor: carColor.trim(),
+          carPhotos: photos,
+          schedule: sanitizeSchedule(schedule),
+        }),
+      }).catch(() => {
+        // Hors ligne ou base absente : la copie locale ci-dessous prend le
+        // relais, la saisie n'est pas perdue.
+      });
+    }
+
+    // Copie locale : repli du mode démo (aucune clé) et de la navigation hors
+    // ligne. Elle n'est plus la source de vérité de la fiche publique.
+    if (publicSlug) {
       const year = Number.parseInt(carYear, 10);
-      const ok = saveDriverOverrides(driver.id, {
+      const ok = saveDriverOverrides(publicSlug, {
         bio: bio.trim(),
         available,
         avatar,
@@ -256,7 +352,7 @@ export function ProfileEditor() {
         Éditer mon profil
       </h1>
       <p className="mt-1 text-sm text-white/55">
-        {driver
+        {isDriver
           ? "Mettez à jour vos informations et votre profil public chauffeur."
           : "Mettez à jour vos informations personnelles."}
       </p>
@@ -291,7 +387,7 @@ export function ProfileEditor() {
         </section>
 
         {/* Driver-only public profile */}
-        {driver && (
+        {isDriver && (
           <section className="rounded-3xl glass p-6">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
               <Car className="h-4 w-4 text-royal-400" /> Profil chauffeur public
@@ -306,7 +402,7 @@ export function ProfileEditor() {
                   <span className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-white/15">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={avatar || driver.avatar}
+                      src={avatar || user.avatarUrl || ""}
                       alt="Photo de profil"
                       className="h-full w-full object-cover"
                     />
@@ -705,12 +801,23 @@ export function ProfileEditor() {
                 )}
               </Field>
 
-              <Link
-                href={`/drivers/${driver.id}`}
-                className="inline-block text-xs text-royal-300 hover:underline"
-              >
-                Voir mon profil public →
-              </Link>
+              {/* Tant qu'un administrateur n'a pas validé le compte, il n'y a
+                  pas de slug, donc pas de fiche publique : proposer un lien
+                  mènerait droit sur un 404. On explique où en est le dossier. */}
+              {publicSlug ? (
+                <Link
+                  href={`/drivers/${publicSlug}`}
+                  className="inline-block text-xs text-royal-300 hover:underline"
+                >
+                  Voir mon profil public →
+                </Link>
+              ) : (
+                <p className="inline-flex items-center gap-1.5 text-xs text-amber-300/80">
+                  <Lock className="h-3 w-3 shrink-0" />
+                  Profil en attente de validation : il sera visible dans
+                  l&apos;annuaire une fois votre compte approuvé.
+                </p>
+              )}
             </div>
           </section>
         )}

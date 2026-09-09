@@ -838,3 +838,150 @@ create policy payments_select_parties on public.payments for select using (
        )
   )
 );
+
+
+-- ─────────────────────────────────────────────────────────────
+-- BLOC 6 — L'annuaire quitte le code pour la base
+--
+-- `lib/drivers.ts` contenait cinq chauffeurs inventés ; il est vide. Un
+-- chauffeur n'apparaît désormais que s'il s'est inscrit ET qu'un
+-- administrateur l'a validé. Il manquait deux choses pour que la table
+-- `drivers` puisse tenir ce rôle.
+--
+-- 1. Un **slug**. Tout le reste de l'application désigne un chauffeur par un
+--    identifiant lisible (`profiles.driver_slug`, `bookings.driver_slug`,
+--    `reviews.driver_slug`, l'URL /drivers/<slug>), pas par l'uuid du compte.
+--    Le slug est posé à la validation, par l'administrateur : le laisser au
+--    chauffeur reviendrait à le laisser choisir la clé qui l'autorise sur une
+--    salle de réservations.
+-- 2. Le **planning hebdomadaire**, jusqu'ici seulement dans le navigateur
+--    (`driverOverrides`), donc perdu d'un appareil à l'autre. Il conditionne
+--    l'acceptation d'une réservation : il doit vivre côté serveur.
+-- ─────────────────────────────────────────────────────────────
+
+alter table public.drivers
+  add column if not exists slug     text unique,
+  add column if not exists schedule jsonb;
+
+-- Un chauffeur ne se trouve que par son slug : l'index sert toutes les
+-- lectures publiques (fiche, salle de réservations, avis).
+create index if not exists drivers_slug_idx on public.drivers (slug);
+
+/**
+ * Fabrique un slug lisible et unique à partir du nom.
+ *
+ * Deux « Jean Dupont » ne peuvent pas partager la même clé — elle décide de
+ * l'accès aux réservations. Le second reçoit donc un suffixe numérique, obtenu
+ * en boucle plutôt qu'au hasard pour que l'URL reste prévisible.
+ *
+ * L'accent est réduit avec `unaccent` quand l'extension est là, sinon la
+ * translittération ASCII de `to_ascii` suffit : « Jérémy » → « jeremy ».
+ */
+create or replace function public.driver_slug_from_name(
+  p_first text,
+  p_last  text
+)
+returns text
+language plpgsql
+stable
+security definer set search_path = public
+as $$
+declare
+  base    text;
+  slug    text;
+  n       int := 1;
+begin
+  base := lower(btrim(coalesce(p_first, '') || '-' || coalesce(p_last, '')));
+  -- Translittération : les accents deviennent leur lettre de base.
+  base := translate(
+    base,
+    'àáâãäåçèéêëìíîïñòóôõöùúûüýÿ',
+    'aaaaaaceeeeiiiinooooouuuuyy'
+  );
+  -- Tout ce qui n'est ni lettre ni chiffre devient un tiret, puis on replie.
+  base := regexp_replace(base, '[^a-z0-9]+', '-', 'g');
+  base := btrim(regexp_replace(base, '-+', '-', 'g'), '-');
+  if base = '' or base is null then
+    base := 'chauffeur';
+  end if;
+  -- `ROOM_RE` côté application n'accepte que 40 caractères.
+  base := left(base, 32);
+
+  slug := base;
+  while exists (select 1 from public.drivers d where d.slug = slug) loop
+    n := n + 1;
+    slug := base || '-' || n;
+  end loop;
+  return slug;
+end;
+$$;
+
+/**
+ * Valide un chauffeur : crée sa ligne d'annuaire si besoin, lui attribue un
+ * slug, et relie son profil à ce slug.
+ *
+ * Écrit les deux côtés dans UNE transaction. Séparés, un slug posé sur
+ * `drivers` sans son pendant sur `profiles` donnerait un chauffeur visible
+ * publiquement mais incapable d'accepter la moindre course — une panne
+ * silencieuse, du genre qu'on ne découvre qu'à la première réservation.
+ *
+ * Idempotente : rejouée, elle renvoie le slug déjà attribué.
+ */
+create or replace function public.approve_driver(p_profile uuid)
+returns text
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_first text;
+  v_last  text;
+  v_slug  text;
+begin
+  select first_name, last_name, driver_slug
+    into v_first, v_last, v_slug
+    from public.profiles
+   where id = p_profile and role = 'driver';
+
+  if not found then
+    raise exception 'Profil chauffeur introuvable : %', p_profile
+      using errcode = 'no_data_found';
+  end if;
+
+  -- Déjà validé : on rend le slug existant plutôt que d'en forger un second.
+  if v_slug is not null then
+    return v_slug;
+  end if;
+
+  v_slug := public.driver_slug_from_name(v_first, v_last);
+
+  insert into public.drivers (id, city_id, slug)
+       values (p_profile, 'paris', v_slug)
+  on conflict (id) do update set slug = excluded.slug;
+
+  update public.profiles
+     set driver_slug = v_slug,
+         status      = 'approved'
+   where id = p_profile;
+
+  return v_slug;
+end;
+$$;
+
+-- `profiles_protect_privileged` verrouille `driver_slug` pour l'intéressé ;
+-- cette fonction s'exécute en security definer, hors de cette garde, et n'est
+-- appelable que par le back-office (service role).
+revoke execute on function public.approve_driver(uuid) from anon, authenticated;
+revoke execute on function public.driver_slug_from_name(text, text) from anon, authenticated;
+
+/**
+ * ⚠️ `drivers_select` est en lecture publique (`using (true)`) et le reste :
+ * l'annuaire est l'argument commercial du site. Mais le STATUT vit dans
+ * `profiles`, qui n'est lisible que par son propriétaire — un chauffeur en
+ * attente de validation serait donc visible publiquement si l'application
+ * lisait `drivers` seule.
+ *
+ * D'où `lib/driverDirectory.ts`, qui lit avec le service role et ne retient
+ * que les profils `approved`. Ne pas remplacer cette lecture par un
+ * `select` anon sur `drivers` en croyant simplifier : cela publierait les
+ * chauffeurs non validés.
+ */

@@ -8,7 +8,7 @@ import {
   MAX_CHAT_MESSAGE_LEN,
 } from "@/lib/chat";
 import { bookingActor } from "@/lib/bookings";
-import { getDriver } from "@/lib/drivers";
+import { getDirectoryDriver } from "@/lib/driverDirectory";
 import { getServerUser } from "@/lib/session";
 import { isValidRoom, sanitizeText, rateLimit } from "@/lib/validation";
 
@@ -36,8 +36,8 @@ export const runtime = "nodejs";
  */
 
 /** Nom public du chauffeur, tel que l'affiche déjà `DriverRequests`. */
-function driverDisplayName(driverId: string): string {
-  const driver = getDriver(driverId);
+async function driverDisplayName(driverId: string): Promise<string> {
+  const driver = await getDirectoryDriver(driverId);
   return driver ? `${driver.firstName} ${driver.lastName}`.trim() : "";
 }
 
@@ -186,7 +186,7 @@ export async function POST(
   const senderName =
     auth.session.state === "ok"
       ? auth.role === "driver"
-        ? driverDisplayName(auth.booking.driverId) || claimedName
+        ? (await driverDisplayName(auth.booking.driverId)) || claimedName
         : `${auth.session.user.firstName} ${auth.session.user.lastName}`.trim() ||
           auth.booking.clientName ||
           claimedName

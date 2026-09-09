@@ -28,8 +28,8 @@ function makeDriver(
   transfers: string[],
   extra: Partial<Driver> = {}
 ): Driver {
-  // Offsets deterministes tires de l.id : `driverCoords` les utilise pour
-  // disperser les pions, et deux fixtures au meme point se superposeraient.
+  // Offsets déterministes tirés de l'id : `driverCoords` les utilise pour
+  // disperser les pions, et deux fixtures au même point se superposeraient.
   const seed = [...id].reduce((n, c) => n + c.charCodeAt(0), 0);
   return {
     id,
