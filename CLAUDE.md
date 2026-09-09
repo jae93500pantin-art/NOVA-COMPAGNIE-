@@ -30,8 +30,62 @@ npm run dev      # next dev -H 0.0.0.0 → http://localhost:3000 (also LAN)
 npm run build    # production build; MUST pass. ~24 routes + middleware
 npm start        # next start -H 0.0.0.0
 npm run lint
+npm run check:auth  # diagnose why real auth is off: keys → connectivity → schema
 ./deploy.sh      # build locally, start VM if off, ship + build + restart on Azure, verify HTTPS
 ```
+
+### Appliquer le schéma Supabase
+
+⚠️ **`supabase/schema.sql` ne s'exécute pas tel quel** — son ordre de lecture
+n'est pas un ordre d'exécution valide, et il ne l'a jamais été (le projet a
+vécu en mode démo, donc personne ne l'avait lancé sur une base vierge) :
+
+1. `reviews.booking_id` référence `public.bookings`, déclaré **plus bas** ;
+2. `booking_chat_is_open()` emploie la valeur d'enum `'paid'` ajoutée dans le
+   même fichier — Postgres refuse d'utiliser une valeur d'enum dans la
+   transaction qui l'ajoute ;
+3. les `create policy` et `alter publication` ne sont pas rejouables.
+
+`scripts/compose-schema.ps1` régénère donc `supabase/setup/` en trois blocs
+ordonnés — `1-tables.sql`, `2-enums.sql` (**seul dans sa transaction**),
+`3-policies-rgpd.sql` (idempotent) — en repérant les sections par leurs
+commentaires-marqueurs, pas par numéro de ligne. `scripts/apply-schema.ps1` les
+envoie dans l'ordre à l'API Management (`POST /v1/projects/{ref}/database/query`,
+une transaction par appel, jeton lu depuis `SUPABASE_ACCESS_TOKEN`, jamais
+affiché). **`schema.sql` reste la source de vérité du contenu** : on l'édite,
+puis on relance `compose-schema.ps1`.
+
+`npm run check:auth` vérifie dans l'ordre fichier → clés → connexion → schéma,
+et n'affiche jamais une clé en entier.
+
+### Créer un administrateur
+
+`scripts/promote-admin.ps1 -Email <adresse>` promeut un compte **existant**
+(inscrivez-vous d'abord sur `/auth/register`). La promotion ne peut pas venir du
+site : `profiles_update_own` laisse un utilisateur écrire sur sa propre ligne, et
+le trigger `profiles_protect_privileged` verrouille donc `role`/`status` dès que
+`auth.uid() = profiles.id` — personne ne s'auto-promeut. Le script passe par
+l'API Management, qui s'exécute sans `auth.uid()`. Effet immédiat :
+`requireAdmin()` relit `profiles.role` à chaque requête, aucune reconnexion.
+`-Role client` rétrograde.
+
+**Le back-office a sa propre porte : `/admin/login`.** Écran dédié (hors du
+groupe `(site)` : ni navbar ni footer), atteint par un bouton discret dans la
+barre légale du footer. Il poste sur la même route `/api/auth/login` que la
+connexion publique — il n'y a qu'un système d'authentification — mais refuse un
+compte sans le rôle `admin` **et referme la session ouverte à l'instant** :
+franchir cette porte ne doit pas connecter au site par effet de bord. Le
+middleware envoie `/admin/*` anonyme vers `/admin/login` (jamais vers la
+connexion publique), `/admin/login` étant explicitement exclu de la protection
+pour ne pas boucler sur lui-même. Une session valide sans le rôle est renvoyée
+vers `/admin/login?error=forbidden`, qui l'explique, au lieu du retour muet à
+l'accueil d'avant. Un admin déjà identifié qui ouvre `/admin/login` repart
+sur `/admin`.
+
+⚠️ **`useAuth()` ne connaît pas le rôle `admin`** — il ne lit que le rôle
+marketplace dans `user_metadata`. Le privilège vit dans `profiles.role` et n'est
+lu que côté serveur (`requireAdmin`). C'est délibéré : le navigateur n'autorise
+rien, et un `isAdmin` côté client n'aurait servi qu'à afficher un lien.
 
 - Dev binds `0.0.0.0` so other devices on the LAN can connect.
   iPhone Safari on the same Wi-Fi: **http://192.168.1.192:3000** (Mac LAN IP).
@@ -161,6 +215,58 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
   `AuthModal` over the current page (no navigation). `/auth/login` and
   `/auth/register` still work as standalone pages (deep links, OAuth error returns).
 
+### Real authentication (with Supabase keys)
+
+- **Sign-up and sign-in go through our own API routes, not the browser client.**
+  `POST /api/auth/register` / `/api/auth/login` / `/api/auth/logout` /
+  `/api/auth/reset` / `/api/auth/password`. The browser *could* call
+  `supabase.auth.*` directly, but then our business rules would live only in the
+  form — one `fetch` away from being skipped. Signing up server-side makes the
+  validation authoritative, allows rate limiting, and keeps raw English Supabase
+  messages off the screen. `@supabase/ssr` writes the session cookie on the
+  response, so the caller is signed in as soon as the JSON lands.
+- **`lib/authValidation.ts` is the single rule set** (pure, unit-tested in
+  `tests/authValidation.test.ts`, 26 tests). The exact same module runs in the
+  form (live per-field errors) and in the route handlers (the real check), so the
+  client can never be more permissive than the server. Password policy: ≥ 8 chars,
+  one letter + one digit, ≤ 72 **bytes** (bcrypt truncates past that, which would
+  silently make two passwords equivalent). Errors are returned as **i18n keys**
+  (`auth.errors.*`), never sentences, so responses stay language-agnostic.
+  `mapAuthError` collapses anything unrecognised to `auth.errorGeneric` rather
+  than echoing internals back.
+- **Rate limits** (`rateLimit`, in-memory): register 5/min/IP; login 10/min/IP
+  **and** 8/5 min per address — one bucket alone stops neither a single host
+  hammering many accounts nor a botnet hammering one; reset 3/10 min; password
+  5/10 min.
+- **Route protection is server-side** (`middleware.ts`): `/compte/*` and `/admin`
+  require a session, anonymous visitors are sent to
+  `/auth/login?next=<path>`; a signed-in visitor bounced off `/auth/login`
+  `/auth/register`. Redirects re-attach the refreshed auth cookies — a bare
+  `NextResponse.redirect` would drop them and log the user out exactly when their
+  token was renewed. `lib/session.ts` (`getServerUser` / `requireUser`) is the
+  same guard for Server Components, and every `/compte/*` page calls it as a
+  second lock so a matcher change cannot quietly expose a page.
+  ⚠️ **Both are no-ops in demo mode** — the demo session lives in localStorage,
+  invisible to the server; guarding would lock the no-keys demo out of its own
+  account space, so `AccountDashboard`'s client-side redirect stays in charge.
+- **E-mail confirmation is handled explicitly.** When the Supabase project
+  requires it, `signUp` returns no session; the form then shows "vérifiez votre
+  boîte mail" instead of claiming the visitor is logged in. An address that
+  already exists gets that *same* answer (Supabase returns a decoy user with an
+  empty `identities` array) — keeping the endpoint from becoming an
+  account-enumeration oracle. `/api/auth/reset` answers identically for known and
+  unknown addresses for the same reason.
+- **Password recovery**: `/auth/mot-de-passe-oublie` (ask) →
+  Supabase e-mail → `/auth/callback` exchanges the code →
+  `/auth/nouveau-mot-de-passe` (set). `RECOVERY_PATH` in `lib/validation.ts` is
+  the sole exception to `safeReturnPath`'s "never return to `/auth/*`" rule.
+- **Sign-out** clears the browser copy *and* `POST`s to `/api/auth/logout` so the
+  refresh token is revoked server-side; otherwise a cookie captured earlier could
+  still be redeemed. POST-only, so a prefetched link can never log anyone out.
+- Roles come from `profiles.role` **read on the server**, never from the signup
+  payload: `validateRegistration` forces anything that is not `driver` to
+  `client`, and the `profiles_protect_privileged` trigger blocks self-promotion.
+
 ## Connexion Google (OAuth 2.0)
 
 - Flow: `GoogleButton` → `supabase.auth.signInWithOAuth({ provider: "google" })`
@@ -261,6 +367,46 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
   `lib/bookings.ts`. Client identity via `lib/clientBookings.ts`.
 - Unit-tested in `tests/bookings.test.ts` (23) + `tests/calendar.test.ts` (18). Verified live end-to-end:
   request → driver receives → accept → client pays → both see "Payée" without reload.
+
+
+### Autorisation des réservations (identité serveur)
+
+⚠️ **`PATCH /api/bookings/[driverId]` n'avait aucune autorisation** : il validait
+le statut demandé puis l'appliquait, sans jamais vérifier *qui* demandait. Avec
+un id de réservation, n'importe qui pouvait passer une course en `paid` sans
+payer ou annuler celle d'un autre. Sans conséquence tant que tout était anonyme
+et en mémoire ; inacceptable depuis que les comptes sont réels.
+
+Deux règles distinctes, toutes deux nécessaires (`lib/bookings.ts`, pures et
+testées dans `tests/bookingAuthz.test.ts`) :
+
+- `canTransition(from, to)` — le changement est-il **cohérent** ?
+- `bookingActor()` + `canActOn()` — est-il **légitime** ?
+
+Accepter sa propre course ou la marquer payée sans payer sont des transitions
+parfaitement valides pour la machine à états : seule la seconde règle les
+arrête.
+
+| Action | Qui |
+|---|---|
+| accepter / refuser / terminer | le chauffeur seul |
+| payer | le client seul |
+| annuler | les deux parties |
+
+L'identité vient de `getServerUser()` (cookie de session), jamais du corps de la
+requête — POST y prend aussi le nom et l'e-mail, qu'un client pouvait sinon
+usurper dans les e-mails de confirmation. Un tiers et une partie qui outrepasse
+son rôle reçoivent le **même** 403 : distinguer les deux révélerait l'existence
+de la réservation.
+
+**`profiles.driver_slug`** est le pont entre un compte chauffeur et sa fiche
+publique de `lib/drivers.ts` — l'annuaire est encore constitué de données fixes,
+sans compte associé. Il est posé par un administrateur : la garde
+`profiles_protect_privileged` le verrouille comme `role` et `status`, sinon un
+chauffeur s'attribuerait la salle de réservations d'un autre.
+
+⚠️ **Mode démo préservé** : sans clés Supabase le serveur ne voit aucune session,
+et ces contrôles se désactivent plutôt que de bloquer la démonstration.
 
 ## Messagerie de course (chat client ↔ chauffeur)
 
@@ -390,6 +536,28 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
   email set in `lib/demoAccounts.ts`.
 - Enable: `RESEND_API_KEY` + verified `EMAIL_FROM` domain in `.env.local`.
 
+### Deux systèmes d'e-mail, à ne pas confondre
+
+| | Ce qui part | Où ça se règle |
+|---|---|---|
+| **API Resend** | chauffeur validé, demande / confirmation / paiement de course | `RESEND_API_KEY` + `EMAIL_FROM` dans `.env.local` (`lib/email.ts`) |
+| **SMTP Supabase** | confirmation d'inscription, mot de passe oublié | dashboard Supabase → Auth → SMTP (`smtp.resend.com:465`, user `resend`, pass = la clé API) |
+
+Renseigner la clé API ne réactive **pas** la confirmation d'inscription : celle-ci
+part de Supabase, qui a besoin d'identifiants SMTP. Les deux viennent du même
+compte Resend, mais se configurent à deux endroits différents.
+
+⚠️ **Tant qu'aucun domaine n'est vérifié chez Resend, l'envoi n'est autorisé que
+vers l'adresse du titulaire du compte** — un alias `+quelquechose` est refusé
+(403 `validation_error`). `sendEmail` renvoie alors `false` et la validation d'un
+chauffeur répond `emailed: false` : ce n'est pas un bug, c'est le rapport fidèle
+d'un envoi refusé. Vérifier `novacompagnie.com` dans Resend (SPF + DKIM), puis
+basculer `EMAIL_FROM` et `smtp_admin_email` sur ce domaine.
+
+`mailer_autoconfirm` reste à `true` (confirmation d'inscription coupée) tant que
+le domaine n'est pas vérifié : sinon un visiteur quelconque ne recevrait jamais
+son lien et resterait bloqué à l'inscription.
+
 ## Deployment workflow
 
 - Local dev → `./deploy.sh` (build locally first; aborts if it fails). The script also
@@ -454,6 +622,15 @@ runtime; never hard-require a key.
 
 ## Security posture (OWASP-aware)
 
+- **`profiles` n'est plus en lecture publique.** La policy `profiles_select`
+  était `using (true)` ; depuis que la migration back-office a ajouté la colonne
+  `email`, cela exposait l'adresse et le rôle de **tous** les comptes à quiconque
+  possède la clé anon — publique par conception, embarquée dans le bundle. Elle
+  est passée à `using (auth.uid() = id)`. Rien n'en dépendait : `/admin` lit avec
+  le service role (qui contourne la RLS) et tout le reste ne consulte que sa
+  propre ligne. Un annuaire public devra s'appuyer sur `drivers`, qui garde sa
+  policy de lecture ouverte. ⚠️ Ne pas réintroduire un `select("*")` sur
+  `profiles` avec une session utilisateur en croyant lire les autres.
 - Security headers in `next.config.js` (`X-Frame-Options`, `nosniff`,
   `Referrer-Policy`, `Permissions-Policy`, **`Content-Security-Policy`** scoped
   for Mapbox/Stripe/Supabase, HSTS); `X-Powered-By` removed.
