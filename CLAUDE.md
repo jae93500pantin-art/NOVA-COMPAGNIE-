@@ -851,10 +851,34 @@ de la base.
 - Sans clé de service, l'annuaire est vide plutôt qu'en erreur.
 
 **Le parcours d'un chauffeur** : inscription (`role=driver`, `status=pending`)
-→ il remplit sa fiche sur `/compte/profil` (`POST /api/driver/profile`, ouvert
-**même en attente** — c'est cette fiche que l'admin examine) → un admin valide
-dans `/admin` → `approve_driver()` crée la ligne d'annuaire, attribue le slug
-et pose `profiles.driver_slug`, **dans une seule transaction**.
+→ **tunnel d'onboarding `/compte/onboarding`** en trois étapes (profil + permis
++ carte VTC · véhicule + immatriculation · pièces justificatives) → un admin
+valide dans `/admin` → `approve_driver()` crée la ligne d'annuaire, attribue le
+slug et pose `profiles.driver_slug`, **dans une seule transaction**.
+
+Le tunnel enregistre à chaque étape (`onboarding_step`), donc un dossier
+interrompu se reprend. `/compte/profil` reste l'édition ultérieure.
+
+**Pièces justificatives** (`driver_documents` + bucket `driver-docs`) :
+
+- ⚠️ **Le bucket doit être créé PRIVÉ à la main** dans le dashboard Supabase
+  (Storage → New bucket → `driver-docs` → Public : OFF). Le SQL ne peut pas le
+  faire sur une instance hébergée. Aucune policy Storage : les dépôts passent
+  par le service role côté serveur, jamais par la clé anon — en ajouter une
+  ouvrirait un accès direct qui ne passerait par aucune vérification.
+- Les fichiers **ne partent jamais directement** du navigateur : tout transite
+  par `POST /api/driver/documents`, qui vérifie session, rôle, type MIME et
+  poids (8 Mo). Un dépôt direct n'aurait que les règles que Storage sait dire.
+- ⚠️ **Aucune URL publique n'est jamais produite.** Une pièce d'identité
+  derrière une URL publique reste accessible à qui obtient le lien (journal,
+  partage d'écran, `Referer`). La consultation admin passera par une URL signée
+  à durée de vie courte.
+- Le chemin vient du compte + du type, **jamais du nom de fichier envoyé** :
+  un nom contrôlé par l'appelant permet `../` ou d'écraser la pièce d'un autre
+  (`documentPath`, testé).
+- Redéposer **remplace et remet en attente d'examen** : sinon il suffirait de
+  faire valider un document propre puis de le remplacer.
+- Règles partagées client/serveur dans `lib/driverDocuments.ts` (pur, 14 tests).
 
 ⚠️ Cette transaction est indivisible pour une raison précise : un slug posé sur
 `drivers` sans son pendant sur `profiles` donnerait un chauffeur visible

@@ -1104,3 +1104,91 @@ revoke execute on function public.driver_slug_from_name(text, text) from anon, a
  * `select` anon sur `drivers` en croyant simplifier : cela publierait les
  * chauffeurs non validés.
  */
+
+
+-- ─────────────────────────────────────────────────────────────
+-- BLOC 7 — Onboarding chauffeur : pièces justificatives
+--
+-- Un chauffeur VTC ne se valide pas sur sa bonne mine : il faut son numéro de
+-- permis, sa carte professionnelle VTC, et les pièces qui les prouvent. Ces
+-- données sont sensibles — elles identifient une personne et conditionnent son
+-- droit d'exercer.
+-- ─────────────────────────────────────────────────────────────
+
+do $$ begin
+  create type driver_document_kind as enum (
+    'licence',        -- permis de conduire
+    'vtc_card',       -- carte professionnelle VTC
+    'insurance',      -- attestation d'assurance
+    'registration',   -- carte grise
+    'identity'        -- pièce d'identité
+  );
+exception when duplicate_object then null; end $$;
+
+alter table public.drivers
+  add column if not exists licence_number  text,
+  add column if not exists vtc_card_number text,
+  add column if not exists onboarding_step int not null default 0;
+
+/**
+ * Les pièces déposées par un chauffeur.
+ *
+ * ⚠️ Le fichier lui-même n'est PAS ici : seul son chemin dans le bucket
+ * `driver-docs`, qui est **privé**. Une pièce d'identité derrière une URL
+ * publique, même longue et difficile à deviner, reste une pièce d'identité
+ * accessible à quiconque obtient le lien — dans un journal, un partage
+ * d'écran, un en-tête `Referer`. L'accès passe par une URL signée, à durée de
+ * vie courte, générée à la demande pour un administrateur.
+ */
+create table if not exists public.driver_documents (
+  id          uuid primary key default uuid_generate_v4(),
+  driver_id   uuid not null references public.profiles (id) on delete cascade,
+  kind        driver_document_kind not null,
+  -- Chemin dans le bucket, jamais une URL.
+  storage_path text not null,
+  mime_type   text,
+  size_bytes  int check (size_bytes > 0),
+  -- Décision de l'administrateur sur CETTE pièce, distincte du statut du
+  -- compte : un dossier peut être refusé pour une seule pièce illisible.
+  status      text not null default 'pending'
+                check (status in ('pending', 'approved', 'rejected')),
+  review_note text,
+  created_at  timestamptz not null default now(),
+  reviewed_at timestamptz
+);
+
+create index if not exists driver_documents_driver_idx
+  on public.driver_documents (driver_id, kind);
+
+-- Une seule pièce courante par type : redéposer remplace, plutôt que
+-- d'empiler des versions dont personne ne sait laquelle fait foi.
+create unique index if not exists driver_documents_one_per_kind_idx
+  on public.driver_documents (driver_id, kind);
+
+alter table public.driver_documents enable row level security;
+
+/**
+ * Le chauffeur voit ses propres pièces — pour savoir ce qu'il a déjà déposé et
+ * ce qu'on lui reproche. Il ne peut ni écrire ni supprimer directement :
+ * l'API le fait pour lui après avoir vérifié la session, comme partout
+ * ailleurs dans ce dépôt.
+ *
+ * Les administrateurs lisent avec le service role, qui contourne la RLS.
+ */
+drop policy if exists driver_documents_select_own on public.driver_documents;
+create policy driver_documents_select_own on public.driver_documents
+  for select using (auth.uid() = driver_id);
+
+/**
+ * ⚠️ Le bucket `driver-docs` doit être créé PRIVÉ dans Supabase Storage, et
+ * il ne peut pas l'être depuis ce fichier — `storage.buckets` n'est pas
+ * accessible en SQL ordinaire sur une instance hébergée. À faire une fois,
+ * dans le dashboard :
+ *
+ *   Storage → New bucket → nom `driver-docs` → **Public : OFF**
+ *
+ * Aucune policy Storage n'est nécessaire : les dépôts et les lectures passent
+ * par le service role côté serveur (`/api/driver/documents`), jamais par la
+ * clé anon. Ajouter une policy `authenticated` ouvrirait un accès direct qui
+ * ne passerait par aucune de nos vérifications.
+ */

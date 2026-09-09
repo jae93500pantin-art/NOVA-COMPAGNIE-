@@ -145,6 +145,17 @@ export async function POST(req: NextRequest) {
     id: g.user.id,
     // Paris uniquement pour l'instant (voir § Mock data dans CLAUDE.md).
     city_id: "paris",
+    licence_number: sanitizeText(body.licenceNumber, 40) || null,
+    vtc_card_number: sanitizeText(body.vtcCardNumber, 40) || null,
+    experience_years: Math.max(
+      0,
+      Math.min(60, Number.parseInt(String(body.experienceYears ?? 0), 10) || 0)
+    ),
+    // Sert seulement à rouvrir le tunnel là où il s'est arrêté.
+    onboarding_step: Math.max(
+      0,
+      Math.min(3, Number.parseInt(String(body.onboardingStep ?? 0), 10) || 0)
+    ),
     bio: sanitizeText(body.bio, 600),
     available: body.available === true,
     categories: [category],
@@ -172,6 +183,55 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Enregistrement impossible" }, { status: 500 });
   }
 
+  /**
+   * L'immatriculation vit dans `vehicles`, pas sur la fiche d'annuaire : c'est
+   * une donnée personnelle indirecte, et cette table n'est pas en lecture
+   * publique. Les champs `car_*` de `drivers` restent la version d'affichage,
+   * volontairement dupliquée et sans plaque.
+   */
+  const plate = sanitizeText(body.carPlate, 16).toUpperCase();
+  if (plate) {
+    const vehicle = {
+      driver_slug: (await currentSlug(g.db, g.user.id)) ?? g.user.id,
+      owner_id: g.user.id,
+      category,
+      make: row.car_make || "—",
+      model: row.car_model || "—",
+      year: row.car_year,
+      color: row.car_color || null,
+      plate,
+      is_primary: true,
+    };
+
+    /**
+     * Lecture puis écriture, plutôt qu'un `upsert`.
+     *
+     * ⚠️ L'unicité du véhicule principal repose sur un index **partiel**
+     * (`unique (driver_slug) where is_primary`). PostgREST ne sait pas viser
+     * un index partiel comme cible de conflit : `on_conflict=driver_slug`
+     * échouerait, ou pire, insérerait un doublon.
+     */
+    const { data: existing } = await g.db
+      .from("vehicles")
+      .select("id")
+      .eq("owner_id", g.user.id)
+      .eq("is_primary", true)
+      .maybeSingle();
+
+    const { error: vehicleError } = existing
+      ? await g.db
+          .from("vehicles")
+          .update(vehicle)
+          .eq("id", (existing as { id: string }).id)
+      : await g.db.from("vehicles").insert(vehicle);
+
+    if (vehicleError) {
+      // Le profil EST enregistré ; seul le véhicule a échoué. On le signale
+      // sans annuler ce qui a réussi.
+      console.error(`[driver-profile] véhicule non enregistré : ${vehicleError.message}`);
+    }
+  }
+
   return Response.json({
     ok: true,
     // Renvoyés parce que le serveur a pu les corriger : le formulaire doit
@@ -179,4 +239,23 @@ export async function POST(req: NextRequest) {
     pricePerHour,
     pricePerDay,
   });
+}
+
+/**
+ * Le slug d'un chauffeur, s'il en a déjà un.
+ *
+ * Un dossier en cours n'est pas encore validé et n'a donc pas de slug : le
+ * véhicule est alors rattaché provisoirement à l'identifiant du compte, et
+ * `approve_driver()` reliera le tout à la validation.
+ */
+async function currentSlug(
+  db: NonNullable<ReturnType<typeof getSupabaseAdmin>>,
+  accountId: string
+): Promise<string | null> {
+  const { data } = await db
+    .from("drivers")
+    .select("slug")
+    .eq("id", accountId)
+    .maybeSingle();
+  return (data as { slug: string | null } | null)?.slug ?? null;
 }

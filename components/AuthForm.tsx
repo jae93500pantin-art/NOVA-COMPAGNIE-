@@ -250,8 +250,21 @@ export function AuthForm({
         <p className="mt-2 text-white/60">
           {role === "driver" ? t("auth.welcomeDriver") : t("auth.welcomeClient")}
         </p>
-        <Link href="/compte" className="btn-primary mt-6">
-          {t("auth.goToAccount")}
+        {/* Un chauffeur qui vient de s'inscrire n'a encore rien dans son
+            espace : son dossier n'existe pas. On l'envoie directement le
+            remplir, plutôt que sur un tableau de bord vide qu'il faudrait
+            comprendre tout seul. */}
+        <Link
+          href={
+            outcome === "register" && role === "driver"
+              ? "/compte/onboarding"
+              : "/compte"
+          }
+          className="btn-primary mt-6"
+        >
+          {outcome === "register" && role === "driver"
+            ? t("auth.startOnboarding")
+            : t("auth.goToAccount")}
           <ArrowRight className="h-4 w-4" />
         </Link>
       </motion.div>
