@@ -67,6 +67,17 @@ export function clearDemoSession() {
   window.dispatchEvent(new CustomEvent(EVENT));
 }
 
+/**
+ * Tell the app to re-read the session.
+ *
+ * Needed after `/api/auth/login` or `/api/auth/register`: the route handler
+ * sets the cookie server-side, so the provider has no way of noticing on its
+ * own and the navbar would keep showing "Connexion" until a full reload.
+ */
+export function notifyAuthChange() {
+  window.dispatchEvent(new CustomEvent(EVENT));
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,6 +106,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser({
         username: authUser.email ?? "",
         email: authUser.email ?? undefined,
+        // Rôle marketplace uniquement. Le privilège `admin` vit dans
+        // `profiles.role` et n'est lu que côté serveur (requireAdmin) : le
+        // navigateur n'a aucune raison de le connaître, il n'autorise rien.
         role: (meta.role as SessionRole) ?? "client",
         firstName,
         lastName,
@@ -122,6 +136,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isSupabaseConfigured) {
       const supabase = getSupabaseBrowser();
       await supabase?.auth.signOut();
+      // The browser client clears its own cookies, but the refresh token also
+      // has to be revoked server-side — otherwise a cookie captured earlier
+      // could still be redeemed for a fresh session.
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {
+        /* best effort: the local session is already gone */
+      });
     }
     clearDemoSession();
     setUser(null);

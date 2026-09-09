@@ -61,8 +61,11 @@ const STATUS_TONE: Record<string, string> = {
 export default async function AdminDashboardPage() {
   const guard = await requireAdmin();
 
-  if (guard.state === "anonymous") redirect("/auth/login?next=/admin");
-  if (guard.state === "forbidden") redirect("/");
+  if (guard.state === "anonymous") redirect("/admin/login");
+  // Session valide mais sans le rôle : on le dit, au lieu de renvoyer
+  // silencieusement à l'accueil — un admin qui s'est trompé de compte ne
+  // comprenait pas ce qui venait de se passer.
+  if (guard.state === "forbidden") redirect("/admin/login?error=forbidden");
 
   if (guard.state === "unconfigured") {
     return (

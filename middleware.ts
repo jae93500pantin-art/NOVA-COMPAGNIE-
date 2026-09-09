@@ -2,8 +2,37 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { env, isSupabaseConfigured } from "@/lib/config";
 
+/** Routes that require a session. Prefix match, so `/compte/profil` counts. */
+const PROTECTED_PREFIXES = ["/compte", "/admin"];
+
+/**
+ * Sign-in screens, which must stay reachable without a session — guarding
+ * `/admin/login` under the `/admin` prefix would loop it onto itself.
+ */
+const ADMIN_LOGIN = "/admin/login";
+
+/** Auth pages a signed-in visitor has no reason to see. */
+const GUEST_ONLY_PATHS = ["/auth/login", "/auth/register"];
+
+function isProtected(pathname: string) {
+  if (pathname === ADMIN_LOGIN) return false;
+  return PROTECTED_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  );
+}
+
+/** The back-office has its own door: never send its visitors to the public one. */
+function loginPathFor(pathname: string) {
+  return pathname === "/admin" || pathname.startsWith("/admin/")
+    ? ADMIN_LOGIN
+    : "/auth/login";
+}
+
 export async function middleware(request: NextRequest) {
-  // Demo mode: nothing to refresh.
+  // Demo mode: the session lives in localStorage, which the server cannot see.
+  // Guarding here would lock the no-keys demo out of its own account space, so
+  // the client-side guard in AccountDashboard stays in charge (see CLAUDE.md §
+  // Architecture principles, point 1).
   if (!isSupabaseConfigured) return NextResponse.next();
 
   let response = NextResponse.next({ request });
@@ -31,8 +60,40 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // Refresh the session if it has expired.
-  await supabase.auth.getUser();
+  // Refreshes the session if it has expired, and tells us who is calling.
+  // getUser() revalidates the JWT with Supabase — a cookie the browser controls
+  // is not evidence on its own.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { pathname, search } = request.nextUrl;
+
+  /**
+   * Redirect while keeping the refreshed auth cookies: they were written onto
+   * `response`, and a fresh NextResponse.redirect would drop them — logging the
+   * visitor out exactly when their token was renewed.
+   */
+  const redirectTo = (path: string, next?: string) => {
+    const url = request.nextUrl.clone();
+    url.pathname = path;
+    url.search = "";
+    if (next) url.searchParams.set("next", next);
+    const redirect = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+    return redirect;
+  };
+
+  // Come back to the requested page once signed in. The admin console always
+  // lands on /admin, so it needs no `next`.
+  if (!user && isProtected(pathname)) {
+    const login = loginPathFor(pathname);
+    return login === ADMIN_LOGIN
+      ? redirectTo(login)
+      : redirectTo(login, `${pathname}${search}`);
+  }
+
+  if (user && GUEST_ONLY_PATHS.includes(pathname)) return redirectTo("/compte");
 
   return response;
 }

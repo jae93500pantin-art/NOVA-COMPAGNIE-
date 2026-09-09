@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Sparkles, Instagram, Youtube } from "lucide-react";
+import { Sparkles, Instagram, Youtube, ShieldCheck } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 
 function TikTokIcon({ className }: { className?: string }) {
@@ -100,11 +100,20 @@ export function Footer() {
 
         <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-white/5 pt-8 text-xs text-white/40 sm:flex-row">
           <p>© {new Date().getFullYear()} Nova Compagnie · www.novacompagnie.com — {t("footer.copyright")}</p>
-          <div className="flex gap-6">
+          <div className="flex flex-wrap items-center justify-center gap-6">
             <Link href="/legal/confidentialite" className="hover:text-white/70">{t("footer.privacy")}</Link>
             <Link href="/legal/conditions" className="hover:text-white/70">{t("footer.terms")}</Link>
             <Link href="/legal/cookies" className="hover:text-white/70">{t("footer.cookies")}</Link>
             <Link href="/legal/mentions-legales" className="hover:text-white/70">{t("footer.legal")}</Link>
+            {/* Accès interne. Discret mais non caché : l'URL n'est pas un
+                secret, c'est `requireAdmin()` qui protège la console. */}
+            <Link
+              href="/admin/login"
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1 text-white/35 transition hover:border-royal-400/30 hover:text-royal-300"
+            >
+              <ShieldCheck className="h-3 w-3" />
+              {t("footer.admin")}
+            </Link>
           </div>
         </div>
       </div>

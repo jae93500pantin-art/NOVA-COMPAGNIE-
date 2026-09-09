@@ -12,20 +12,30 @@ import {
   UserCircle,
   Phone,
   CheckCircle2,
+  MailCheck,
   ArrowRight,
   Loader2,
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getSupabaseBrowser } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/config";
 import { matchDemoAccount } from "@/lib/demoAccounts";
-import { setDemoSession } from "@/lib/auth";
+import { notifyAuthChange, setDemoSession } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import {
+  emailError,
+  nameError,
+  passwordError,
+  phoneError,
+  type AuthField,
+  type FieldErrors,
+} from "@/lib/authValidation";
 import { GoogleButton } from "./GoogleButton";
 
 type Role = "client" | "driver";
 type Mode = "login" | "register";
+/** What the success screen should say once the form has been submitted. */
+type Outcome = "login" | "register" | "confirm";
 
 export function AuthForm({
   mode,
@@ -44,10 +54,12 @@ export function AuthForm({
   const { t } = useI18n();
   const initialRole = (params.get("role") as Role) === "driver" ? "driver" : "client";
   const [role, setRole] = useState<Role>(initialRole);
-  const [done, setDone] = useState(false);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [loading, setLoading] = useState(false);
   // Surfaced when /auth/callback bounces back after a failed OAuth round-trip.
   const [error, setError] = useState<string | null>(params.get("auth_error"));
+  /** Per-field messages, rendered under the input they belong to. */
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [fields, setFields] = useState({
     firstName: "",
     lastName: "",
@@ -57,21 +69,70 @@ export function AuthForm({
   });
 
   const isRegister = mode === "register";
-  const set = (key: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement>) =>
+
+  const set = (key: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setFields((f) => ({ ...f, [key]: e.target.value }));
+    // Clear the error as soon as the visitor starts fixing the field; nagging
+    // while someone types is the fastest way to make a form feel hostile.
+    setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
+  };
+
+  /**
+   * Same rules as the server (`lib/authValidation`), run locally so mistakes
+   * are caught before a round-trip. The server re-checks regardless.
+   */
+  const validate = (): FieldErrors => {
+    const next: FieldErrors = {};
+    if (isRegister) {
+      const first = nameError(fields.firstName, "firstName");
+      if (first) next.firstName = first;
+      const last = nameError(fields.lastName, "lastName");
+      if (last) next.lastName = last;
+      const tel = phoneError(fields.phone);
+      if (tel) next.phone = tel;
+      const pwd = passwordError(fields.password);
+      if (pwd) next.password = pwd;
+    } else if (!fields.password) {
+      next.password = "auth.errors.passwordRequired";
+    }
+    // In demo mode the login field accepts a username ("test"), so only the
+    // real-auth path requires a well-formed address.
+    if (isRegister || isSupabaseConfigured) {
+      const mail = emailError(fields.email);
+      if (mail) next.email = mail;
+    } else if (!fields.email) {
+      next.email = "auth.errors.emailRequired";
+    }
+    return next;
+  };
+
+  /** Validate one field when it loses focus. */
+  const blur = (key: AuthField) => () => {
+    // Don't scold a field the visitor merely tabbed through.
+    if (!fields[key as keyof typeof fields]) return;
+    const next = validate();
+    setFieldErrors((prev) => ({ ...prev, [key]: next[key] }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // Demo mode: no Supabase keys configured.
+    const invalid = validate();
+    if (Object.keys(invalid).length > 0) {
+      setFieldErrors(invalid);
+      return;
+    }
+    setFieldErrors({});
+
+    // ── Demo mode: no Supabase keys, session lives in localStorage ──────────
     if (!isSupabaseConfigured) {
       setLoading(true);
-      // Registration is simulated; login is validated against demo accounts.
       if (isRegister) {
+        // Registration is simulated — there is no database to write to.
         setTimeout(() => {
           setLoading(false);
-          setDone(true);
+          setOutcome("register");
         }, 600);
         return;
       }
@@ -79,7 +140,7 @@ export function AuthForm({
         const account = matchDemoAccount(fields.email, fields.password);
         setLoading(false);
         if (!account) {
-          setError(t("auth.errorCredentials"));
+          setError(t("auth.errors.badCredentials"));
           return;
         }
         setDemoSession({
@@ -91,49 +152,91 @@ export function AuthForm({
           email: account.email || undefined,
         });
         setRole(account.role);
-        setDone(true);
+        setOutcome("login");
         // In the modal we stay on the current page; otherwise land in the account space.
         setTimeout(() => (embedded ? onSuccess?.() : router.push("/compte")), 900);
       }, 600);
       return;
     }
 
-    const supabase = getSupabaseBrowser();
-    if (!supabase) return;
-
+    // ── Real auth: our API routes validate, rate-limit and set the cookie ───
     setLoading(true);
     try {
-      if (isRegister) {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: fields.email,
-          password: fields.password,
-          options: {
-            data: {
-              role,
-              first_name: fields.firstName,
-              last_name: fields.lastName,
-              phone: fields.phone,
-            },
-          },
-        });
-        if (signUpError) throw signUpError;
-      } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: fields.email,
-          password: fields.password,
-        });
-        if (signInError) throw signInError;
+      const endpoint = isRegister ? "/api/auth/register" : "/api/auth/login";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          isRegister
+            ? { ...fields, role }
+            : {
+                email: fields.email,
+                password: fields.password,
+                next: params.get("next"),
+              }
+        ),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        fieldErrors?: FieldErrors;
+        needsEmailConfirmation?: boolean;
+        redirectTo?: string;
+      };
+
+      if (!res.ok) {
+        // The API answers with i18n keys, never with raw Supabase sentences.
+        if (data.fieldErrors) setFieldErrors(data.fieldErrors);
+        else setError(t(data.error ?? "auth.errorGeneric"));
+        return;
       }
-      setDone(true);
-      if (embedded && !isRegister) setTimeout(() => onSuccess?.(), 900);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.errorGeneric"));
+
+      if (isRegister) {
+        // With e-mail confirmation enabled, signUp opens no session: telling the
+        // visitor they are logged in would be a lie.
+        setOutcome(data.needsEmailConfirmation ? "confirm" : "register");
+        if (!data.needsEmailConfirmation) {
+          notifyAuthChange(); // navbar swaps to the account dropdown
+          router.refresh(); // let Server Components see the new cookie
+        }
+        return;
+      }
+
+      setOutcome("login");
+      notifyAuthChange();
+      router.refresh();
+      setTimeout(
+        () => (embedded ? onSuccess?.() : router.push(data.redirectTo ?? "/compte")),
+        900
+      );
+    } catch {
+      setError(t("auth.errors.network"));
     } finally {
       setLoading(false);
     }
   };
 
-  if (done) {
+  /* ---------------------------------------------------------------------- */
+
+  if (outcome === "confirm") {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="text-center"
+      >
+        <MailCheck className="mx-auto h-14 w-14 text-royal-300" />
+        <h2 className="mt-4 text-2xl font-semibold text-white">
+          {t("auth.checkInbox")}
+        </h2>
+        <p className="mt-2 text-white/60">
+          {t("auth.checkInboxBody").replace("{email}", fields.email)}
+        </p>
+      </motion.div>
+    );
+  }
+
+  if (outcome) {
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
@@ -142,12 +245,10 @@ export function AuthForm({
       >
         <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-400" />
         <h2 className="mt-4 text-2xl font-semibold text-white">
-          {isRegister ? t("auth.doneRegister") : t("auth.doneLogin")}
+          {outcome === "register" ? t("auth.doneRegister") : t("auth.doneLogin")}
         </h2>
         <p className="mt-2 text-white/60">
-          {role === "driver"
-            ? t("auth.welcomeDriver")
-            : t("auth.welcomeClient")}
+          {role === "driver" ? t("auth.welcomeDriver") : t("auth.welcomeClient")}
         </p>
         <Link href="/compte" className="btn-primary mt-6">
           {t("auth.goToAccount")}
@@ -166,9 +267,7 @@ export function AuthForm({
             {isRegister ? t("auth.titleRegister") : t("auth.titleLogin")}
           </h1>
           <p className="mt-2 text-white/55">
-            {isRegister
-              ? t("auth.subtitleRegister")
-              : t("auth.subtitleLogin")}
+            {isRegister ? t("auth.subtitleRegister") : t("auth.subtitleLogin")}
           </p>
         </>
       )}
@@ -210,7 +309,7 @@ export function AuthForm({
         />
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-4">
         <AnimatePresence mode="popLayout">
           {isRegister && (
             <motion.div
@@ -220,64 +319,94 @@ export function AuthForm({
               exit={{ opacity: 0, height: 0 }}
               className="grid grid-cols-2 gap-3 overflow-hidden"
             >
-              <IconInput
-                icon={<UserCircle className="h-4 w-4" />}
-                placeholder={t("auth.firstName")}
-                value={fields.firstName}
-                onChange={set("firstName")}
-                autoComplete="given-name"
-              />
-              <IconInput
-                icon={<UserCircle className="h-4 w-4" />}
-                placeholder={t("auth.lastName")}
-                value={fields.lastName}
-                onChange={set("lastName")}
-                autoComplete="family-name"
-              />
+              <Field error={fieldErrors.firstName} t={t}>
+                <IconInput
+                  icon={<UserCircle className="h-4 w-4" />}
+                  placeholder={t("auth.firstName")}
+                  value={fields.firstName}
+                  onChange={set("firstName")}
+                  onBlur={blur("firstName")}
+                  invalid={!!fieldErrors.firstName}
+                  autoComplete="given-name"
+                />
+              </Field>
+              <Field error={fieldErrors.lastName} t={t}>
+                <IconInput
+                  icon={<UserCircle className="h-4 w-4" />}
+                  placeholder={t("auth.lastName")}
+                  value={fields.lastName}
+                  onChange={set("lastName")}
+                  onBlur={blur("lastName")}
+                  invalid={!!fieldErrors.lastName}
+                  autoComplete="family-name"
+                />
+              </Field>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <IconInput
-          icon={<Mail className="h-4 w-4" />}
-          type={isRegister ? "email" : "text"}
-          placeholder={isRegister ? t("auth.email") : t("auth.idOrEmail")}
-          value={fields.email}
-          onChange={set("email")}
-          autoComplete={isRegister ? "email" : "username"}
-          inputMode={isRegister ? "email" : "text"}
-        />
+        <Field error={fieldErrors.email} t={t}>
+          <IconInput
+            icon={<Mail className="h-4 w-4" />}
+            // Demo mode signs in with a username; real auth needs an address.
+            type={isRegister || isSupabaseConfigured ? "email" : "text"}
+            placeholder={
+              isRegister || isSupabaseConfigured ? t("auth.email") : t("auth.idOrEmail")
+            }
+            value={fields.email}
+            onChange={set("email")}
+            onBlur={blur("email")}
+            invalid={!!fieldErrors.email}
+            autoComplete={isRegister ? "email" : "username"}
+            inputMode={isRegister || isSupabaseConfigured ? "email" : "text"}
+          />
+        </Field>
 
         {isRegister && (
-          <IconInput
-            icon={<Phone className="h-4 w-4" />}
-            type="tel"
-            placeholder={t("auth.phone")}
-            value={fields.phone}
-            onChange={set("phone")}
-            autoComplete="tel"
-            inputMode="tel"
-          />
+          <Field error={fieldErrors.phone} t={t}>
+            <IconInput
+              icon={<Phone className="h-4 w-4" />}
+              type="tel"
+              placeholder={t("auth.phone")}
+              value={fields.phone}
+              onChange={set("phone")}
+              onBlur={blur("phone")}
+              invalid={!!fieldErrors.phone}
+              autoComplete="tel"
+              inputMode="tel"
+              required={false}
+            />
+          </Field>
         )}
 
-        <IconInput
-          icon={<Lock className="h-4 w-4" />}
-          type="password"
-          placeholder={t("auth.password")}
-          value={fields.password}
-          onChange={set("password")}
-          autoComplete={isRegister ? "new-password" : "current-password"}
-          minLength={isRegister ? 8 : undefined}
-        />
+        <Field
+          error={fieldErrors.password}
+          hint={isRegister ? t("auth.passwordHint") : undefined}
+          t={t}
+        >
+          <IconInput
+            icon={<Lock className="h-4 w-4" />}
+            type="password"
+            placeholder={t("auth.password")}
+            value={fields.password}
+            onChange={set("password")}
+            onBlur={blur("password")}
+            invalid={!!fieldErrors.password}
+            autoComplete={isRegister ? "new-password" : "current-password"}
+          />
+        </Field>
 
         {!isRegister && (
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center gap-2 text-white/60">
               <input type="checkbox" className="accent-royal-500" /> {t("auth.remember")}
             </label>
-            <a href="#" className="text-royal-300 hover:underline">
+            <Link
+              href="/auth/mot-de-passe-oublie"
+              className="text-royal-300 hover:underline"
+            >
               {t("auth.forgot")}
-            </a>
+            </Link>
           </div>
         )}
 
@@ -335,6 +464,35 @@ export function AuthForm({
   );
 }
 
+/* -------------------------------------------------------------------------- */
+
+/** Wraps an input with its error message (or its hint when there is none). */
+function Field({
+  error,
+  hint,
+  t,
+  children,
+}: {
+  error?: string;
+  hint?: string;
+  t: (key: string) => string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      {children}
+      {error ? (
+        <p className="mt-1.5 flex items-center gap-1 text-xs text-red-300">
+          <AlertCircle className="h-3 w-3 shrink-0" />
+          {t(error)}
+        </p>
+      ) : hint ? (
+        <p className="mt-1.5 text-xs text-white/40">{hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function RoleTab({
   active,
   onClick,
@@ -370,16 +528,25 @@ function RoleTab({
   );
 }
 
-function IconInput({
+export function IconInput({
   icon,
+  invalid,
   ...props
-}: { icon: React.ReactNode } & React.InputHTMLAttributes<HTMLInputElement>) {
+}: {
+  icon: React.ReactNode;
+  invalid?: boolean;
+} & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <div className="relative">
       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40">
         {icon}
       </span>
-      <input className="input pl-10" required {...props} />
+      <input
+        className={cn("input pl-10", invalid && "border-red-400/40 focus:border-red-400/60")}
+        aria-invalid={invalid || undefined}
+        required
+        {...props}
+      />
     </div>
   );
 }

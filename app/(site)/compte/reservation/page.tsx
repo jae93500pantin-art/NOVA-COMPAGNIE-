@@ -3,14 +3,17 @@ import { CheckCircle2, MessageCircle, Home } from "lucide-react";
 import { getDriver } from "@/lib/drivers";
 import { whatsappUrl } from "@/lib/whatsapp";
 import { MarkPaid } from "@/components/MarkPaid";
+import { requireUser } from "@/lib/session";
 
 export const metadata = { title: "Réservation confirmée — Nova Compagnie" };
 
-export default function ReservationPage({
+export default async function ReservationPage({
   searchParams,
 }: {
   searchParams: { status?: string; driver?: string; booking?: string };
 }) {
+  await requireUser("/compte/reservation");
+
   const driver = searchParams.driver ? getDriver(searchParams.driver) : undefined;
   const success = searchParams.status === "success";
 

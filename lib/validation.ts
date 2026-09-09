@@ -20,6 +20,9 @@ export function sanitizeText(input: unknown, max: number): string {
     .slice(0, max);
 }
 
+/** Where a password-recovery link lands once its code has been exchanged. */
+export const RECOVERY_PATH = "/auth/nouveau-mot-de-passe";
+
 /**
  * Sanitise a post-login return path (OAuth `?next=`).
  * Only same-origin relative paths are allowed — anything else (absolute URL,
@@ -29,6 +32,10 @@ export function sanitizeText(input: unknown, max: number): string {
 export function safeReturnPath(raw: string | null | undefined): string {
   if (!raw || !raw.startsWith("/")) return "/compte";
   if (raw.startsWith("//") || raw.startsWith("/\\")) return "/compte";
+  // Sole exception to the "never return to /auth/*" rule: the password-recovery
+  // link legitimately has to land on the form that sets the new password, and
+  // it can only be reached with a valid recovery session.
+  if (raw === RECOVERY_PATH) return raw;
   if (raw.startsWith("/auth/")) return "/compte";
   return raw;
 }

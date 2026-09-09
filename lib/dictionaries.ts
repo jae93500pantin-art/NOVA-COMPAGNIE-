@@ -122,6 +122,17 @@ const fr = {
     terms: "Conditions",
     cookies: "Cookies",
     legal: "Mentions légales",
+    admin: "Administration",
+  },
+  admin: {
+    loginTitle: "Administration",
+    loginSubtitle: "Console interne — accès réservé à l'équipe Nova Compagnie.",
+    loginSubmit: "Accéder à la console",
+    loginNotice:
+      "Toutes les actions du back-office sont vérifiées côté serveur et journalisées.",
+    notAuthorized:
+      "Ce compte n'a pas les privilèges d'administration. Utilisez un compte administrateur.",
+    backToSite: "← Retour au site",
   },
   cookie: {
     title: "Nous respectons votre vie privée",
@@ -217,6 +228,52 @@ const fr = {
     googleUnavailable:
       "Connexion Google indisponible : l'authentification n'est pas configurée sur ce serveur.",
     errorOauth: "La connexion avec Google a échoué. Réessayez.",
+    passwordHint: "8 caractères minimum, dont une lettre et un chiffre.",
+    // Inscription avec confirmation d'e-mail activée : aucune session n'est
+    // ouverte tant que le lien n'est pas cliqué.
+    checkInbox: "Vérifiez votre boîte mail",
+    checkInboxBody:
+      "Nous avons envoyé un lien de confirmation à {email}. Cliquez dessus pour activer votre compte.",
+    driverPending:
+      "Votre profil chauffeur est en cours de validation par notre équipe.",
+    // Mot de passe oublié
+    resetTitle: "Mot de passe oublié",
+    resetSubtitle:
+      "Saisissez votre adresse e-mail : nous vous enverrons un lien pour définir un nouveau mot de passe.",
+    resetSubmit: "Envoyer le lien",
+    resetSent: "Lien envoyé",
+    resetSentBody:
+      "Si un compte existe pour cette adresse, vous recevrez un e-mail dans quelques instants.",
+    backToLogin: "← Retour à la connexion",
+    newPasswordTitle: "Nouveau mot de passe",
+    newPasswordSubtitle: "Choisissez un mot de passe pour votre compte.",
+    newPasswordField: "Nouveau mot de passe",
+    newPasswordConfirm: "Confirmez le mot de passe",
+    newPasswordSubmit: "Enregistrer",
+    newPasswordDone: "Mot de passe mis à jour",
+    newPasswordDoneBody: "Vous pouvez désormais vous connecter avec ce mot de passe.",
+    errors: {
+      emailRequired: "L'adresse e-mail est obligatoire.",
+      emailInvalid: "Cette adresse e-mail n'est pas valide.",
+      passwordRequired: "Le mot de passe est obligatoire.",
+      passwordTooShort: "Le mot de passe doit contenir au moins 8 caractères.",
+      passwordTooWeak: "Ajoutez au moins une lettre et un chiffre.",
+      passwordTooLong: "Le mot de passe est trop long (72 caractères maximum).",
+      passwordMismatch: "Les deux mots de passe ne correspondent pas.",
+      firstNameRequired: "Le prénom est obligatoire.",
+      lastNameRequired: "Le nom est obligatoire.",
+      nameTooLong: "Ce nom est trop long.",
+      phoneInvalid: "Ce numéro de téléphone n'est pas valide.",
+      badCredentials: "E-mail ou mot de passe incorrect.",
+      emailTaken: "Un compte existe déjà avec cette adresse e-mail.",
+      emailNotConfirmed:
+        "Votre adresse n'est pas encore confirmée. Cliquez sur le lien reçu par e-mail.",
+      rateLimited: "Trop de tentatives. Réessayez dans quelques minutes.",
+      linkExpired: "Ce lien a expiré. Demandez-en un nouveau.",
+      unconfigured:
+        "L'authentification n'est pas configurée sur ce serveur.",
+      network: "Connexion au serveur impossible. Vérifiez votre réseau.",
+    },
   },
   authSide: {
     quote:
@@ -611,6 +668,17 @@ const en: Dict = {
     terms: "Terms",
     cookies: "Cookies",
     legal: "Legal notice",
+    admin: "Administration",
+  },
+  admin: {
+    loginTitle: "Administration",
+    loginSubtitle: "Internal console — Nova Compagnie staff only.",
+    loginSubmit: "Enter the console",
+    loginNotice:
+      "Every back-office action is verified server-side and logged.",
+    notAuthorized:
+      "This account has no administration privileges. Use an administrator account.",
+    backToSite: "← Back to the site",
   },
   cookie: {
     title: "We respect your privacy",
@@ -706,6 +774,47 @@ const en: Dict = {
     googleUnavailable:
       "Google sign-in unavailable: authentication is not configured on this server.",
     errorOauth: "Google sign-in failed. Please try again.",
+    passwordHint: "At least 8 characters, including one letter and one digit.",
+    checkInbox: "Check your inbox",
+    checkInboxBody:
+      "We sent a confirmation link to {email}. Click it to activate your account.",
+    driverPending: "Your chauffeur profile is being reviewed by our team.",
+    resetTitle: "Forgot password",
+    resetSubtitle:
+      "Enter your e-mail address and we'll send you a link to set a new password.",
+    resetSubmit: "Send the link",
+    resetSent: "Link sent",
+    resetSentBody:
+      "If an account exists for this address, you'll receive an e-mail shortly.",
+    backToLogin: "← Back to sign in",
+    newPasswordTitle: "New password",
+    newPasswordSubtitle: "Choose a password for your account.",
+    newPasswordField: "New password",
+    newPasswordConfirm: "Confirm password",
+    newPasswordSubmit: "Save",
+    newPasswordDone: "Password updated",
+    newPasswordDoneBody: "You can now sign in with this password.",
+    errors: {
+      emailRequired: "E-mail address is required.",
+      emailInvalid: "This e-mail address is not valid.",
+      passwordRequired: "Password is required.",
+      passwordTooShort: "Password must be at least 8 characters.",
+      passwordTooWeak: "Add at least one letter and one digit.",
+      passwordTooLong: "Password is too long (72 characters max).",
+      passwordMismatch: "The two passwords don't match.",
+      firstNameRequired: "First name is required.",
+      lastNameRequired: "Last name is required.",
+      nameTooLong: "This name is too long.",
+      phoneInvalid: "This phone number is not valid.",
+      badCredentials: "Incorrect e-mail or password.",
+      emailTaken: "An account already exists with this e-mail address.",
+      emailNotConfirmed:
+        "Your address isn't confirmed yet. Click the link we e-mailed you.",
+      rateLimited: "Too many attempts. Try again in a few minutes.",
+      linkExpired: "This link has expired. Request a new one.",
+      unconfigured: "Authentication is not configured on this server.",
+      network: "Can't reach the server. Check your connection.",
+    },
   },
   authSide: {
     quote:
