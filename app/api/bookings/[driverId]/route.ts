@@ -9,6 +9,10 @@ import {
 import type { BookingStatus, Booking } from "@/lib/bookings";
 import { formatWhen, bookingActor, canActOn } from "@/lib/bookings";
 import { getServerUser } from "@/lib/session";
+import {
+  captureBookingPayment,
+  releaseBookingPayment,
+} from "@/lib/paymentIntents";
 import { isValidRoom, sanitizeText, rateLimit } from "@/lib/validation";
 import { getDirectoryDriver } from "@/lib/driverDirectory";
 import type { Driver } from "@/lib/types";
@@ -285,16 +289,50 @@ export async function PATCH(
       session.user.id,
       session.user.driverSlug
     );
-    if (!canActOn(actor, status)) {
+    // `target.status` décide qui est légitime : accepter (pending → paid) est
+    // au chauffeur, régler une ancienne course (confirmed → paid) au client.
+    if (!canActOn(actor, status, target.status)) {
       // Même réponse qu'un inconnu et qu'une partie qui outrepasse son rôle :
       // distinguer les deux révélerait l'existence de la réservation.
       return Response.json({ error: "Action non autorisée" }, { status: 403 });
     }
   }
 
+  /**
+   * Le mouvement d'argent précède le changement d'état, et pas l'inverse.
+   *
+   * Marquer la course « payée » puis échouer à capturer laisserait une course
+   * réputée réglée que personne n'a payée — et le chauffeur roulerait pour
+   * rien. On capture d'abord ; si la banque refuse, la course reste `pending`
+   * et le chauffeur peut réessayer.
+   */
+  if (status === "paid") {
+    const captured = await captureBookingPayment(bookingId);
+    if (!captured) {
+      return Response.json(
+        {
+          error:
+            "Le paiement n'a pas pu être encaissé. La course reste en attente.",
+        },
+        { status: 402 }
+      );
+    }
+  }
+
   const updated = await updateBookingStatus(driverId, bookingId, status);
   if (!updated) {
     return Response.json({ error: "Cannot update" }, { status: 409 });
+  }
+
+  /**
+   * Issue terminale sans course : on relâche l'autorisation.
+   *
+   * ⚠️ L'oublier laisserait les fonds du client bloqués plusieurs jours, sans
+   * transaction à contester — il ne verrait qu'une somme indisponible. C'est
+   * pire qu'un débit suivi d'un remboursement, parce que rien ne l'explique.
+   */
+  if (status === "refused" || status === "cancelled") {
+    void releaseBookingPayment(bookingId);
   }
 
   // Status-change confirmation e-mail (no-op when email isn't configured).

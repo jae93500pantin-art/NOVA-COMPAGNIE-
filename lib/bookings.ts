@@ -52,14 +52,33 @@ export interface NewBookingInput {
 
 /**
  * Whether a status change is allowed.
- * pending   → confirmed | refused | cancelled  (driver decision, or give up)
- * confirmed → paid | cancelled                 (client pays after acceptance)
- * paid      → completed | cancelled            (ride happens, or is called off)
- * refused / completed / cancelled are terminal.
+ *
+ * ## Le paiement est AUTORISÉ à la demande, capturé à l'acceptation
+ *
+ * `pending` ne veut plus dire « rien n'a bougé » : les fonds du client sont
+ * déjà bloqués sur sa carte (`capture_method: "manual"`). L'acceptation du
+ * chauffeur déclenche la capture et mène donc directement à `paid` ; son refus
+ * relâche l'autorisation, sans qu'un centime n'ait circulé.
+ *
+ * pending   → paid       (le chauffeur accepte : capture)
+ * pending   → refused    (le chauffeur refuse : autorisation relâchée)
+ * pending   → cancelled  (le client renonce : autorisation relâchée)
+ * confirmed → paid | cancelled
+ * paid      → completed | cancelled
+ * refused / completed / cancelled sont terminaux.
+ *
+ * ⚠️ `confirmed` est conservé pour les réservations créées **avant** ce
+ * changement, qui attendent encore un paiement client. Le supprimer les aurait
+ * figées dans un état sans issue. Aucune réservation neuve ne s'y arrête.
  */
 export function canTransition(from: BookingStatus, to: BookingStatus): boolean {
   if (from === "pending") {
-    return to === "confirmed" || to === "refused" || to === "cancelled";
+    return (
+      to === "paid" ||
+      to === "confirmed" ||
+      to === "refused" ||
+      to === "cancelled"
+    );
   }
   if (from === "confirmed") return to === "paid" || to === "cancelled";
   if (from === "paid") return to === "completed" || to === "cancelled";
@@ -107,7 +126,8 @@ export function bookingActor(
  */
 export function canActOn(
   actor: BookingActor,
-  next: BookingStatus
+  next: BookingStatus,
+  from?: BookingStatus
 ): boolean {
   if (actor === "stranger") return false;
   switch (next) {
@@ -116,6 +136,20 @@ export function canActOn(
     case "completed":
       return actor === "driver";
     case "paid":
+      /**
+       * `paid` a désormais deux provenances, et deux acteurs légitimes :
+       *  - depuis `pending`, c'est le CHAUFFEUR qui accepte, ce qui déclenche
+       *    la capture des fonds déjà autorisés ;
+       *  - depuis `confirmed`, c'est le CLIENT qui règle une réservation
+       *    d'avant le passage à l'autorisation préalable.
+       *
+       * Sans le `from`, autoriser les deux acteurs indistinctement laisserait
+       * un chauffeur marquer « payée » une course que personne n'a réglée.
+       */
+      if (from === "pending") return actor === "driver";
+      if (from === "confirmed") return actor === "client";
+      // Provenance inconnue (appel hors contexte) : on s'en tient à la règle
+      // historique, la plus restrictive pour le chauffeur.
       return actor === "client";
     case "cancelled":
       return true;
@@ -128,8 +162,11 @@ export function canActOn(
 export function statusLabel(status: BookingStatus): string {
   switch (status) {
     case "pending":
-      return "En attente";
+      // Les fonds sont déjà bloqués sur la carte du client : le dire évite
+      // qu'il découvre une somme indisponible sans explication.
+      return "En attente — montant bloqué";
     case "confirmed":
+      // État hérité : réservations créées avant l'autorisation préalable.
       return "Acceptée — à payer";
     case "refused":
       return "Refusée";

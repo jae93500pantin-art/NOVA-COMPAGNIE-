@@ -33,8 +33,13 @@ describe("bookings — transitions de statut", () => {
   it("autorise confirmed → paid (paiement après acceptation)", () => {
     expect(canTransition("confirmed", "paid")).toBe(true);
   });
-  it("interdit de payer une course non acceptée", () => {
-    expect(canTransition("pending", "paid")).toBe(false);
+  it("permet à l'acceptation d'encaisser directement les fonds autorisés", () => {
+    // Le paiement est autorisé dès la demande (capture manuelle) : accepter
+    // capture, il n'y a plus d'étape « à payer » intermédiaire.
+    expect(canTransition("pending", "paid")).toBe(true);
+  });
+
+  it("interdit de payer une course refusée", () => {
     expect(canTransition("refused", "paid")).toBe(false);
   });
   it("interdit toute transition depuis un état final", () => {
@@ -60,7 +65,7 @@ describe("bookings — transitions de statut", () => {
     expect(canTransition("completed", "cancelled")).toBe(false);
   });
   it("a un libellé pour chaque statut", () => {
-    expect(statusLabel("pending")).toBe("En attente");
+    expect(statusLabel("pending")).toBe("En attente — montant bloqué");
     expect(statusLabel("confirmed")).toBe("Acceptée — à payer");
     expect(statusLabel("refused")).toBe("Refusée");
     expect(statusLabel("paid")).toBe("Payée");

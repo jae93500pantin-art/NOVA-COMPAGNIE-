@@ -39,9 +39,31 @@ describe("canActOn", () => {
     }
   });
 
-  it("réserve le paiement au client — un chauffeur ne peut pas encaisser seul", () => {
-    expect(canActOn("client", "paid")).toBe(true);
+  /**
+   * `paid` a deux provenances depuis le passage à l'autorisation préalable, et
+   * c'est l'état de DÉPART qui désigne l'acteur légitime. Sans cette
+   * distinction, un chauffeur pourrait marquer « payée » une course que
+   * personne n'a réglée.
+   */
+  it("depuis `pending`, seul le chauffeur encaisse — c'est son acceptation", () => {
+    expect(canActOn("driver", "paid", "pending")).toBe(true);
+    expect(canActOn("client", "paid", "pending")).toBe(false);
+  });
+
+  it("depuis `confirmed`, seul le client règle — course d'avant le séquestre", () => {
+    expect(canActOn("client", "paid", "confirmed")).toBe(true);
+    expect(canActOn("driver", "paid", "confirmed")).toBe(false);
+  });
+
+  it("sans provenance, retombe sur la règle la plus restrictive", () => {
+    // Appel hors contexte : on ne laisse pas le chauffeur encaisser par défaut.
     expect(canActOn("driver", "paid")).toBe(false);
+    expect(canActOn("client", "paid")).toBe(true);
+  });
+
+  it("n'ouvre le paiement à personne d'étranger, quelle que soit la provenance", () => {
+    expect(canActOn("stranger", "paid", "pending")).toBe(false);
+    expect(canActOn("stranger", "paid", "confirmed")).toBe(false);
   });
 
   it("laisse les deux parties annuler", () => {

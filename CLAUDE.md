@@ -237,6 +237,14 @@ supabase/schema.sql           Full schema: tables, enums, RLS, triggers, realtim
   **and** 8/5 min per address — one bucket alone stops neither a single host
   hammering many accounts nor a botnet hammering one; reset 3/10 min; password
   5/10 min.
+- **Cloisonnement des rôles** (`middleware.ts`) : `/compte/courses` est réservé
+  aux chauffeurs, `/compte/reservations` et `/compte/reservation` aux clients ;
+  chacun est **renvoyé chez lui**, pas vers une erreur — se tromper d'onglet
+  n'est pas une faute. ⚠️ Le rôle est lu dans `profiles`, **jamais dans
+  `user_metadata`** : un utilisateur peut réécrire ses propres métadonnées avec
+  `supabase.auth.updateUser({ data: { role: "driver" } })`, alors que la
+  colonne est verrouillée par `profiles_protect_privileged`. Coût assumé : une
+  requête de plus, et seulement sur ces trois chemins.
 - **Route protection is server-side** (`middleware.ts`): `/compte/*` and `/admin`
   require a session, anonymous visitors are sent to
   `/auth/login?next=<path>`; a signed-in visitor bounced off `/auth/login`
@@ -334,8 +342,30 @@ Pour le réactiver un jour : recréer un bouton appelant
 
 ## Real-time bookings (course requests, client ↔ driver)
 
-- **Flow (realistic): client requests → driver accepts/refuses → client pays (Stripe) → paid.**
-  Status machine in `lib/bookings.ts`: pending → confirmed|refused|cancelled,
+- **Flux : le client demande ET AUTORISE le paiement → le chauffeur accepte
+  (capture) ou refuse (autorisation relâchée).** La carte est bloquée dès la
+  demande (`capture_method: "manual"`), rien n'est débité tant que personne
+  n'a pris la course.
+  - `pending` ne veut plus dire « rien n'a bougé » : les fonds sont **déjà
+    bloqués**. D'où le libellé « En attente — montant bloqué ».
+  - Accepter mène **directement à `paid`** : `lib/paymentIntents.ts` capture,
+    puis le statut change. ⚠️ Jamais l'inverse — marquer « payée » puis échouer
+    à capturer laisserait une course réputée réglée que personne n'a payée, et
+    un chauffeur qui roule pour rien. Un échec de capture répond 402 et laisse
+    la course en `pending`.
+  - Refus / annulation → `releaseBookingPayment`. ⚠️ **Ne jamais laisser une
+    autorisation orpheline** : le client verrait une somme indisponible
+    pendant des jours, sans transaction à contester — pire qu'un débit suivi
+    d'un remboursement, parce que rien ne l'explique. (Stripe expire de
+    lui-même une autorisation non capturée au bout de 7 jours : c'est le
+    filet, pas la règle.)
+  - `canActOn(actor, next, from)` prend l'état de **départ** : `pending → paid`
+    est au chauffeur (il accepte), `confirmed → paid` au client. Sans ce
+    `from`, un chauffeur pourrait marquer « payée » une course non réglée.
+  - `confirmed` est **hérité** : il ne sert plus qu'aux réservations créées
+    avant ce changement, qui attendent encore un paiement client. Le supprimer
+    les aurait figées dans un état sans issue.
+  Status machine in `lib/bookings.ts`: pending → paid|confirmed|refused|cancelled,
   confirmed → paid|cancelled, paid → completed|cancelled. `refused`/`completed`/
   `cancelled` are terminal. The driver closes a ride with "Course terminée";
   either side can "Annuler". Safety net: a paid ride auto-completes 24 h after its

@@ -155,8 +155,12 @@ export function DriverRequests({
                         >
                           <XCircle className="h-4 w-4" /> Refuser
                         </button>
+                        {/* Accepter ENCAISSE : les fonds du client sont déjà
+                            autorisés depuis sa demande, l'acceptation
+                            déclenche la capture côté serveur. D'où `paid`
+                            directement, sans étape « à payer » intermédiaire. */}
                         <button
-                          onClick={() => act(b.id, "confirmed")}
+                          onClick={() => act(b.id, "paid")}
                           className="btn-primary text-xs"
                         >
                           <CheckCircle2 className="h-4 w-4" /> Accepter
