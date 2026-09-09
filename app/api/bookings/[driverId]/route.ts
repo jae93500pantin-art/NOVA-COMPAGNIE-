@@ -3,10 +3,12 @@ import {
   createBooking,
   updateBookingStatus,
   subscribeBookings,
+  getBookingById,
   type BookingEvent,
 } from "@/lib/bookingBroker";
 import type { BookingStatus, Booking } from "@/lib/bookings";
-import { formatWhen } from "@/lib/bookings";
+import { formatWhen, bookingActor, canActOn } from "@/lib/bookings";
+import { getServerUser } from "@/lib/session";
 import { isValidRoom, sanitizeText, rateLimit } from "@/lib/validation";
 import { getDriver } from "@/lib/drivers";
 import type { Driver } from "@/lib/types";
@@ -133,7 +135,17 @@ export async function POST(
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const clientId = sanitizeText(body.clientId, 64);
+  // L'identité vient de la session, jamais du corps de la requête : sinon
+  // n'importe qui peut réserver au nom d'un autre, et surtout se déclarer
+  // propriétaire d'une réservation qui ne lui appartient pas.
+  // Mode démo (aucune clé Supabase) : le serveur ne voit aucune session, on
+  // retombe sur l'id de navigateur comme avant pour ne pas casser la démo.
+  const session = await getServerUser();
+  if (session.state === "anonymous") {
+    return Response.json({ error: "Authentification requise" }, { status: 401 });
+  }
+  const clientId =
+    session.state === "ok" ? session.user.id : sanitizeText(body.clientId, 64);
   if (!clientId) {
     return Response.json({ error: "Missing client id" }, { status: 400 });
   }
@@ -176,8 +188,17 @@ export async function POST(
   const booking = createBooking({
     driverId,
     clientId,
-    clientName: sanitizeText(body.clientName, 60) || "Client",
-    clientEmail: sanitizeText(body.clientEmail, 120),
+    // Nom et e-mail viennent aussi de la session quand elle existe : les
+    // laisser au client permettrait d'usurper une identité dans les e-mails
+    // de confirmation.
+    clientName:
+      session.state === "ok"
+        ? `${session.user.firstName} ${session.user.lastName}`.trim() || "Client"
+        : sanitizeText(body.clientName, 60) || "Client",
+    clientEmail:
+      session.state === "ok"
+        ? session.user.email ?? ""
+        : sanitizeText(body.clientEmail, 120),
     hours: amount.hours,
     unit,
     transfer,
@@ -223,6 +244,39 @@ export async function PATCH(
   ];
   if (!allowed.includes(status)) {
     return Response.json({ error: "Invalid status" }, { status: 400 });
+  }
+
+  /**
+   * Autorisation.
+   *
+   * `canTransition` (dans le broker) dit si le changement est cohérent ;
+   * il ne dit pas s'il est légitime. Un chauffeur acceptant sa propre course,
+   * ou un client marquant « payée » sans payer, sont des transitions
+   * parfaitement valides pour la machine à états. Sans ce contrôle, un simple
+   * id de réservation suffisait à faire n'importe quoi sur la course d'autrui.
+   *
+   * Mode démo : aucune session côté serveur, on conserve le comportement
+   * historique plutôt que de bloquer la démonstration.
+   */
+  const session = await getServerUser();
+  if (session.state !== "unconfigured") {
+    if (session.state === "anonymous") {
+      return Response.json({ error: "Authentification requise" }, { status: 401 });
+    }
+    const target = getBookingById(bookingId);
+    if (!target || target.driverId !== driverId) {
+      return Response.json({ error: "Cannot update" }, { status: 409 });
+    }
+    const actor = bookingActor(
+      target,
+      session.user.id,
+      session.user.driverSlug
+    );
+    if (!canActOn(actor, status)) {
+      // Même réponse qu'un inconnu et qu'une partie qui outrepasse son rôle :
+      // distinguer les deux révélerait l'existence de la réservation.
+      return Response.json({ error: "Action non autorisée" }, { status: 403 });
+    }
   }
 
   const updated = updateBookingStatus(driverId, bookingId, status);

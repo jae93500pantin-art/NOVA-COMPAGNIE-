@@ -66,6 +66,65 @@ export function canTransition(from: BookingStatus, to: BookingStatus): boolean {
   return false;
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Autorisation : qui a le droit de changer quoi                             */
+/* -------------------------------------------------------------------------- */
+
+/** Rôle de l'appelant vis-à-vis d'une réservation précise. */
+export type BookingActor = "client" | "driver" | "stranger";
+
+/**
+ * Qui appelle, déduit de la réservation elle-même.
+ *
+ * L'identifiant vient de la session côté serveur, jamais du corps de la
+ * requête : un id de réservation ne prouve rien: il circule dans les URL, les
+ * journaux et le HTML.
+ */
+export function bookingActor(
+  booking: Pick<Booking, "clientId" | "driverId">,
+  actorId: string | null | undefined,
+  actorDriverId?: string | null
+): BookingActor {
+  if (!actorId) return "stranger";
+  if (actorId === booking.clientId) return "client";
+  // Un chauffeur est identifié par le profil public qu'il pilote, pas par son
+  // id de compte : la salle de réservations est indexée par ce profil.
+  if (actorDriverId && actorDriverId === booking.driverId) return "driver";
+  return "stranger";
+}
+
+/**
+ * Qui peut demander quelle transition.
+ *
+ * `canTransition` dit si un changement est cohérent ; cette fonction dit s'il
+ * est légitime. Les deux sont nécessaires : accepter sa propre course ou la
+ * marquer payée sans payer sont des transitions parfaitement valides du point
+ * de vue de la machine à états.
+ *
+ * - accepter / refuser / terminer  → le chauffeur seul
+ * - payer                          → le client seul
+ * - annuler                        → les deux parties
+ */
+export function canActOn(
+  actor: BookingActor,
+  next: BookingStatus
+): boolean {
+  if (actor === "stranger") return false;
+  switch (next) {
+    case "confirmed":
+    case "refused":
+    case "completed":
+      return actor === "driver";
+    case "paid":
+      return actor === "client";
+    case "cancelled":
+      return true;
+    default:
+      // `pending` est l'état initial : on n'y revient jamais.
+      return false;
+  }
+}
+
 export function statusLabel(status: BookingStatus): string {
   switch (status) {
     case "pending":
