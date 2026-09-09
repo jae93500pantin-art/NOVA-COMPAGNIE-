@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { getDriver } from "@/lib/drivers";
-import { getClientId, getBookedDrivers, BOOKED_EVENT } from "@/lib/clientBookings";
+import { clientIdOf, getBookedDrivers, BOOKED_EVENT } from "@/lib/clientBookings";
 import type { Booking } from "@/lib/bookings";
 import { statusLabel, formatWhen, bookingQuantityLabel } from "@/lib/bookings";
 import { chatStateForBooking } from "@/lib/chat";
@@ -78,7 +78,7 @@ export function ClientBookings() {
       // Tear down previous streams.
       sourcesRef.current.forEach((es) => es.close());
       sourcesRef.current = [];
-      const cid = getClientId();
+      const cid = clientIdOf(user);
       const drivers = getBookedDrivers();
       drivers.forEach((driverId) => {
         const es = new EventSource(`/api/bookings/${driverId}`);

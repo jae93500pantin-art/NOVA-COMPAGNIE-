@@ -18,7 +18,7 @@ import { whatsappUrl } from "@/lib/whatsapp";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { DatePicker } from "./DatePicker";
-import { getClientId, rememberBookedDriver } from "@/lib/clientBookings";
+import { clientIdOf, rememberBookedDriver } from "@/lib/clientBookings";
 import {
   transferDestinations,
   transferDestinationLabel,
@@ -192,7 +192,7 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
     try {
       // Send a course request. Payment happens later, only after the driver
       // accepts — tracked from "Mes réservations".
-      const clientId = getClientId();
+      const clientId = clientIdOf(user);
       const res = await fetch(`/api/bookings/${driver.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

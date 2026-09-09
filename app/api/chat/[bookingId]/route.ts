@@ -7,6 +7,9 @@ import {
   participantRole,
   MAX_CHAT_MESSAGE_LEN,
 } from "@/lib/chat";
+import { bookingActor } from "@/lib/bookings";
+import { getDriver } from "@/lib/drivers";
+import { getServerUser } from "@/lib/session";
 import { isValidRoom, sanitizeText, rateLimit } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -20,25 +23,61 @@ export const runtime = "nodejs";
  * The thread only exists for a PAID booking, and only its two participants can
  * read or write it — a booking id alone is not enough.
  *
- * ⚠️ Demo-mode identity: like the bookings API, the sender id comes from the
- * request (localStorage client id / driver id) because there is no server-side
- * session yet. It is checked against the booking's own clientId/driverId, so a
- * stranger cannot join a thread, but a leaked client id would be enough to
- * impersonate. With Supabase configured, derive the identity from the session
- * cookie instead (see the `messages` RLS policies in supabase/schema.sql).
+ * L'identité vient de la **session** (`getServerUser`), jamais de la requête :
+ * l'id de l'expéditeur circulait dans l'URL (`?as=`) et dans le corps du POST,
+ * si bien qu'un id de client capturé — dans un journal, un partage d'écran, un
+ * en-tête `Referer` — suffisait à lire et écrire dans la conversation d'un
+ * autre. Le contrôle de participation ne valait que ce que valait cet id.
+ *
+ * ⚠️ Mode démo (aucune clé Supabase) : le serveur ne voit aucune session, on
+ * retombe sur l'id de navigateur comme avant plutôt que de bloquer la
+ * démonstration. Le chemin de production est déjà en base : les policies RLS
+ * de `messages` (supabase/schema.sql) appliquent exactement les mêmes règles.
  */
 
+/** Nom public du chauffeur, tel que l'affiche déjà `DriverRequests`. */
+function driverDisplayName(driverId: string): string {
+  const driver = getDriver(driverId);
+  return driver ? `${driver.firstName} ${driver.lastName}`.trim() : "";
+}
+
 /** Resolve + authorise a request. Returns the booking and the sender's role. */
-function authorise(bookingId: string, senderId: string) {
+async function authorise(bookingId: string, claimedSenderId: string) {
   if (!isValidRoom(bookingId)) return { error: "Invalid booking", status: 400 } as const;
   const booking = getBookingById(bookingId);
   if (!booking) return { error: "Unknown booking", status: 404 } as const;
-  const role = participantRole(booking, senderId);
+
+  const session = await getServerUser();
+  if (session.state === "anonymous") {
+    return { error: "Authentification requise", status: 401 } as const;
+  }
+
+  // `bookingActor` est la même définition de « qui est cette personne pour
+  // cette réservation » que celle qui autorise les changements de statut : un
+  // chauffeur y est reconnu par le profil public qu'il pilote (`driver_slug`),
+  // pas par son id de compte.
+  const role =
+    session.state === "ok"
+      ? (() => {
+          const actor = bookingActor(
+            booking,
+            session.user.id,
+            session.user.driverSlug
+          );
+          return actor === "stranger" ? null : actor;
+        })()
+      : participantRole(booking, claimedSenderId);
+
   if (!role) return { error: "Not a participant", status: 403 } as const;
   if (chatStateForBooking(booking) === "locked") {
     return { error: "Chat not available yet", status: 409 } as const;
   }
-  return { booking, role } as const;
+
+  // L'id écrit sur le message vient de la réservation, pas de l'appelant : il
+  // ne peut donc pas diverger de celui que l'interface compare pour distinguer
+  // ses propres bulles.
+  const senderId = role === "client" ? booking.clientId : booking.driverId;
+  return { booking, role, senderId, session } as const;
 }
 
 export async function GET(
@@ -46,7 +85,7 @@ export async function GET(
   { params }: { params: { bookingId: string } }
 ) {
   const senderId = sanitizeText(req.nextUrl.searchParams.get("as"), 64);
-  const auth = authorise(params.bookingId, senderId);
+  const auth = await authorise(params.bookingId, senderId);
   if ("error" in auth) {
     return new Response(auth.error, { status: auth.status });
   }
@@ -113,7 +152,7 @@ export async function POST(
   }
 
   const senderId = sanitizeText(body.senderId, 64);
-  const auth = authorise(params.bookingId, senderId);
+  const auth = await authorise(params.bookingId, senderId);
   if ("error" in auth) {
     return Response.json({ error: auth.error }, { status: auth.status });
   }
@@ -128,11 +167,24 @@ export async function POST(
     return Response.json({ error: "Empty message" }, { status: 400 });
   }
 
+  // Le nom affiché suit la même règle que l'id : tant qu'une session existe il
+  // vient d'elle, sinon un participant légitime pourrait signer ses messages
+  // « Support Nova » dans sa propre conversation.
+  const claimedName = sanitizeText(body.senderName, 60);
+  const senderName =
+    auth.session.state === "ok"
+      ? auth.role === "driver"
+        ? driverDisplayName(auth.booking.driverId) || claimedName
+        : `${auth.session.user.firstName} ${auth.session.user.lastName}`.trim() ||
+          auth.booking.clientName ||
+          claimedName
+      : claimedName;
+
   const message = postMessage({
     bookingId: params.bookingId,
     role: auth.role,
-    senderId,
-    senderName: sanitizeText(body.senderName, 60),
+    senderId: auth.senderId,
+    senderName,
     text,
   });
 
@@ -145,7 +197,7 @@ export async function HEAD(
   { params }: { params: { bookingId: string } }
 ) {
   const senderId = sanitizeText(req.nextUrl.searchParams.get("as"), 64);
-  const auth = authorise(params.bookingId, senderId);
+  const auth = await authorise(params.bookingId, senderId);
   if ("error" in auth) return new Response(null, { status: auth.status });
   return new Response(null, {
     status: 200,

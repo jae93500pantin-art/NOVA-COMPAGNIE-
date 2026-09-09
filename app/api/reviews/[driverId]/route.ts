@@ -12,6 +12,7 @@ import {
   reviewError,
   tripLabelFromBooking,
 } from "@/lib/reviews";
+import { getServerUser } from "@/lib/session";
 import { isValidRoom, sanitizeText, rateLimit } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -22,10 +23,16 @@ export const runtime = "nodejs";
  *  GET  → published reviews (public).
  *  POST → publish one, only for a completed booking of the author's own.
  *
- * ⚠️ Demo-mode limitation, identical to the bookings and chat APIs: the author
- * is taken from the request body (localStorage client id). With Supabase
- * configured, derive it from the session cookie instead — the ownership check
- * below is only as strong as that identity.
+ * « Certifié » veut dire une chose précise : seule une personne qui a
+ * réellement commandé CE chauffeur, et dont la course est terminée, peut
+ * publier. L'auteur vient donc de la **session** (`getServerUser`) et non du
+ * corps de la requête — sinon il suffisait d'annoncer l'id d'un client pour
+ * signer un avis à sa place, et le mot « certifié » ne garantissait rien.
+ *
+ * ⚠️ Mode démo (aucune clé Supabase) : le serveur ne voit aucune session, on
+ * retombe sur l'id de navigateur comme avant. Le chemin de production est déjà
+ * en base : `reviews.booking_id` est unique et la RLS revérifie la règle de la
+ * course terminée (supabase/schema.sql).
  */
 
 export async function GET(
@@ -64,7 +71,13 @@ export async function POST(
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const clientId = sanitizeText(body.clientId, 64);
+  const session = await getServerUser();
+  if (session.state === "anonymous") {
+    return Response.json({ error: "Authentification requise" }, { status: 401 });
+  }
+  const clientId =
+    session.state === "ok" ? session.user.id : sanitizeText(body.clientId, 64);
+
   const bookingId = sanitizeText(body.bookingId, 64);
   const comment = sanitizeText(body.comment, 500);
   const rating = Number(body.rating);
@@ -98,7 +111,13 @@ export async function POST(
     bookingId,
     driverId,
     clientId,
-    clientName: sanitizeText(body.clientName, 60) || booking!.clientName,
+    // La signature suit l'auteur : un avis certifié porte le nom du compte qui
+    // a commandé la course, pas celui que le formulaire veut bien annoncer.
+    clientName:
+      session.state === "ok"
+        ? `${session.user.firstName} ${session.user.lastName}`.trim() ||
+          booking!.clientName
+        : sanitizeText(body.clientName, 60) || booking!.clientName,
     rating,
     comment,
     // Never trusted from the client: the trip comes from the booking.

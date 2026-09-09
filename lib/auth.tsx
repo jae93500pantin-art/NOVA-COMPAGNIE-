@@ -15,6 +15,13 @@ import { avatarFromMetadata, nameFromMetadata } from "./identity";
 export type SessionRole = "client" | "driver";
 
 export interface SessionUser {
+  /**
+   * Id du compte Supabase. C'est cette valeur que le serveur écrit dans
+   * `booking.clientId` : sans elle, le navigateur filtrerait ses réservations
+   * sur l'id local de `clientBookings` et n'en verrait plus aucune.
+   * Absent en mode démo, où ce compte n'existe pas.
+   */
+  id?: string;
   username: string;
   role: SessionRole;
   firstName: string;
@@ -104,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Google returns given_name/family_name/name + picture instead of our own keys.
       const { firstName, lastName } = nameFromMetadata(meta);
       setUser({
+        id: authUser.id,
         username: authUser.email ?? "",
         email: authUser.email ?? undefined,
         // Rôle marketplace uniquement. Le privilège `admin` vit dans

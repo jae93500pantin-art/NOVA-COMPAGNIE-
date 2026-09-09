@@ -23,6 +23,21 @@ export function getClientId(): string {
   return id;
 }
 
+/**
+ * L'identité sous laquelle ce navigateur apparaît dans une réservation.
+ *
+ * Depuis que le serveur dérive `clientId` de la session, une réservation créée
+ * avec un compte réel porte l'id du compte, pas celui du navigateur : filtrer
+ * sur ce dernier ne remonterait plus rien. L'id local reste la seule identité
+ * disponible en mode démo, où aucun compte n'existe côté serveur.
+ *
+ * Les deux doivent rester en phase avec `app/api/bookings/[driverId]`, qui
+ * choisit exactement de la même façon.
+ */
+export function clientIdOf(user: { id?: string } | null | undefined): string {
+  return user?.id || getClientId();
+}
+
 export function getBookedDrivers(): string[] {
   if (typeof window === "undefined") return [];
   try {

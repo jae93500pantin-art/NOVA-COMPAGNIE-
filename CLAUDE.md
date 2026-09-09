@@ -425,11 +425,16 @@ et ces contrôles se désactivent plutôt que de bloquer la démonstration.
 - **Transport**: SSE, `GET /api/chat/[bookingId]?as=<senderId>` → `snapshot` /
   `message` / `closed` events, 15 s heartbeat. `POST` to send (rate-limited
   30/min/IP, 1000 chars max, history capped at 200 messages/room).
-- **Authorisation**: `participantRole()` checks the sender id against the
-  booking's own `clientId`/`driverId` — a booking id alone grants nothing.
-  ⚠️ Demo-mode limitation: identity still comes from the request (localStorage
-  client id), like the bookings API. With Supabase configured, derive it from the
-  session cookie instead.
+- **Authorisation**: l'identité vient de `getServerUser()` (cookie de session),
+  puis de `bookingActor()` — la **même** définition de « qui est cette personne
+  pour cette réservation » que celle qui autorise les changements de statut, un
+  chauffeur y étant reconnu par `profiles.driver_slug`. Le `?as=` de l'URL et le
+  `senderId` du corps ne sont plus qu'un repli de démo : un id capturé ne donne
+  plus accès au fil de quelqu'un d'autre. L'id écrit sur le message vient de la
+  réservation (`clientId`/`driverId`), donc il ne peut pas diverger de celui que
+  `BookingChat` compare pour distinguer ses propres bulles ; le nom affiché suit
+  la session, sinon un participant légitime pourrait signer « Support Nova ».
+  ⚠️ Sans clés Supabase, `participantRole()` reprend la main sur l'id fourni.
 - **Closing**: `updateBookingStatus` and the auto-complete sweep both call
   `closeChat(bookingId)`, which pushes a `closed` event so open UIs flip to
   read-only without a reload.
@@ -463,8 +468,11 @@ et ces contrôles se désactivent plutôt que de bloquer la démonstration.
   cannot swing an established reputation.
 - API `app/api/reviews/[driverId]` (GET public list, POST publish, 5/min/IP),
   store `lib/reviewBroker.ts` (in-memory, `server-only`, 200/driver).
-  ⚠️ Same demo limitation as bookings/chat: the author id comes from the request
-  body. The production path is in `supabase/schema.sql` — `reviews.booking_id`
+  L'auteur vient de la **session** (`getServerUser`), jamais du corps : « avis
+  certifié » ne veut dire quelque chose que si seule la personne qui a
+  réellement commandé ce chauffeur peut publier. Le nom signé suit l'auteur.
+  ⚠️ Repli de démo sans clés Supabase, comme le chat.
+  The production path is in `supabase/schema.sql` — `reviews.booking_id`
   is `unique`, RLS re-checks the completed-ride rule, there is no update/delete
   policy, and `refresh_driver_rating()` recomputes `rating`/`reviews_count` on
   every write so they cannot drift.

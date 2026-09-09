@@ -11,7 +11,6 @@ import {
   reviewError,
   tripLabelFromBooking,
 } from "@/lib/reviews";
-import { getClientId } from "@/lib/clientBookings";
 import { springSnappy } from "@/lib/motion";
 
 /**
@@ -51,7 +50,9 @@ export function ReviewForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          clientId: getClientId(),
+          // L'auteur est le client de la course. Le serveur le rederive de la
+          // session quand elle existe : cette valeur n'est qu'un repli de demo.
+          clientId: booking.clientId,
           clientName,
           bookingId: booking.id,
           rating,
