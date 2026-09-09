@@ -451,6 +451,50 @@ et ces contrôles se désactivent plutôt que de bloquer la démonstration.
   perdre la course d'un client parce que la base a hoqueté serait pire que
   perdre sa durabilité.
 
+## Véhicules, barème et paiements (bloc 5 du schéma)
+
+- Tables `vehicles`, `pricing_rules`, `payments` + enum `payment_status`.
+  ⚠️ **Ne pas recréer `driver_profiles` / `booking_messages`** : ce sont
+  `drivers` et `messages`. Les enums `user_role`, `booking_status`,
+  `vehicle_category` et le trigger `on_auth_user_created` existent déjà.
+- **`pricing_rules` reflète `PRICE_BANDS`, il ne le remplace pas.** Le montant
+  facturé reste calculé en TypeScript (`computeAmount` + `clampRate`, testés) :
+  deux implémentations d'un même calcul divergent toujours, et c'est le montant
+  facturé qui tranche. `tests/pricingParity.test.ts` lit `schema.sql` et échoue
+  si le barème SQL et les constantes TS s'écartent — bornes, taux de
+  commission, plafonds 1..24 h / 1..30 j.
+- `calculate_booking_price()` reflète le même algorithme côté base (clamp dans
+  la bande, forfait pour un transfert, commission prise **dans** le prix, net
+  du chauffeur par **soustraction**). Elle sert au chemin base de données ;
+  `lib/actions/booking.ts` l'appelle en **contre-mesure** et journalise tout
+  écart avec le calcul TypeScript au lieu de l'absorber.
+- **`payments` ne stocke jamais le `client_secret`** — il autorise à lui seul
+  la confirmation depuis le navigateur. `stripe_payment_intent_id` est `unique`
+  (idempotence : Stripe fait autorité sur l'existence d'un paiement).
+- **`vehicles` n'est pas en lecture publique** : la table porte la plaque
+  d'immatriculation et Postgres n'a pas de RLS par colonne. La fiche publique
+  est servie par l'API, qui choisit les colonnes.
+
+## Server Action `createBooking` (`lib/actions/booking.ts`)
+
+- Seule Server Action du dépôt ; tout le reste passe par des route handlers.
+- **Elle n'insère pas dans `bookings` en direct** : elle appelle
+  `bookingBroker.createBooking`, qui persiste **et** diffuse sur le SSE du
+  chauffeur. Une insertion directe serait durable mais invisible — le chauffeur
+  ne verrait la demande qu'au rechargement.
+- Paiement en **autorisation/capture** : `capture_method: "manual"`, fonds
+  bloqués à la demande, capturés à l'acceptation, relâchés sur un refus. C'est
+  ce qui rend acceptable de demander la carte avant d'avoir une réponse.
+  Coexiste avec `/api/checkout` (Checkout Session), qui reste le chemin câblé
+  dans l'interface.
+- Clé d'idempotence `booking:<id>` : une double soumission ne crée pas deux
+  autorisations sur la carte.
+- Le planning est lu depuis `driver.schedule` + `sanitizeSchedule`, **pas**
+  `scheduleOf` — celui-ci lit le localStorage et ferait entrer un module de
+  navigateur dans une action serveur.
+- Sans clés Stripe ou sans service role : la course est créée, `mode: "demo"`,
+  `clientSecret: null`.
+
 ## Messagerie de course (chat client ↔ chauffeur)
 
 - **Scope: one thread per booking.** There is no free-form inbox — a conversation

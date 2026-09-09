@@ -575,3 +575,266 @@ create policy "messages_select_parties" on public.messages for select using (
 -- Les avis restent en lecture publique : ils sont l'argument de la fiche.
 drop policy if exists "reviews_insert" on public.reviews;
 drop policy if exists reviews_insert_after_completed_ride on public.reviews;
+
+
+-- ─────────────────────────────────────────────────────────────
+-- BLOC 5 — Véhicules, barème tarifaire et paiements
+--
+-- ⚠️ Ce bloc n'introduit QUE ce qui manquait réellement. Trois objets de la
+--    spécification d'origine existent déjà sous un autre nom, et les recréer
+--    aurait dédoublé le modèle :
+--      • `driver_profiles`   → `public.drivers`   (bloc 1)
+--      • `booking_messages`  → `public.messages`  (bloc 1, RLS au bloc 4)
+--      • le trigger `on_auth_user_created`        (déjà posé plus haut)
+--    Les enums `user_role`, `booking_status` et `vehicle_category` existent
+--    aussi : seul `payment_status` est nouveau.
+--
+-- Écriture : comme les réservations, ces tables sont écrites par l'API avec le
+-- service role, qui fait autorité après avoir vérifié la session. Aucune
+-- policy d'écriture pour un jeton utilisateur — elle ouvrirait une porte sur
+-- PostgREST qui ne passerait par aucun de ces contrôles.
+-- ─────────────────────────────────────────────────────────────
+
+do $$ begin
+  create type payment_status as enum (
+    'requires_payment_method',  -- intention créée, moyen de paiement attendu
+    'requires_capture',         -- fonds AUTORISÉS, pas encore encaissés
+    'processing',
+    'succeeded',                -- capturé
+    'canceled',                 -- autorisation relâchée
+    'failed'
+  );
+exception when duplicate_object then null; end $$;
+
+-- ── Véhicules ────────────────────────────────────────────────
+-- Un chauffeur peut en déclarer plusieurs ; `is_primary` désigne celui que la
+-- fiche publique met en avant. Rattaché par `driver_slug` comme le reste :
+-- l'annuaire vit encore dans lib/drivers.ts, aucune clé étrangère ne tiendrait.
+create table if not exists public.vehicles (
+  id           uuid primary key default uuid_generate_v4(),
+  driver_slug  text not null,
+  owner_id     uuid references public.profiles (id) on delete cascade,
+  category     vehicle_category not null,
+  make         text not null,
+  model        text not null,
+  year         int  check (year between 1990 and 2100),
+  color        text,
+  -- Immatriculation : donnée personnelle indirecte, jamais exposée
+  -- publiquement. Lisible seulement par son propriétaire et le service role.
+  plate        text,
+  seats        int  check (seats between 1 and 9),
+  photos       text[] not null default '{}',
+  is_primary   boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists vehicles_driver_idx on public.vehicles (driver_slug);
+-- Un seul véhicule mis en avant par chauffeur : la contrainte est en base,
+-- sinon deux « principaux » s'installent au premier bug d'interface.
+create unique index if not exists vehicles_one_primary_idx
+  on public.vehicles (driver_slug) where is_primary;
+
+-- ── Barème tarifaire ─────────────────────────────────────────
+/**
+ * Les bornes par gamme, une ligne par classe de véhicule.
+ *
+ * ⚠️ Ce tableau REFLÈTE `PRICE_BANDS` de lib/pricing.ts, il ne le remplace
+ * pas : le prix facturé est calculé côté TypeScript (`computeAmount` +
+ * `clampRate`), testé unitairement, et c'est lui qui fait foi. Deux
+ * implémentations d'un même calcul finissent toujours par diverger, et c'est
+ * le montant facturé qui tranche.
+ *
+ * `tests/pricingParity.test.ts` compare les valeurs semées ici aux constantes
+ * TypeScript et échoue si l'une bouge sans l'autre.
+ *
+ * Les classes standard ont une bande de largeur nulle (min = max) : le tarif
+ * est imposé par la plateforme. Ce n'est pas un cas particulier, mais une
+ * bande où le chauffeur n'a nulle part où se poser.
+ */
+create table if not exists public.pricing_rules (
+  category         vehicle_category primary key,
+  min_hour         numeric(10,2) not null,
+  max_hour         numeric(10,2) not null,
+  min_day          numeric(10,2) not null,
+  max_day          numeric(10,2) not null,
+  commission_rate  numeric(4,3)  not null default 0.250,
+  updated_at       timestamptz   not null default now(),
+  check (max_hour >= min_hour and max_day >= min_day),
+  check (commission_rate >= 0 and commission_rate < 1)
+);
+
+-- Valeurs semées depuis lib/pricing.ts. `on conflict do nothing` : rejouer le
+-- bloc ne doit pas écraser un barème ajusté en production.
+insert into public.pricing_rules
+  (category, min_hour, max_hour, min_day, max_day)
+values
+  ('Business',    120, 120, 1000, 1000),
+  ('Moto',        120, 120, 1000, 1000),
+  ('Van',         120, 120, 1000, 1000),
+  ('Van Luxury',  150, 250, 1500, 3000),
+  ('Luxury',      150, 250, 1500, 3000)
+on conflict (category) do nothing;
+
+-- ── Paiements ────────────────────────────────────────────────
+/**
+ * Une ligne par intention de paiement Stripe.
+ *
+ * ⚠️ Le `client_secret` n'est PAS stocké. Il autorise à lui seul la
+ * confirmation du paiement depuis le navigateur : le conserver reviendrait à
+ * ranger un moyen de paiement en base. Il ne fait que transiter dans la
+ * réponse de l'action serveur.
+ *
+ * `capture_method = 'manual'` : les fonds sont AUTORISÉS à la demande de
+ * course et capturés seulement quand le chauffeur accepte. Un refus relâche
+ * l'autorisation sans qu'un centime n'ait bougé.
+ */
+create table if not exists public.payments (
+  id                       uuid primary key default uuid_generate_v4(),
+  booking_id               uuid not null references public.bookings (id) on delete cascade,
+  -- Idempotence : Stripe fait autorité sur l'existence d'un paiement, deux
+  -- lignes pour une même intention rendraient tout rapprochement faux.
+  stripe_payment_intent_id text unique,
+  amount_cents             int not null check (amount_cents > 0),
+  currency                 text not null default 'eur',
+  status                   payment_status not null default 'requires_payment_method',
+  capture_method           text not null default 'manual'
+                             check (capture_method in ('manual', 'automatic')),
+  -- Ce que la plateforme garde, dérivé du prix client (jamais ajouté par-dessus).
+  commission_cents         int not null default 0 check (commission_cents >= 0),
+  last_error               text,
+  authorized_at            timestamptz,
+  captured_at              timestamptz,
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now()
+);
+
+create index if not exists payments_booking_idx on public.payments (booking_id);
+create index if not exists payments_status_idx  on public.payments (status);
+
+/**
+ * Calcul du prix d'une course, côté base.
+ *
+ * Reflète exactement `computeAmount` + `clampRate` de lib/payments.ts et
+ * lib/pricing.ts :
+ *   • le tarif proposé est ramené DANS la bande de sa gamme avant tout calcul
+ *     (un tarif stocké avant un changement de barème ne doit jamais facturer
+ *     hors bande) ;
+ *   • un transfert est un forfait : la quantité ne s'applique pas ;
+ *   • les heures sont bornées à 1..24, les jours à 1..30 ;
+ *   • la commission est prise DANS le prix client, jamais ajoutée par-dessus,
+ *     et le net du chauffeur est obtenu par SOUSTRACTION pour que les deux
+ *     retombent toujours exactement sur le total.
+ *
+ * Sert au chemin base de données (action serveur, rapprochement, back-office).
+ * Le montant réellement facturé reste calculé en TypeScript.
+ */
+create or replace function public.calculate_booking_price(
+  p_category       vehicle_category,
+  p_unit           text,
+  p_quantity       int     default 1,
+  p_price_per_hour numeric default null,
+  p_price_per_day  numeric default null,
+  p_transfer_fare  numeric default null
+)
+returns table (
+  quantity     int,
+  unit_price   numeric,
+  total_ttc    numeric,
+  commission   numeric,
+  driver_net   numeric,
+  amount_cents int
+)
+language plpgsql
+stable
+security definer set search_path = public
+as $$
+declare
+  band    public.pricing_rules%rowtype;
+  v_qty   int;
+  v_unit  numeric;
+  v_total numeric;
+  v_comm  numeric;
+begin
+  select * into band from public.pricing_rules r where r.category = p_category;
+  if not found then
+    raise exception 'Aucun bareme pour la gamme %', p_category
+      using errcode = 'no_data_found';
+  end if;
+
+  if p_unit = 'transfer' then
+    -- Forfait : un trajet, la quantité ne s'applique pas.
+    if coalesce(p_transfer_fare, 0) <= 0 then
+      raise exception 'Forfait de transfert invalide' using errcode = 'check_violation';
+    end if;
+    v_qty  := 1;
+    v_unit := round(p_transfer_fare);
+  elsif p_unit = 'day' then
+    v_qty  := least(30, greatest(1, coalesce(p_quantity, 1)));
+    v_unit := least(band.max_day,
+                    greatest(band.min_day, round(coalesce(p_price_per_day, band.min_day))));
+  elsif p_unit = 'hour' then
+    v_qty  := least(24, greatest(1, coalesce(p_quantity, 1)));
+    v_unit := least(band.max_hour,
+                    greatest(band.min_hour, round(coalesce(p_price_per_hour, band.min_hour))));
+  else
+    raise exception 'Unite de facturation inconnue : %', p_unit
+      using errcode = 'check_violation';
+  end if;
+
+  v_total := v_unit * v_qty;
+  v_comm  := round(v_total * band.commission_rate);
+
+  return query select
+    v_qty,
+    v_unit,
+    v_total,
+    v_comm,
+    v_total - v_comm,          -- par soustraction : jamais un euro d'écart
+    (v_total * 100)::int;
+end;
+$$;
+
+-- ── RLS ──────────────────────────────────────────────────────
+alter table public.vehicles      enable row level security;
+alter table public.pricing_rules enable row level security;
+alter table public.payments      enable row level security;
+
+-- Le barème est public : il est affiché dans le formulaire du chauffeur.
+drop policy if exists pricing_rules_select on public.pricing_rules;
+create policy pricing_rules_select on public.pricing_rules for select using (true);
+
+/**
+ * Véhicules : le véhicule s'affiche sur la fiche publique, mais pas sa plaque.
+ * PostgreSQL n'ayant pas de RLS par colonne, la lecture est réservée au
+ * propriétaire et la fiche publique est servie par l'API (service role), qui
+ * choisit les colonnes exposées. Ouvrir la table entière aurait publié
+ * l'immatriculation de tous les chauffeurs à quiconque possède la clé anon.
+ */
+drop policy if exists vehicles_select_own on public.vehicles;
+create policy vehicles_select_own on public.vehicles for select using (
+  auth.uid() = owner_id
+  or exists (
+    select 1 from public.profiles p
+     where p.id = auth.uid()
+       and p.driver_slug is not null
+       and p.driver_slug = vehicles.driver_slug
+  )
+);
+
+-- Paiements : visibles des deux parties de la course, de personne d'autre.
+drop policy if exists payments_select_parties on public.payments;
+create policy payments_select_parties on public.payments for select using (
+  exists (
+    select 1 from public.bookings b
+     where b.id = payments.booking_id
+       and (
+         b.client_id = auth.uid()
+         or exists (
+           select 1 from public.profiles p
+            where p.id = auth.uid()
+              and p.driver_slug is not null
+              and p.driver_slug = b.driver_slug
+         )
+       )
+  )
+);
