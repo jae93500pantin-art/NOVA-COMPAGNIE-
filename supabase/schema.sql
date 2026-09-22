@@ -468,9 +468,24 @@ update public.profiles p
   from auth.users u
  where u.id = p.id and p.email is null;
 
+/**
+ * ⚠️ Ce backfill est rejoué à CHAQUE application du bloc 3, qui est
+ * explicitement conçu pour être rejouable. Sans les deux gardes ci-dessous, il
+ * dévalidait tous les chauffeurs déjà validés à chaque migration — en leur
+ * laissant leur `driver_slug`, donc dans l'état incohérent que tout le reste
+ * du schéma s'échine à empêcher : visibles nulle part, mais toujours titulaires
+ * d'une salle de réservations.
+ *
+ * `driver_slug is null` est la garde qui compte : un slug est la preuve qu'une
+ * validation a eu lieu, y compris pour les dossiers antérieurs à
+ * `approved_at`. `status <> 'pending'` évite une écriture inutile.
+ */
 update public.profiles
    set status = 'pending'
- where role = 'driver' and approved_at is null;
+ where role = 'driver'
+   and approved_at is null
+   and driver_slug is null
+   and status <> 'pending';
 
 -- Le trigger d'inscription renseigne désormais l'e-mail et met les nouveaux
 -- chauffeurs en attente de validation.
@@ -1062,32 +1077,37 @@ stable
 security definer set search_path = public
 as $$
 declare
-  base    text;
-  slug    text;
-  n       int := 1;
+  -- ⚠️ Préfixe `v_` obligatoire, et pas par convention : une variable nommée
+  -- `slug` porte le même nom que la colonne `drivers.slug` employée dans la
+  -- boucle ci-dessous, et Postgres refuse alors la requête — « column
+  -- reference "slug" is ambiguous ». L'erreur ne se voit qu'à l'exécution,
+  -- donc seulement le jour où l'on valide un premier chauffeur.
+  v_base  text;
+  v_slug  text;
+  v_n     int := 1;
 begin
-  base := lower(btrim(coalesce(p_first, '') || '-' || coalesce(p_last, '')));
+  v_base := lower(btrim(coalesce(p_first, '') || '-' || coalesce(p_last, '')));
   -- Translittération : les accents deviennent leur lettre de base.
-  base := translate(
-    base,
+  v_base := translate(
+    v_base,
     'àáâãäåçèéêëìíîïñòóôõöùúûüýÿ',
     'aaaaaaceeeeiiiinooooouuuuyy'
   );
   -- Tout ce qui n'est ni lettre ni chiffre devient un tiret, puis on replie.
-  base := regexp_replace(base, '[^a-z0-9]+', '-', 'g');
-  base := btrim(regexp_replace(base, '-+', '-', 'g'), '-');
-  if base = '' or base is null then
-    base := 'chauffeur';
+  v_base := regexp_replace(v_base, '[^a-z0-9]+', '-', 'g');
+  v_base := btrim(regexp_replace(v_base, '-+', '-', 'g'), '-');
+  if v_base = '' or v_base is null then
+    v_base := 'chauffeur';
   end if;
   -- `ROOM_RE` côté application n'accepte que 40 caractères.
-  base := left(base, 32);
+  v_base := left(v_base, 32);
 
-  slug := base;
-  while exists (select 1 from public.drivers d where d.slug = slug) loop
-    n := n + 1;
-    slug := base || '-' || n;
+  v_slug := v_base;
+  while exists (select 1 from public.drivers d where d.slug = v_slug) loop
+    v_n := v_n + 1;
+    v_slug := v_base || '-' || v_n;
   end loop;
-  return slug;
+  return v_slug;
 end;
 $$;
 
@@ -1122,21 +1142,53 @@ begin
       using errcode = 'no_data_found';
   end if;
 
-  -- Déjà validé : on rend le slug existant plutôt que d'en forger un second.
-  if v_slug is not null then
-    return v_slug;
+  -- Déjà validé : on garde le slug existant plutôt que d'en forger un second.
+  if v_slug is null then
+    v_slug := public.driver_slug_from_name(v_first, v_last);
+
+    insert into public.drivers (id, city_id, slug)
+         values (p_profile, 'paris', v_slug)
+    on conflict (id) do update set slug = excluded.slug;
   end if;
 
-  v_slug := public.driver_slug_from_name(v_first, v_last);
-
-  insert into public.drivers (id, city_id, slug)
-       values (p_profile, 'paris', v_slug)
-  on conflict (id) do update set slug = excluded.slug;
-
+  /**
+   * Le profil est réécrit à chaque appel, et pas seulement à la première
+   * validation : la fonction devient ainsi **réparatrice**. Un chauffeur qui
+   * aurait gardé son slug en perdant son statut — c'est arrivé, voir le
+   * backfill plus haut — redevient visible en rejouant simplement la
+   * validation, au lieu de rester dans un état que rien ne rattrape.
+   *
+   * ⚠️ `approved_at` DOIT être renseigné : c'est la trace de la validation, et
+   * le backfill du bloc 2 s'en sert pour distinguer un dossier jamais examiné
+   * d'un dossier accepté. Le laisser nul faisait dévalider tout le monde à la
+   * migration suivante. `coalesce` préserve la date d'origine.
+   */
   update public.profiles
      set driver_slug = v_slug,
-         status      = 'approved'
+         status      = 'approved',
+         approved_at = coalesce(approved_at, now())
    where id = p_profile;
+
+  /**
+   * Le véhicule est rattaché au slug définitif.
+   *
+   * ⚠️ Sans cette ligne, la plaque n'atteint jamais le bon de réservation.
+   * Le chauffeur saisit son véhicule PENDANT l'onboarding, donc avant d'être
+   * validé : à ce moment son slug n'existe pas encore et `/api/driver/profile`
+   * retombe sur son uuid de compte (`currentSlug(...) ?? g.user.id`).
+   * `voucherSource` cherche ensuite le véhicule par `driver_slug`, ne trouve
+   * rien, et le PDF est refusé pour « immatriculation du véhicule » manquante
+   * — un document légalement obligatoire, bloqué par un identifiant posé trop
+   * tôt.
+   *
+   * Placé APRÈS le test ci-dessus, et non dedans : il répare aussi les
+   * dossiers validés avant ce correctif, pour lesquels la fonction sort par le
+   * chemin « déjà validé ».
+   */
+  update public.vehicles
+     set driver_slug = v_slug
+   where owner_id = p_profile
+     and driver_slug is distinct from v_slug;
 
   return v_slug;
 end;

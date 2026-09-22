@@ -14,6 +14,18 @@ export function getSupabaseServer() {
   const cookieStore = cookies();
 
   return createServerClient(env.supabaseUrl, env.supabaseAnonKey, {
+    /**
+     * ⚠️ Même raison que dans `admin.ts` : Next.js met en cache les `fetch`
+     * des Server Components, et supabase-js lit en GET. Ici l'enjeu est plus
+     * grave que des données périmées — ce client porte le **jeton de session
+     * de l'appelant**, donc une réponse mémorisée est celle d'un utilisateur
+     * précis. On ne laisse pas le framework décider s'il est prudent de la
+     * réutiliser.
+     */
+    global: {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+        fetch(input, { ...init, cache: "no-store" }),
+    },
     cookies: {
       getAll() {
         return cookieStore.getAll();
