@@ -10,3 +10,4 @@ alter type booking_status add value if not exists 'paid';
 
 
 alter type user_role add value if not exists 'admin';
+alter type driver_document_kind add value if not exists 'cnaps_card';

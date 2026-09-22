@@ -10,6 +10,7 @@ const fr = {
     transfer: "Transfert Aéroport",
     privateJet: "Vol privé",
     contact: "Contact",
+    becomeDriver: "Devenir chauffeur",
     login: "Connexion",
     register: "S'inscrire",
     account: "Mon espace",
@@ -21,6 +22,21 @@ const fr = {
     client: "Client",
     menu: "Menu",
     language: "Langue",
+  },
+  /**
+   * Carte professionnelle CNAPS : une QUALIFICATION du chauffeur.
+   *
+   * ⚠️ Aucun de ces libellés ne doit designer une prestation vendue par la
+   * plateforme. Nova Compagnie n'a pas d'autorisation d'exercer CNAPS et ne
+   * peut donc pas commercialiser d'activité de sécurité privée (art. L612-2
+   * CSI). Les clés `service.*` qui portaient l'offre « Protection
+   * Rapprochée » ont été retirées pour cette raison — voir lib/cnaps.ts.
+   */
+  cnaps: {
+    badge: "Carte CNAPS vérifiée",
+    badgeLong: "Carte professionnelle CNAPS vérifiée",
+    notice:
+      "Qualification personnelle du chauffeur, vérifiée par nos soins. Nova Compagnie est une plateforme de mise en relation VTC et ne commercialise aucune prestation de sécurité privée.",
   },
   hero: {
     eyebrow: "Chauffeurs privés d'exception",
@@ -45,10 +61,14 @@ const fr = {
   search: {
     city: "Ville",
     category: "Catégorie",
-    date: "Date",
+    date: "Date et heure",
     today: "Aujourd'hui",
     pickDate: "Choisir une date",
     allCategories: "Toutes catégories",
+    pickup: "Adresse de départ",
+    pickupPlaceholder: "12 rue de Rivoli, Paris…",
+    dropoff: "Adresse d'arrivée",
+    dropoffPlaceholder: "Aéroport Paris-Charles de Gaulle…",
     cta: "Voir les chauffeurs",
   },
   home: {
@@ -159,6 +179,10 @@ const fr = {
     resultsOne: "chauffeur disponible",
     resultsMany: "chauffeurs disponibles",
     sortRating: "Mieux notés",
+    sortPriceAsc: "Prix croissant",
+    sortPriceDesc: "Prix décroissant",
+    minRating: "Note minimale",
+    feeShort: "frais inclus",
     sortExperience: "Plus d'expérience",
     emptyTitle: "Aucun chauffeur inscrit pour le moment",
     emptyText:
@@ -268,6 +292,7 @@ const fr = {
   },
   booking: {
     date: "Date",
+    dateTime: "Date et heure",
     time: "Heure",
     departure: "Départ",
     duration: "Durée estimée",
@@ -289,8 +314,13 @@ const fr = {
     to: "Au",
     day: "jour",
     days: "jours",
-    serviceFee: "Frais de service",
+    rideFare: "Tarif course",
+    serviceFee: "Frais de service plateforme",
     total: "Total",
+    /* Récapitulatif chauffeur : ce qu'il propose, ce qui lui est prélevé. */
+    driverOffered: "Prix proposé",
+    driverCommission: "Commission plateforme",
+    driverNet: "Votre revenu net",
     availableNow: "Disponible maintenant",
     onRequest: "Sur réservation",
     perHour: "/ heure",
@@ -331,6 +361,28 @@ const fr = {
     placeholder: "Votre message…",
     send: "Envoyer",
     you: "Vous",
+    peerDriver: "Votre chauffeur",
+    peerClient: "Votre client",
+    quickLabel: "Réponses rapides",
+    // Le libellé EST le texte envoyé : il part dans la langue de celui qui
+    // clique, exactement comme s'il l'avait tapé.
+    quick: {
+      onMyWay: "En route",
+      arrived: "Je suis sur place",
+      late5: "J'ai 5 min de retard",
+      whereAreYou: "Où êtes-vous ?",
+      comingDown: "Je descends",
+      exitA: "Je suis à la sortie A",
+      lookingForCar: "Je cherche votre véhicule",
+    },
+    status: { sent: "Envoyé", delivered: "Remis", read: "Lu" },
+    graceIn: "Course terminée — la discussion se ferme dans",
+    closed: "Cette conversation est fermée.",
+    masked: "Coordonnées masquées",
+    maskNotice:
+      "Numéros de téléphone et adresses e-mail sont masqués automatiquement : vos échanges restent sur Nova, où ils font foi en cas de litige.",
+    errorSend: "Message non envoyé — réessayez.",
+    errorClosed: "La conversation vient d'être fermée.",
     archived: "Course terminée — conversation archivée (lecture seule).",
     archivedDriver: "Course clôturée — conversation archivée (lecture seule).",
     complete: "Course terminée",
@@ -343,6 +395,7 @@ const fr = {
     tomorrow: "Demain",
     weekend: "Ce week-end",
     chooseDate: "Choisir une date",
+    chooseDateTime: "Choisir une date et une heure",
     chooseTime: "Choisir une heure",
     exactTime: "Heure exacte",
     anyTime: "Heure flexible",
@@ -531,6 +584,7 @@ const en: Dict = {
     transfer: "Airport Transfer",
     privateJet: "Private jet",
     contact: "Contact",
+    becomeDriver: "Become a driver",
     login: "Log in",
     register: "Sign up",
     account: "My space",
@@ -542,6 +596,12 @@ const en: Dict = {
     client: "Client",
     menu: "Menu",
     language: "Language",
+  },
+  cnaps: {
+    badge: "CNAPS card verified",
+    badgeLong: "CNAPS professional licence verified",
+    notice:
+      "A personal qualification of the chauffeur, verified by us. Nova Compagnie is a VTC booking platform and sells no private-security service.",
   },
   hero: {
     eyebrow: "Exceptional private chauffeurs",
@@ -561,10 +621,14 @@ const en: Dict = {
   search: {
     city: "City",
     category: "Category",
-    date: "Date",
+    date: "Date & time",
     today: "Today",
     pickDate: "Pick a date",
     allCategories: "All categories",
+    pickup: "Pickup address",
+    pickupPlaceholder: "12 rue de Rivoli, Paris…",
+    dropoff: "Drop-off address",
+    dropoffPlaceholder: "Paris-Charles de Gaulle Airport…",
     cta: "See chauffeurs",
   },
   home: {
@@ -675,6 +739,10 @@ const en: Dict = {
     resultsOne: "chauffeur available",
     resultsMany: "chauffeurs available",
     sortRating: "Top rated",
+    sortPriceAsc: "Price: low to high",
+    sortPriceDesc: "Price: high to low",
+    minRating: "Minimum rating",
+    feeShort: "fees included",
     sortExperience: "Most experience",
     emptyTitle: "No chauffeur registered yet",
     emptyText:
@@ -779,6 +847,7 @@ const en: Dict = {
   },
   booking: {
     date: "Date",
+    dateTime: "Date & time",
     time: "Time",
     departure: "Departure",
     duration: "Estimated duration",
@@ -800,8 +869,12 @@ const en: Dict = {
     to: "To",
     day: "day",
     days: "days",
-    serviceFee: "Service fee",
+    rideFare: "Ride fare",
+    serviceFee: "Platform service fee",
     total: "Total",
+    driverOffered: "Your price",
+    driverCommission: "Platform commission",
+    driverNet: "Your net earnings",
     availableNow: "Available now",
     onRequest: "By appointment",
     perHour: "/ hour",
@@ -842,6 +915,26 @@ const en: Dict = {
     placeholder: "Your message…",
     send: "Send",
     you: "You",
+    peerDriver: "Your chauffeur",
+    peerClient: "Your client",
+    quickLabel: "Quick replies",
+    quick: {
+      onMyWay: "On my way",
+      arrived: "I have arrived",
+      late5: "Running 5 min late",
+      whereAreYou: "Where are you?",
+      comingDown: "Coming down",
+      exitA: "I am at exit A",
+      lookingForCar: "Looking for your car",
+    },
+    status: { sent: "Sent", delivered: "Delivered", read: "Read" },
+    graceIn: "Ride finished — chat closes in",
+    closed: "This conversation is closed.",
+    masked: "Contact details hidden",
+    maskNotice:
+      "Phone numbers and email addresses are hidden automatically: keep your exchanges on Nova, where they stand as the record in case of a dispute.",
+    errorSend: "Message not sent — try again.",
+    errorClosed: "The conversation has just been closed.",
     archived: "Ride finished — conversation archived (read-only).",
     archivedDriver: "Ride closed — conversation archived (read-only).",
     complete: "Ride completed",
@@ -854,6 +947,7 @@ const en: Dict = {
     tomorrow: "Tomorrow",
     weekend: "This weekend",
     chooseDate: "Choose a date",
+    chooseDateTime: "Choose a date and time",
     chooseTime: "Choose a time",
     exactTime: "Exact time",
     anyTime: "Flexible time",

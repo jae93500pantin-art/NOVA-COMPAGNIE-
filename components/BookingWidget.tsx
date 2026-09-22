@@ -10,14 +10,19 @@ import {
   Loader2,
   AlertCircle,
   Plane,
+  Navigation,
+  Flag,
 } from "lucide-react";
 import type { Driver } from "@/lib/types";
 import { computeAmount, type BookingUnit } from "@/lib/payments";
+import { CLIENT_SERVICE_FEE_RATE } from "@/lib/pricing";
+import { formatPrice } from "@/lib/utils";
 import { composeWhen, isFutureBooking, todayISODate } from "@/lib/bookings";
 import { whatsappUrl } from "@/lib/whatsapp";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { DatePicker } from "./DatePicker";
+import { AddressAutocomplete } from "./AddressAutocomplete";
 import { clientIdOf, rememberBookedDriver } from "@/lib/clientBookings";
 import {
   transferDestinations,
@@ -41,6 +46,9 @@ const PREFILL_TIME_KEY = "jw_booking_time";
 const PREFILL_TRANSFER_KEY = "jw_booking_transfer";
 
 const units: BookingUnit[] = ["hour", "day", "transfer"];
+
+/** Le taux affiché suit la constante : deux « 5 % » finissent par diverger. */
+const SERVICE_FEE_PERCENT = Math.round(CLIENT_SERVICE_FEE_RATE * 100);
 
 /** A start time is only usable once it reads HH:MM. */
 const TIME_RE = /^\d{2}:\d{2}$/;
@@ -76,6 +84,10 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [time, setTime] = useState("");
+  // Le trajet, repris de la recherche et corrigeable ici : c'est la dernière
+  // occasion de le préciser avant que la course parte au chauffeur.
+  const [pickup, setPickup] = useState("");
+  const [dropoff, setDropoff] = useState("");
   // Destinations this driver ticked in their profile — the only ones bookable.
   const servedDestinations = useMemo(
     () =>
@@ -109,6 +121,8 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
         }
       }
       if (at && /^\d{2}:\d{2}$/.test(at)) setTime(at);
+      setPickup(sessionStorage.getItem("jw_booking_pickup") ?? "");
+      setDropoff(sessionStorage.getItem("jw_booking_dropoff") ?? "");
       // Coming from the airport-transfer estimate: open straight on the flat
       // fare for the destination the client already chose there.
       const dest = sessionStorage.getItem(PREFILL_TRANSFER_KEY);
@@ -127,7 +141,7 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
     : 1;
   const effectiveStart = unit === "day" ? rangeStart : date;
   const quantity = unit === "day" ? daysCount : unit === "transfer" ? 1 : hours;
-  const { subtotal, total } = computeAmount(
+  const { subtotal, serviceFee, total } = computeAmount(
     driver.pricePerHour,
     driver.pricePerDay,
     unit,
@@ -203,6 +217,12 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
           hours: quantity,
           unit,
           transfer: unit === "transfer" ? transfer : undefined,
+          // Le trajet réel, saisi dans la barre de recherche. Sans lui,
+          // `buildBooking` retombe sur « Adresse de départ » / « Destination »,
+          // et le bon de réservation refuse alors d'être émis (mentions
+          // obligatoires manquantes — voir lib/bookingVoucher.ts).
+          pickup,
+          dropoff,
           when: composeWhen(effectiveStart, unit === "day" ? "" : time),
         }),
       });
@@ -346,6 +366,37 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
         )}
       </div>
 
+      {/* Le trajet. Prérempli depuis la recherche, modifiable ici — un client
+          arrivé directement sur une fiche n'est jamais passé par la barre. */}
+      {unit !== "transfer" && (
+        <div className="mt-3 space-y-2">
+          <div className="rounded-xl border border-white/10 px-3 py-2.5">
+            <span className="flex items-center gap-1.5 text-[11px] text-white/40">
+              <Navigation className="h-3 w-3" /> {t("search.pickup")}
+            </span>
+            <AddressAutocomplete
+              value={pickup}
+              onChange={setPickup}
+              placeholder={t("search.pickupPlaceholder")}
+              ariaLabel={t("search.pickup")}
+              className="mt-0.5"
+            />
+          </div>
+          <div className="rounded-xl border border-white/10 px-3 py-2.5">
+            <span className="flex items-center gap-1.5 text-[11px] text-white/40">
+              <Flag className="h-3 w-3" /> {t("search.dropoff")}
+            </span>
+            <AddressAutocomplete
+              value={dropoff}
+              onChange={setDropoff}
+              placeholder={t("search.dropoffPlaceholder")}
+              ariaLabel={t("search.dropoff")}
+              className="mt-0.5"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Hours slider (hour mode only) */}
       {unit === "hour" && (
         <div className="mt-3 rounded-xl border border-white/10 px-4 py-3">
@@ -367,28 +418,34 @@ export function BookingWidget({ driver: base }: { driver: Driver }) {
       )}
 
       <div className="mt-4 space-y-2 text-sm">
-        {unit === "transfer" ? (
-          // A transfer is a flat fare: no duration, no hourly maths. The route
-          // gets its own line — it is far too long for a label/value row.
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-white/60">{t("booking.transferFlat")}</p>
-              {chosenDestination && (
-                <p className="mt-0.5 text-xs leading-relaxed text-white/40">
-                  {transferDestinationLabel(chosenDestination)}
-                </p>
-              )}
-            </div>
-            <span className="shrink-0 text-white">€{subtotal}</span>
+        {/* Le tarif course porte son intitulé, et le détail du calcul (ou la
+            route du forfait) en dessous : c'est la ligne à laquelle les 5 %
+            s'appliquent, elle doit se nommer avant de se justifier. */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-white/60">
+              {unit === "transfer"
+                ? t("booking.transferFlat")
+                : t("booking.rideFare")}
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-white/40">
+              {unit === "transfer"
+                ? chosenDestination
+                  ? transferDestinationLabel(chosenDestination)
+                  : null
+                : `€${unitRate} × ${quantity} ${unitShort}`}
+            </p>
           </div>
-        ) : (
-          <Row
-            label={`€${unitRate} × ${quantity} ${unitShort}`}
-            value={`€${subtotal}`}
-          />
-        )}
+          <span className="shrink-0 text-white">{formatPrice(subtotal)}</span>
+        </div>
+        {/* Les frais de gestion ne se découvrent pas à l'écran de paiement :
+            le client voit ce qu'il paie, ligne à ligne, avant de demander. */}
+        <Row
+          label={`${t("booking.serviceFee")} (${SERVICE_FEE_PERCENT} %)`}
+          value={formatPrice(serviceFee)}
+        />
         <div className="my-2 h-px bg-white/10" />
-        <Row label={t("booking.total")} value={`€${total}`} bold />
+        <Row label={t("booking.total")} value={formatPrice(total)} bold />
       </div>
 
       {/* Week bookings are never priced online — they go through support. */}

@@ -30,12 +30,38 @@ export function Navbar() {
   const { t } = useI18n();
   const [scrolled, setScrolled] = useState(false);
 
-  const links: { href: string; label: string }[] = [
+  /**
+   * `cta` distingue le seul lien qui ne s'adresse PAS au client : « Devenir
+   * chauffeur » recrute, les autres font réserver. Le styler comme ses voisins
+   * l'aurait noyé dans le tunnel de réservation. Il vit dans la même liste pour
+   * hériter sans effort du menu mobile et du repli responsive — un lien placé à
+   * part disparaîtrait entre `md` et `lg`, là où le menu mobile ne s'ouvre plus.
+   */
+  const links: { href: string; label: string; cta?: boolean }[] = [
     { href: "/drivers", label: t("nav.booking") },
     { href: "/transfert-aeroport", label: t("nav.transfer") },
     { href: "/vol-prive", label: t("nav.privateJet") },
     { href: "/contact", label: t("nav.contact") },
   ];
+
+  /**
+   * ⚠️ Réservé aux visiteurs **non connectés**, et ce n'est pas une question de
+   * pertinence : `/auth/register` fait partie de `GUEST_ONLY_PATHS`, donc le
+   * middleware renvoie tout compte identifié vers `/compte`. Affiché à un
+   * utilisateur connecté, ce lien serait un cul-de-sac silencieux — et un
+   * chauffeur déjà inscrit se verrait proposer de le devenir. Son dossier se
+   * reprend depuis « Mon espace », qui mène au tunnel d'onboarding.
+   *
+   * Même destination que le footer et l'accueil : une seule porte d'entrée
+   * chauffeur, sinon trois parcours d'inscription finissent par diverger.
+   */
+  if (!user) {
+    links.push({
+      href: "/auth/register?role=driver",
+      label: t("nav.becomeDriver"),
+      cta: true,
+    });
+  }
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -109,9 +135,10 @@ export function Navbar() {
                 href={l.href}
                 className={cn(
                   "rounded-full px-4 py-2 text-sm transition",
+                  l.cta && "border border-royal-400/40 text-royal-200 hover:bg-royal-500/10",
                   active
                     ? "bg-white/10 text-white"
-                    : "text-white/70 hover:bg-white/5 hover:text-white"
+                    : !l.cta && "text-white/70 hover:bg-white/5 hover:text-white"
                 )}
               >
                 {l.label}
@@ -253,7 +280,12 @@ export function Navbar() {
                 <Link
                   key={l.href}
                   href={l.href}
-                  className="rounded-xl px-4 py-3 text-sm text-white/80 transition hover:bg-white/5"
+                  className={cn(
+                    "rounded-xl px-4 py-3 text-sm transition",
+                    l.cta
+                      ? "mt-1 border border-royal-400/40 text-royal-200 hover:bg-royal-500/10"
+                      : "text-white/80 hover:bg-white/5"
+                  )}
                 >
                   {l.label}
                 </Link>

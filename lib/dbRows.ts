@@ -42,6 +42,7 @@ export interface BookingRow {
   dropoff: string | null;
   when_local: string | null;
   status: string | null;
+  closed_at: string | null;
   created_at: string;
 }
 
@@ -74,6 +75,10 @@ export function rowToBooking(row: BookingRow): Booking {
     status: STATUSES.includes(row.status as BookingStatus)
       ? (row.status as BookingStatus)
       : "pending",
+    // 0 signifierait « close depuis 1970 », donc hors delai de grace : on
+    // prefere l'absence, que lib/chat.ts sait traiter comme une course
+    // cloturee avant cette regle.
+    closedAt: row.closed_at ? timestampOr(row.closed_at, 0) || undefined : undefined,
     createdAt: timestampOr(row.created_at, 0),
   };
 }
@@ -115,6 +120,9 @@ export interface MessageRow {
   sender_role: string | null;
   sender_name: string | null;
   body: string;
+  is_quick_reply?: boolean | null;
+  delivered_at?: string | null;
+  read_at?: string | null;
   created_at: string;
 }
 
@@ -137,6 +145,13 @@ export function rowToMessage(
     senderName: row.sender_name || "",
     text: row.body,
     createdAt: timestampOr(row.created_at, 0),
+    isQuickReply: row.is_quick_reply === true,
+    // Comme pour closed_at : l'absence d'accuse se dit par undefined, pas par
+    // 0 — qui s'afficherait comme « lu le 1er janvier 1970 ».
+    deliveredAt: row.delivered_at
+      ? timestampOr(row.delivered_at, 0) || undefined
+      : undefined,
+    readAt: row.read_at ? timestampOr(row.read_at, 0) || undefined : undefined,
   };
 }
 
@@ -147,6 +162,7 @@ export function messageToRow(message: ChatMessage, authorAccountId: string) {
     sender_role: message.role,
     sender_name: message.senderName,
     body: message.text,
+    is_quick_reply: message.isQuickReply === true,
   };
 }
 

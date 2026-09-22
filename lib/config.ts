@@ -22,6 +22,13 @@ export const serverEnv = {
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
   resendApiKey: process.env.RESEND_API_KEY ?? "",
   emailFrom: process.env.EMAIL_FROM ?? "Nova Compagnie <onboarding@resend.dev>",
+  /**
+   * Google Places (autocomplétion d'adresses). **Server-only** : sans le
+   * préfixe NEXT_PUBLIC, la clé ne part jamais dans le bundle — l'appel passe
+   * par `/api/places`. Absente, Mapbox prend le relais ; absents tous les
+   * deux, le champ reste en saisie libre.
+   */
+  googleMapsKey: process.env.GOOGLE_MAPS_API_KEY ?? "",
 };
 
 export const isSupabaseConfigured =

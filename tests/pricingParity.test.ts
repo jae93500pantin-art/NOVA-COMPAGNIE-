@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import {
   PRICE_BANDS,
   PLATFORM_COMMISSION_RATE,
+  CLIENT_SERVICE_FEE_RATE,
   type PriceBand,
 } from "@/lib/pricing";
 import type { VehicleCategory } from "@/lib/types";
@@ -73,6 +74,37 @@ describe("barème SQL ↔ barème TypeScript", () => {
     expect(Number(m![1])).toBe(PLATFORM_COMMISSION_RATE);
   });
 
+  it("applique les mêmes frais de service client par défaut", () => {
+    const m = SCHEMA.match(/service_fee_rate\s+numeric\(4,3\)\s+not null default ([\d.]+)/);
+    expect(m, "défaut de service_fee_rate introuvable").toBeTruthy();
+    expect(Number(m![1])).toBe(CLIENT_SERVICE_FEE_RATE);
+  });
+
+  it("réécrit les lignes semées sous l'ancien barème", () => {
+    // `add column ... default` ne touche pas les lignes existantes : sans ce
+    // `update`, une base créée avant ce barème continuerait de répondre 25 %
+    // pendant que TypeScript facture le nouveau partage.
+    const m = SCHEMA.match(
+      /update public\.pricing_rules\s+set commission_rate = ([\d.]+), service_fee_rate = ([\d.]+)/
+    );
+    expect(m, "mise à jour du barème existant introuvable").toBeTruthy();
+    expect(Number(m![1])).toBe(PLATFORM_COMMISSION_RATE);
+    expect(Number(m![2])).toBe(CLIENT_SERVICE_FEE_RATE);
+  });
+
+  it("applique les deux taux à la bonne base", () => {
+    // Le piège du barème : les frais client et la commission chauffeur
+    // portent tous deux sur le TARIF COURSE (`v_fare`), pas l'un sur l'autre.
+    // Un `v_total * commission_rate` prélèverait le chauffeur sur les frais
+    // que le client vient de payer.
+    expect(SCHEMA).toMatch(/v_fee\s+:= round\(v_fare \* band\.service_fee_rate, 2\)/);
+    expect(SCHEMA).toMatch(/v_comm\s+:= round\(v_fare \* band\.commission_rate, 2\)/);
+  });
+
+  it("compose le total client par addition", () => {
+    expect(SCHEMA).toMatch(/v_total := v_fare \+ v_fee/);
+  });
+
   it("borne les quantités comme lib/payments.ts", () => {
     // 1..24 heures, 1..30 jours : les mêmes plafonds que clampHours/clampDays.
     expect(SCHEMA).toMatch(/least\(24, greatest\(1,/);
@@ -81,6 +113,8 @@ describe("barème SQL ↔ barème TypeScript", () => {
 
   it("dérive le net du chauffeur par soustraction", () => {
     // Arrondir la commission ET le net séparément, c'est finir à un euro près.
-    expect(SCHEMA).toMatch(/v_total - v_comm/);
+    // Depuis le tarif course, pas depuis le total client : le chauffeur
+    // n'encaisse pas les frais de service, il ne peut pas en être défalqué.
+    expect(SCHEMA).toMatch(/v_fare - v_comm/);
   });
 });

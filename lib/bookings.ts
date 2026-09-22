@@ -1,6 +1,7 @@
 /** Booking (course request) domain types + pure helpers (unit-testable). */
 
 import type { BookingUnit } from "./payments";
+import { round2 } from "./pricing";
 import { addDays } from "./calendar";
 import {
   getTransferDestination,
@@ -34,6 +35,15 @@ export interface Booking {
   when: string;
   status: BookingStatus;
   createdAt: number;
+  /**
+   * Instant du passage en « terminee » ou « annulee ».
+   *
+   * Porte le delai de grace de la messagerie (lib/chat.ts) : sans lui on ne
+   * saurait pas depuis QUAND la course est close, seulement qu'elle l'est.
+   * Absent sur les reservations anterieures a cette regle, et sur celles que
+   * personne n'a cloturees explicitement.
+   */
+  closedAt?: number;
 }
 
 export interface NewBookingInput {
@@ -210,7 +220,10 @@ export function buildBooking(
     hours: Math.max(1, Math.min(maxQty, Math.floor(input.hours) || 1)),
     unit,
     transfer,
-    total: Math.max(0, Math.round(input.total)),
+    // Au centime, pas à l'euro : depuis que le client supporte 5 % de frais,
+    // un total tombe couramment sur une demie (510 € → 535,50 €). Arrondir à
+    // l'euro rendrait le montant affiché différent du montant encaissé.
+    total: Math.max(0, round2(input.total)),
     pickup: input.pickup?.trim() || DEFAULT_PICKUP,
     dropoff: input.dropoff?.trim() || DEFAULT_DROPOFF,
     when: input.when?.trim() || "",

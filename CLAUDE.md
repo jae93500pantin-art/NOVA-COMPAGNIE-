@@ -127,6 +127,7 @@ app/
     checkout/route.ts         POST → Stripe Checkout session (test/live) or {mode:"demo"} fallback. Amount computed server-side.
     bookings/[driverId]/route.ts  SSE (GET) live course requests + POST create + PATCH accept/refuse/complete/cancel
     chat/[bookingId]/route.ts     SSE (GET) per-booking chat + POST send. Participants only, open only while paid.
+    booking/[id]/pdf/route.ts     GET → bon de réservation préalable en PDF. Parties seules, courses payées, refuse (409) si une mention obligatoire manque.
 
 components/                   All client components unless noted
   Navbar                      Front bar = logo (Nova Compagnie) + "Réservation" (→ /drivers) + "Transfert Aéroport" + "Contact" links + CitySwitcher + LanguageSwitcher + account dropdown/login. Account dropdown has a **WhatsApp contact** link (messaging feature removed).
@@ -185,6 +186,9 @@ lib/
   demoAccounts.ts             Demo login accounts (test/test client, driver/driver → jeremy-driver)
   contacts.ts                 Client's contacted drivers + roomForDriver(id)="dm-<id>" (client↔driver chat room)
   driverOverrides.ts          Driver self-edits (demo): bio, available, **avatar** + **car** (make/model/year/colour, typed by the driver) + **carPhotos** (uploaded, compressed to data-URLs). `applyDriverOverrides` merges, `mergeCar` handles the car (a blank field falls back to the original — never a nameless car). Price is platform-fixed (not driver-editable). The public profile is SSG, so `Gallery`, `DriverAvatar` and `DriverVehicle` re-read the overrides client-side to reflect edits without a rebuild.
+  bookingVoucher.ts           Bon de réservation : numérotation stable, mentions obligatoires (missingVoucherFields), validation SIREN/SIRET (Luhn), mise en forme. Pur, testé.
+  pdf/bookingVoucher.tsx      Rendu PDF du bon (@react-pdf/renderer, server-only). Refuse d'émettre un bon incomplet.
+  voucherSource.ts            server-only — réunit SIREN/carte VTC/plaque/téléphone depuis 3 tables (service role). Ne contrôle AUCUNE identité : l'appelant doit l'avoir fait.
   whatsapp.ts                 WHATSAPP_NUMBER + whatsappUrl() — central WhatsApp contact link (messaging feature removed)
   geo.ts                      City coords + driverCoords() for Mapbox
   consent.ts                  Consent get/save/clear (localStorage, versioned)
@@ -486,8 +490,10 @@ et ces contrôles se désactivent plutôt que de bloquer la démonstration.
   si le barème SQL et les constantes TS s'écartent — bornes, taux de
   commission, plafonds 1..24 h / 1..30 j.
 - `calculate_booking_price()` reflète le même algorithme côté base (clamp dans
-  la bande, forfait pour un transfert, commission prise **dans** le prix, net
-  du chauffeur par **soustraction**). Elle sert au chemin base de données ;
+  la bande, forfait pour un transfert, frais client **ajoutés** au tarif course
+  et commission **déduite** de ce même tarif, net du chauffeur par
+  **soustraction**). Elle rend désormais `ride_fare` et `service_fee` en plus
+  du total. Elle sert au chemin base de données ;
   `lib/actions/booking.ts` l'appelle en **contre-mesure** et journalise tout
   écart avec le calcul TypeScript au lieu de l'absorber.
 - **`payments` ne stocke jamais le `client_secret`** — il autorise à lui seul
@@ -603,13 +609,46 @@ et ces contrôles se désactivent plutôt que de bloquer la démonstration.
   `boundsFor`/`isRateInBand`/
   `rateError` drive the form, `clampRate` is the server's last word (also applied
   in `applyDriverOverrides`, so a rate stored before a band change can never go
-  live). The **25 % platform commission** (`PLATFORM_COMMISSION_RATE`) is taken
-  **out of** the client price, never added on top — `SERVICE_FEE_RATE` stays 0 and
-  the client total is unchanged; `splitRate` derives `net` by subtraction so
-  commission + net always equals the price exactly. Week rates have no field: the
-  profile shows a WhatsApp CTA to support.
-- Pure amount logic in `lib/payments.ts` (`computeBookingAmount`, `computeAmount`, `clampHours`, `clampDays`,
-  no service fee — `SERVICE_FEE_RATE = 0`, total = subtotal, euros→cents). Bookings can be billed **by the hour, by the day, or as a flat airport transfer** (`BookingUnit`; day uses the fixed `pricePerDay`, `transfer` uses the flat fare from `transferFareForDriver` and ignores the quantity). Fully unit-tested (`tests/payments.test.ts`).
+  live). Week rates have no field: the profile shows a WhatsApp CTA to support.
+
+### Le barème : deux taux, deux bases (⚠️ ne pas les additionner)
+
+Le **tarif course** (prix du chauffeur × quantité, ou le forfait de transfert)
+est la base de tout. Deux prélèvements distincts s'y appliquent :
+
+| | Taux | Base | Effet |
+|---|---|---|---|
+| Frais de service (`CLIENT_SERVICE_FEE_RATE`) | **+5 %** | tarif course | **ajoutés** — payés par le client |
+| Commission (`PLATFORM_COMMISSION_RATE`) | **−15 %** | tarif course | **déduits** — supportés par le chauffeur |
+
+`margePlateforme = frais client + commission`, jamais un troisième pourcentage.
+⚠️ **Les deux taux ne font pas « 20 % »** : ils ne portent pas sur le même
+montant et ne se lisent pas au même endroit. Une commission calculée sur le
+*total client* prélèverait le chauffeur sur des frais qu'il n'encaisse pas —
+c'est l'erreur que `tests/pricing.test.ts` et `tests/pricingParity.test.ts`
+verrouillent explicitement des deux côtés (TS et SQL).
+
+- `priceBreakdown(prixChauffeur)` (pur, testé) rend les six montants d'un coup.
+  `clientTotal` est obtenu **par addition** et `driverNet` **par soustraction** :
+  une facture doit valoir la somme de ses lignes, et le décompte du chauffeur
+  retomber exactement sur son prix.
+- **Tout est arrondi au centime** (`round2`), plus à l'euro : 5 % d'un tarif
+  impair tombe sur une demie (170 € → 8,50 €). `buildBooking` et
+  `bookings.total` (numeric(10,2)) suivent, et `formatPrice`/`formatAmount`
+  (`lib/utils.ts`) n'affichent les centimes que lorsqu'il y en a.
+- ⚠️ **Le détail n'est pas stocké** : une réservation ne garde que son total
+  client, et `breakdownFromClientTotal` le redécompose à l'affichage. Des
+  colonnes figées afficheraient l'ancien barème après un changement de taux.
+- **Affichage** : le client voit *Tarif course* + *Frais de service plateforme
+  (5 %)* + *Total* (`BookingWidget`, `ClientBookings`) ; le chauffeur voit
+  *Prix proposé* + *Commission plateforme (15 %)* + *Votre revenu net*
+  (`DriverRequests`, `ProfileEditor`). Chacun ne voit que ce qui le concerne :
+  la commission n'apparaît pas au client (il ne la paie pas), les frais
+  n'apparaissent pas dans le revenu du chauffeur (il ne les supporte pas).
+- Stripe Checkout reçoit **deux lignes** (course + frais) : des frais fondus
+  dans un montant unique se découvrent au relevé bancaire.
+
+- Pure amount logic in `lib/payments.ts` (`computeBookingAmount`, `computeAmount`, `clampHours`, `clampDays`, euros→cents). Le barème est appliqué en **un seul endroit** (`billed()`), pour les trois unités : le transfert et la journée étaient restés à zéro frais quand l'heure en portait. `BookingAmount` rend `subtotal` (tarif course), `serviceFee`, `total` (client), `commission` et `driverNet`. Fully unit-tested (`tests/payments.test.ts`).
 - `lib/stripe.ts` = server-only Stripe client (null if no key). `lib/config.ts`
   flags: `isStripeConfigured`, `isStripeLiveMode`.
 - `POST /api/checkout` creates a Checkout Session. **Amount is computed
@@ -643,6 +682,139 @@ et ces contrôles se désactivent plutôt que de bloquer la démonstration.
   regex) and an animated success confirmation. **Demo mode**: the send is
   simulated (no e-mail backend wired). Both pages are fully bilingual
   (`contact.*` / `transfer.*` in `lib/dictionaries.ts`).
+
+## Adresses : autocomplétion (départ / arrivée)
+
+`lib/places.ts` (pur, testé), `app/api/places/route.ts` (proxy),
+`components/AddressAutocomplete.tsx` (combobox accessible).
+
+- **Le navigateur n'appelle jamais le fournisseur**, il appelle `/api/places`.
+  Trois raisons : la CSP n'a **rien à ouvrir** (`connect-src 'self'` suffit —
+  ajouter `maps.googleapis.com` l'élargirait pour tout le site) ; la clé reste
+  serveur ; le fournisseur devient interchangeable.
+- **Google si `GOOGLE_MAPS_API_KEY` est posée, sinon Mapbox** (déjà configuré
+  pour la carte). ⚠️ Sans aucune clé, la route répond `configured: false` et le
+  champ redevient une **saisie libre** — on ne bloque pas une réservation parce
+  qu'une API tierce manque. Une adresse tapée à la main reste valide.
+- ⚠️ **Les réponses arrivent dans le désordre.** Chaque requête porte un numéro
+  de séquence ; une réponse plus ancienne que la dernière affichée est jetée.
+  Sans ça, taper vite fait remonter les suggestions d'un préfixe précédent.
+- ⚠️ `onMouseDown` et non `onClick` sur une suggestion : le blur du champ
+  fermerait la liste avant que le clic n'arrive.
+- **Ce que ça débloque** : `SearchBar` collecte enfin départ/arrivée **et
+  l'heure**, transmis par `sessionStorage` (`jw_booking_pickup` /
+  `jw_booking_dropoff`) à `BookingWidget`, qui les envoie sur la réservation.
+  Les courses ne partent donc plus avec les libellés par défaut de
+  `buildBooking` — c'est précisément ce qui empêchait le **bon de réservation**
+  d'être émis (voir § Bon de réservation).
+
+## Une seule prestation : la course VTC (et la qualification CNAPS)
+
+⚠️ **Nova Compagnie ne vend, et ne peut vendre, qu'une prestation de transport.**
+La société n'a pas d'autorisation d'exercer délivrée par le CNAPS, et l'article
+**L612-2 du Code de la sécurité intérieure** interdit d'exercer **comme de
+commercialiser** une activité de sécurité privée sans elle. La plateforme
+encaissant la totalité du montant et éditant la facture (modèle centrale de
+réservation), vendre un trajet « avec protection » y serait un exercice
+illégal — quelle que soit la qualification du chauffeur qui l'exécute.
+
+Ce qui reste licite, et ce que fait le code : **qualifier un profil**. « Ce
+chauffeur est titulaire d'une carte professionnelle CNAPS, que nous avons
+vérifiée » décrit une personne, comme ses années d'expérience ou ses langues.
+
+`lib/cnaps.ts` (pur, testé) porte la règle. Une seule colonne :
+`drivers.cnaps_verified` — bloc 8 de `schema.sql`.
+
+### Ce qui a été retiré, et qu'il ne faut pas réintroduire
+
+Un axe « second métier » a existé dans ce dépôt (`lib/serviceType.ts`, colonnes
+`is_vtc`/`is_security`, bascule `[VTC | Protection Rapprochée]` dans
+`SearchBar` et `DriversExplorer`, section d'accueil `CloseProtection`, opt-in
+« proposer des prestations de protection » dans le tunnel et `ProfileEditor`,
+clés i18n `service.*`). Tout cela **commercialisait** l'activité : retiré.
+
+- ⚠️ Pas de sélecteur de prestation, pas de filtre « sécurité », pas de forfait
+  ni de ligne de facture « protection ». Le bloc 8 n'ayant **jamais été
+  appliqué**, il a été réécrit plutôt que corrigé par une migration : le schéma
+  ne porte plus la trace de l'offre.
+- ⚠️ `missingRequired(docs)` ne prend **plus** de drapeau `security`. Aucune
+  pièce n'est conditionnellement obligatoire ; `tests/cnaps.test.ts` échoue si
+  un tel drapeau réapparaît dans `DOCUMENT_LABELS` — c'est le signal qu'une
+  seconde prestation est en train de revenir.
+- Le rouvrir suppose soit l'autorisation d'exercer CNAPS (dossier société,
+  dirigeant déclaré), soit un contrat de sous-traitance avec une société agréée
+  qui **facture elle-même** la prestation. C'est une décision juridique, pas un
+  booléen de plus.
+
+### Ce qui reste : le badge
+
+- **`cnaps_verified` n'est jamais écrit par le chauffeur.** Deux verrous, comme
+  pour `role`/`driver_slug` : le trigger `drivers_protect_cnaps` annule toute
+  écriture faite sous `auth.uid()`, et `refresh_cnaps_verified` **recalcule** la
+  colonne depuis le statut de la carte déposée (même parti pris que
+  `refresh_driver_rating` : une seule source de vérité). Redéposer une carte la
+  remet en attente, donc retire aussitôt le badge de la fiche publique.
+  `/api/driver/profile` n'accepte **aucune** déclaration de prestation.
+- **La carte passe par `driver_documents`** (`kind` `cnaps_card`), pas par une
+  colonne `cnaps_card_url` : le bucket `driver-docs` est privé et **aucune URL
+  publique n'est jamais produite** pour une pièce — voir § Pièces
+  justificatives. Elle est **facultative** et toujours proposée au dépôt.
+- ⚠️ **L'ajout de `'cnaps_card'` à l'enum est isolé dans `2-enums.sql`** —
+  `refresh_cnaps_verified()` l'emploie, et Postgres refuse une valeur d'enum
+  dans la transaction qui l'ajoute. `compose-schema.ps1` le repère par son
+  marqueur et le **retire** du bloc 3.
+- ⚠️ **Le libellé compte.** « Carte CNAPS vérifiée », jamais « Certifié Nova »
+  ni « Agent de protection agréé » : le CNAPS délivre la carte, la plateforme
+  constate seulement qu'elle existe. Un badge qui ferait certifier Nova serait
+  faux, et se lirait comme une offre.
+- **Interfaces** : badge sur `DriverCard` et encart sur la fiche
+  `/drivers/[id]` — avec la mention qui rappelle que la réservation porte sur
+  une course de transport ; état en **lecture seule** dans `ProfileEditor` ;
+  dépôt facultatif à l'étape 3 du tunnel. i18n sous `cnaps.*`. `/legal/mentions-legales`
+  porte la mention « Nature de l'activité ». Testé dans `tests/cnaps.test.ts` (7).
+
+## Bon de réservation préalable (PDF)
+
+`GET /api/booking/[id]/pdf` rend le bon de réservation d'une course.
+Trois modules : `lib/bookingVoucher.ts` (domaine pur, testé),
+`lib/pdf/bookingVoucher.tsx` (rendu, `server-only`), `lib/voucherSource.ts`
+(lecture en base, `server-only`).
+
+- **Le générateur sait REFUSER.** `missingVoucherFields` liste ce qui manque et
+  `renderBookingVoucher` lève plutôt que d'émettre. Un document au bon format
+  mais dont l'itinéraire dit « Adresse de départ » a **l'apparence** de la
+  conformité : il n'est contesté qu'au moment du contrôle. La route répond 409
+  avec la liste des mentions manquantes, en français.
+- ⚠️ **Les adresses par défaut comptent comme manquantes.** `DEFAULT_PICKUP` /
+  `DEFAULT_DROPOFF` sont des chaînes **non vides** : elles passent tout test de
+  présence et s'impriment telles quelles. C'est le contrôle le moins évident du
+  module.
+- **Numérotation déterministe** (`NOVA-<année>-<5 car.>`) dérivée de l'id de
+  réservation : un bon se réimprime, et deux numéros pour une même course
+  seraient indéfendables. L'année vient de la **réservation**, pas de
+  l'horloge. L'alphabet exclut O/0/I/1 — ce numéro est recopié à la main.
+- **Autorisation** : parties de la course uniquement, via `bookingActor()`
+  (même définition que le chat). Un tiers reçoit le **même 404** qu'une
+  réservation inexistante. Statuts `paid`/`completed` seulement : le bon porte
+  « Payé à l'avance », l'émettre pour une course `pending` (fonds seulement
+  **autorisés**) serait faux. Limité à 10/min/IP — un PDF coûte du CPU.
+- `lib/voucherSource.ts` lit avec le **service role**, et pas par confort :
+  aucune session ne peut voir à la fois le SIREN du chauffeur, la plaque
+  (`vehicles`, RLS propriétaire) et le téléphone du client (`profiles`). Il ne
+  contrôle **aucune identité** — l'exposer sans `bookingActor()` publierait les
+  coordonnées des deux parties.
+- ⚠️ **`@react-pdf/renderer` supprime en silence les glyphes absents de
+  Helvetica** : `€` et `—` disparaissent du PDF sans erreur. D'où « EUR » et un
+  tiret ASCII. `tests/bookingVoucherPdf.test.ts` **relit le texte imprimé**
+  (décompression du flux) — seul garde-fou contre une omission invisible.
+  ⚠️ Ces tests tournent en `// @vitest-environment node` : sous jsdom, le
+  binaire produit est **corrompu** tout en gardant un en-tête `%PDF-` valide.
+- `serverComponentsExternalPackages: ["@react-pdf/renderer"]` dans
+  `next.config.js` — bundlé, il perd la résolution de ses polices, et
+  **seulement en production**.
+- **SIREN/SIRET** : colonne `drivers.siret` + saisie à l'étape 1 du tunnel,
+  validée par la clé de Luhn des deux côtés (`isValidSiren`). Un numéro refusé
+  laisse la colonne nulle plutôt que d'écrire une valeur invalide.
 
 ## Emails (booking confirmations)
 

@@ -166,22 +166,45 @@ export function DatePicker({
   const weekdays = useMemo(() => t("datepicker.weekdays").split(","), [t]);
   const grid = useMemo(() => monthGrid(view.year, view.month), [view]);
 
+  /** Le champ rend une date ET une heure : le dire avant qu'on l'ouvre. */
+  const placeholder = t(
+    showTime ? "datepicker.chooseDateTime" : "datepicker.chooseDate"
+  );
+
+  /**
+   * L'heure choisie porte sur le jour de prise en charge — donc sur le début,
+   * même quand la sélection est une plage. Sans ça le champ n'affichait que la
+   * date une fois l'heure renseignée : le réglage semblait n'avoir rien fait.
+   */
+  const startLabel = date
+    ? formatWhen(time ? `${date}T${time}` : date, lang)
+    : "";
+
   const label =
     mode === "range"
       ? date
         ? endDate && endDate !== date
-          ? `${formatWhen(date, lang)} → ${formatWhen(endDate, lang)}`
-          : formatWhen(date, lang)
-        : t("datepicker.chooseDate")
+          ? `${startLabel} → ${formatWhen(endDate, lang)}`
+          : startLabel
+        : placeholder
       : date
-      ? formatWhen(time ? `${date}T${time}` : date, lang)
-      : t("datepicker.chooseDate");
+      ? startLabel
+      : placeholder;
 
   const pickDate = (iso: string) => {
     if (mode === "range") {
-      if (!date || (date && endDate)) onRangeChange?.(iso, "");
-      else if (isBefore(iso, date)) onRangeChange?.(iso, "");
-      else onRangeChange?.(date, iso);
+      // Nouveau départ : rien de choisi, plage déjà complète, ou jour antérieur
+      // au début en cours. Sinon ce clic ferme la plage.
+      const startsAnew = !date || !!endDate || isBefore(iso, date);
+      onRangeChange?.(startsAnew ? iso : date, startsAnew ? "" : iso);
+      // Même règle qu'en mode simple : une heure déjà passée sur le jour de
+      // départ retenu est retirée ici, pas emportée jusqu'au formulaire.
+      if (startsAnew && time && !isFutureBooking(iso, time)) {
+        setNotice("cleared");
+        onChange?.(iso, "");
+        return;
+      }
+      setNotice("");
       return;
     }
     // The user just expressed intent about the DAY: honour it and drop an hour
@@ -207,6 +230,11 @@ export function DatePicker({
     if (rolled) {
       const p = parseISO(next);
       if (p) setView({ year: p.year, month: p.month });
+      // Une plage ne doit pas se retourner : un départ reporté au lendemain
+      // laisserait une fin antérieure à son début.
+      if (mode === "range" && endDate && isBefore(endDate, next)) {
+        onRangeChange?.(next, "");
+      }
     }
     onChange?.(next, hhmm);
   };
@@ -267,7 +295,7 @@ export function DatePicker({
                 zIndex: 80,
               }}
               role="dialog"
-              aria-label={t("datepicker.chooseDate")}
+              aria-label={placeholder}
               className="rounded-2xl border border-white/10 bg-ink-900/95 p-3 shadow-card backdrop-blur-xl"
             >
               {/* Quick chips */}
@@ -476,7 +504,8 @@ export function DatePicker({
         className="w-full rounded-xl border border-white/10 px-3 py-2.5 text-left transition hover:border-white/20 focus:border-royal-400/50 focus:outline-none"
       >
         <span className="flex items-center gap-1.5 text-[11px] text-white/40">
-          <Calendar className="h-3 w-3" /> {t("booking.date")}
+          <Calendar className="h-3 w-3" />{" "}
+          {t(showTime ? "booking.dateTime" : "booking.date")}
         </span>
         <span className={cn("mt-0.5 block text-sm font-medium", date ? "text-white" : "text-white/45")}>
           {label}

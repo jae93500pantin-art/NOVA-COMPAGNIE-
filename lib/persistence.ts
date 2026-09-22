@@ -49,9 +49,9 @@ import {
 export const isPersistenceEnabled = isSupabaseAdminConfigured;
 
 const BOOKING_COLUMNS =
-  "id, client_id, driver_slug, client_name, client_email, hours, unit, transfer, total, pickup, dropoff, when_local, status, created_at";
+  "id, client_id, driver_slug, client_name, client_email, hours, unit, transfer, total, pickup, dropoff, when_local, status, closed_at, created_at";
 const MESSAGE_COLUMNS =
-  "id, booking_id, sender_id, sender_role, sender_name, body, created_at";
+  "id, booking_id, sender_id, sender_role, sender_name, body, is_quick_reply, delivered_at, read_at, created_at";
 const REVIEW_COLUMNS =
   "id, driver_slug, author_id, author_name, booking_id, rating, comment, trip, created_at";
 
@@ -124,13 +124,18 @@ export async function insertBooking(booking: Booking): Promise<Booking | null> {
 
 export async function persistBookingStatus(
   bookingId: string,
-  status: BookingStatus
+  status: BookingStatus,
+  closedAt?: number
 ): Promise<void> {
   const db = client();
   if (!db) return;
   const { error } = await db
     .from("bookings")
-    .update({ status })
+    .update(
+      closedAt
+        ? { status, closed_at: new Date(closedAt).toISOString() }
+        : { status }
+    )
     .eq("id", bookingId);
   if (error) failed(`passage de ${bookingId} en ${status}`, error);
 }
@@ -171,6 +176,47 @@ export async function insertMessage(
     .single();
   if (error) return failed("écriture d'un message", error);
   return rowToMessage(data as MessageRow, booking);
+}
+
+/**
+ * Marque comme lus les messages de l'AUTRE partie.
+ *
+ * ⚠️ Le filtre porte sur `sender_role`, jamais sur l'id de compte : en demo
+ * un message n'a pas d'auteur en base, et surtout personne ne doit pouvoir
+ * marquer ses propres messages comme lus — l'accuse ne vaut que s'il vient du
+ * destinataire.
+ */
+export async function markMessagesRead(
+  bookingId: string,
+  readerRole: "client" | "driver",
+  readAt: number
+): Promise<void> {
+  const db = client();
+  if (!db) return;
+  const { error } = await db
+    .from("messages")
+    .update({ read_at: new Date(readAt).toISOString() })
+    .eq("booking_id", bookingId)
+    .neq("sender_role", readerRole)
+    .is("read_at", null);
+  if (error) failed(`accuses de lecture du fil ${bookingId}`, error);
+}
+
+/** Idem pour la remise : le destinataire avait un flux ouvert. */
+export async function markMessagesDelivered(
+  bookingId: string,
+  recipientRole: "client" | "driver",
+  deliveredAt: number
+): Promise<void> {
+  const db = client();
+  if (!db) return;
+  const { error } = await db
+    .from("messages")
+    .update({ delivered_at: new Date(deliveredAt).toISOString() })
+    .eq("booking_id", bookingId)
+    .neq("sender_role", recipientRole)
+    .is("delivered_at", null);
+  if (error) failed(`remise du fil ${bookingId}`, error);
 }
 
 /* -------------------------------------------------------------------------- */

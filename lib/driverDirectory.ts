@@ -51,6 +51,7 @@ interface DriverRow {
   price_per_hour: number | string | null;
   price_per_day: number | string | null;
   price_per_km: number | string | null;
+  cnaps_verified: boolean | null;
   available: boolean | null;
   response_time: string | null;
   rating: number | string | null;
@@ -76,7 +77,7 @@ interface ProfileRow {
 }
 
 const COLUMNS =
-  "id, slug, age, city_id, bio, languages, experience_years, categories, transfer_destinations, price_per_hour, price_per_day, price_per_km, available, response_time, rating, reviews_count, trips, badges, lng, lat, car_make, car_model, car_year, car_color, car_photos, schedule";
+  "id, slug, age, city_id, bio, languages, experience_years, categories, transfer_destinations, cnaps_verified, price_per_hour, price_per_day, price_per_km, available, response_time, rating, reviews_count, trips, badges, lng, lat, car_make, car_model, car_year, car_color, car_photos, schedule";
 
 function db() {
   return isSupabaseAdminConfigured ? getSupabaseAdmin() : null;
@@ -193,6 +194,9 @@ function toDriver(row: DriverRow, profile: ProfileRow): Driver {
     transferDestinations: sanitizeTransferDestinationIds(
       row.transfer_destinations
     ),
+    // Qualification personnelle du chauffeur, posée par l'administration.
+    // Elle n'ouvre aucune prestation : voir lib/cnaps.ts.
+    cnapsVerified: row.cnaps_verified ?? false,
     available: row.available ?? false,
     schedule: readSchedule(row.schedule),
     responseTime: row.response_time ?? "≈ 5 min",

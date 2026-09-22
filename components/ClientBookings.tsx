@@ -28,7 +28,11 @@ import { statusLabel, formatWhen, bookingQuantityLabel } from "@/lib/bookings";
 import { chatStateForBooking } from "@/lib/chat";
 import { whatsappUrl } from "@/lib/whatsapp";
 import { useI18n } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
+import {
+  breakdownFromClientTotal,
+  CLIENT_SERVICE_FEE_RATE,
+} from "@/lib/pricing";
+import { cn, formatPrice } from "@/lib/utils";
 import { PaymentDialog } from "./PaymentDialog";
 import { BookingChat } from "./BookingChat";
 import { ReviewForm } from "./ReviewForm";
@@ -183,7 +187,7 @@ export function ClientBookings() {
                           {driver ? `${driver.firstName} ${driver.lastName}` : "Chauffeur"}
                         </p>
                         <p className="flex items-center gap-1 text-xs text-white/50">
-                          <Clock className="h-3 w-3" /> {bookingQuantityLabel(b, lang)} · €{b.total} · {formatWhen(b.when, lang)}
+                          <Clock className="h-3 w-3" /> {bookingQuantityLabel(b, lang)} · {formatPrice(b.total)} · {formatWhen(b.when, lang)}
                         </p>
                       </div>
                     </div>
@@ -195,7 +199,7 @@ export function ClientBookings() {
                           className="btn-primary text-xs"
                         >
                           <CreditCard className="h-4 w-4" />
-                          Payer €{b.total}
+                          Payer {formatPrice(b.total)}
                         </button>
                       )}
                       {chatState !== "locked" && (
@@ -245,6 +249,8 @@ export function ClientBookings() {
                     </div>
                   </div>
 
+                  <InvoiceBreakdown total={b.total} />
+
                   <AnimatePresence initial={false}>
                     {reviewOpen && (
                       <ReviewForm
@@ -267,6 +273,14 @@ export function ClientBookings() {
                             `${user.firstName} ${user.lastName}`.trim() || b.clientName
                           }
                           role="client"
+                          // L'annuaire est en base et ce composant est client :
+                          // quand le nom manque, le bandeau retombe sur
+                          // « Votre chauffeur » plutot que sur un slug.
+                          peerName={
+                            driver
+                              ? `${driver.firstName} ${driver.lastName}`.trim()
+                              : undefined
+                          }
                         />
                       </div>
                     )}
@@ -286,6 +300,46 @@ export function ClientBookings() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Le détail de la facture, côté client : ce qui revient au chauffeur et ce que
+ * prend la plateforme, avant le total.
+ *
+ * ⚠️ La commission du chauffeur n'y figure pas, et c'est délibéré : elle est
+ * prélevée sur la part du chauffeur, le client ne la paie pas. L'afficher
+ * laisserait croire à un second prélèvement sur son propre règlement.
+ *
+ * Comme côté chauffeur, le détail est redérivé du total facturé — voir
+ * `breakdownFromClientTotal`.
+ */
+function InvoiceBreakdown({ total }: { total: number }) {
+  const { t } = useI18n();
+  const split = breakdownFromClientTotal(total);
+  const rate = Math.round(CLIENT_SERVICE_FEE_RATE * 100);
+
+  return (
+    <dl className="mt-3 space-y-1 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-xs">
+      <div className="flex items-center justify-between">
+        <dt className="text-white/50">{t("booking.rideFare")}</dt>
+        <dd className="font-medium text-white/80">
+          {formatPrice(split.driverPrice)}
+        </dd>
+      </div>
+      <div className="flex items-center justify-between">
+        <dt className="text-white/50">
+          {t("booking.serviceFee")} ({rate} %)
+        </dt>
+        <dd className="text-white/60">{formatPrice(split.clientFee)}</dd>
+      </div>
+      <div className="flex items-center justify-between border-t border-white/10 pt-1">
+        <dt className="font-medium text-white/70">{t("booking.total")}</dt>
+        <dd className="text-sm font-semibold text-white">
+          {formatPrice(split.clientTotal)}
+        </dd>
+      </div>
+    </dl>
   );
 }
 

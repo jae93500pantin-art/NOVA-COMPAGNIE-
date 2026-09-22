@@ -32,14 +32,17 @@ import {
   saveDriverOverrides,
 } from "@/lib/driverOverrides";
 import {
+  CLIENT_SERVICE_FEE_RATE,
   PLATFORM_COMMISSION_RATE,
   boundsFor,
   clampRate,
   hasFixedPricing,
   isRateEditable,
+  priceBreakdown,
   rateError,
-  splitRate,
+  type PriceBreakdown,
 } from "@/lib/pricing";
+import { formatPrice } from "@/lib/utils";
 import { whatsappUrl } from "@/lib/whatsapp";
 import {
   DAY_LABELS_FR,
@@ -57,6 +60,8 @@ interface DriverProfileDto {
   bio: string | null;
   categories: string[] | null;
   transfer_destinations: string[] | null;
+  /** Décision d'administration — affichée, jamais renvoyée au serveur. */
+  cnaps_verified: boolean | null;
   price_per_hour: number | null;
   price_per_day: number | null;
   available: boolean | null;
@@ -88,6 +93,8 @@ export function ProfileEditor() {
   const [category, setCategory] = useState<VehicleCategory>("Business");
   /** Single global opt-in — expanded to the full route list on save. */
   const [transfers, setTransfers] = useState(false);
+  // Lecture seule : posé par l administration apres examen de la carte CNAPS.
+  const [cnapsVerified, setCnapsVerified] = useState(false);
   const [avatar, setAvatar] = useState("");
   const [carMake, setCarMake] = useState("");
   const [carModel, setCarModel] = useState("");
@@ -187,6 +194,7 @@ export function ProfileEditor() {
     setDayRate(
       String(p?.price_per_day ?? o.pricePerDay ?? boundsFor(category0, "day").min)
     );
+    setCnapsVerified(p?.cnaps_verified === true);
     setCarMake(p?.car_make ?? o.car?.make ?? "");
     setCarModel(p?.car_model ?? o.car?.model ?? "");
     setCarYear(String(p?.car_year ?? o.car?.year ?? ""));
@@ -318,8 +326,8 @@ export function ProfileEditor() {
   const fixedPricing = hasFixedPricing(category);
   const hourError = rateError(category, "hour", hourValue);
   const dayError = rateError(category, "day", dayValue);
-  const hourSplit = splitRate(hourValue);
-  const daySplit = splitRate(dayValue);
+  const hourSplit = priceBreakdown(hourValue);
+  const daySplit = priceBreakdown(dayValue);
 
   const patchDay = (i: number, patch: Partial<DaySchedule>) =>
     setSchedule((prev) =>
@@ -754,6 +762,35 @@ export function ProfileEditor() {
                 )}
               </Field>
 
+              {/* ⚠️ Plus aucune déclaration de prestation ici. Nova Compagnie
+                  n'a pas d'autorisation d'exercer CNAPS et ne peut donc pas
+                  commercialiser d'activité de sécurité privée (art. L612-2
+                  CSI). Ne reste que l'état de la carte, en lecture seule :
+                  une qualification personnelle, constatée par notre équipe.
+                  Voir lib/cnaps.ts. */}
+              <Field label="Carte professionnelle CNAPS">
+                {cnapsVerified ? (
+                  <p className="flex items-start gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.07] px-3 py-2.5 text-xs leading-relaxed text-emerald-200">
+                    <Check className="mt-px h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Carte vérifiée. Un badge de qualification apparaît sur
+                      votre fiche publique.
+                    </span>
+                  </p>
+                ) : (
+                  <p className="rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2.5 text-xs leading-relaxed text-white/45">
+                    Facultative. Déposez-la dans vos pièces justificatives :
+                    une fois vérifiée par notre équipe, elle affiche un badge
+                    de qualification sur votre fiche.
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] leading-relaxed text-white/30">
+                  Cette carte valorise votre profil. Elle ne donne pas accès à
+                  des prestations de sécurité : Nova Compagnie est une
+                  plateforme de mise en relation VTC et n'en commercialise
+                  aucune.
+                </p>
+              </Field>
               <Field label="Photos du véhicule">
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {photos.map((p, i) => (
@@ -911,13 +948,20 @@ function RateInput({
   );
 }
 
-/** Live "what the client pays / what you keep" breakdown. */
+/**
+ * Ce que le tarif saisi devient des deux côtés, en direct.
+ *
+ * L'ordre des lignes suit l'ordre des prélèvements : le prix proposé, ce que
+ * la plateforme retient dessus, ce qu'il reste. Le total client est relégué en
+ * note — c'est une information utile au chauffeur, pas son revenu, et le
+ * placer dans la même liste inviterait à confondre les deux pourcentages.
+ */
 function CommissionCard({
   label,
   split,
 }: {
   label: string;
-  split: { ttc: number; commission: number; net: number };
+  split: PriceBreakdown;
 }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3 text-xs">
@@ -926,22 +970,29 @@ function CommissionCard({
       </p>
       <dl className="mt-2 space-y-1">
         <div className="flex items-center justify-between">
-          <dt className="text-white/50">Prix client TTC</dt>
-          <dd className="font-medium text-white">€{split.ttc}</dd>
+          <dt className="text-white/50">Prix proposé</dt>
+          <dd className="font-medium text-white">
+            {formatPrice(split.driverPrice)}
+          </dd>
         </div>
         <div className="flex items-center justify-between">
           <dt className="text-white/50">
-            Commission ({Math.round(PLATFORM_COMMISSION_RATE * 100)} %)
+            Commission plateforme ({Math.round(PLATFORM_COMMISSION_RATE * 100)} %)
           </dt>
-          <dd className="text-white/60">−€{split.commission}</dd>
+          <dd className="text-white/60">−{formatPrice(split.commission)}</dd>
         </div>
         <div className="flex items-center justify-between border-t border-white/10 pt-1">
           <dt className="font-medium text-white/70">Votre revenu net</dt>
           <dd className="text-sm font-semibold text-emerald-300">
-            €{split.net}
+            {formatPrice(split.driverNet)}
           </dd>
         </div>
       </dl>
+      <p className="mt-2 text-[11px] leading-relaxed text-white/30">
+        Le client règle {formatPrice(split.clientTotal)}, frais de service de{" "}
+        {Math.round(CLIENT_SERVICE_FEE_RATE * 100)} % compris. Ces frais sont à
+        sa charge : ils ne sont pas prélevés sur votre revenu.
+      </p>
     </div>
   );
 }

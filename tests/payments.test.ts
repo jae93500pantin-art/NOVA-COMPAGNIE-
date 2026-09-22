@@ -32,19 +32,35 @@ describe("payments — clampHours", () => {
 });
 
 describe("payments — computeBookingAmount", () => {
-  it("calcule sous-total et total (aucun frais de service)", () => {
+  it("ajoute 5 % de frais au tarif course", () => {
     const a = computeBookingAmount(100, 3);
-    expect(a.subtotal).toBe(300);
-    expect(a.serviceFee).toBe(0);
-    expect(a.total).toBe(300);
+    expect(a.subtotal).toBe(300); // tarif course
+    expect(a.serviceFee).toBe(15); // + 5 %
+    expect(a.total).toBe(315); // ce que règle le client
   });
 
-  it("convertit le total en centimes pour Stripe", () => {
-    const a = computeBookingAmount(98, 2); // 196, aucun frais
+  it("prélève 15 % au chauffeur, sur le tarif course seul", () => {
+    const a = computeBookingAmount(100, 3);
+    expect(a.commission).toBe(45); // 15 % de 300, pas de 315
+    expect(a.driverNet).toBe(255);
+    expect(a.commission + a.driverNet).toBe(a.subtotal);
+  });
+
+  it("convertit le total client en centimes pour Stripe", () => {
+    const a = computeBookingAmount(98, 2); // 196 + 9,80
     expect(a.subtotal).toBe(196);
-    expect(a.serviceFee).toBe(0);
-    expect(a.total).toBe(196);
-    expect(a.amountCents).toBe(19600);
+    expect(a.serviceFee).toBe(9.8);
+    expect(a.total).toBe(205.8);
+    expect(a.amountCents).toBe(20580);
+  });
+
+  it("facture en centimes entiers, sans traîne flottante", () => {
+    // 5 % de 170 € vaut 8,50 € : c'est exactement le montant qu'un arrondi à
+    // l'euro (ou une multiplication brute par 100) ferait dérailler.
+    const a = computeBookingAmount(170, 1);
+    expect(a.total).toBe(178.5);
+    expect(a.amountCents).toBe(17850);
+    expect(Number.isInteger(a.amountCents)).toBe(true);
   });
 
   it("clampe les heures avant calcul", () => {
@@ -53,11 +69,12 @@ describe("payments — computeBookingAmount", () => {
     expect(a.subtotal).toBe(50 * MAX_HOURS);
   });
 
-  it("ne facture aucun frais de service", () => {
-    const a = computeBookingAmount(95, 1);
-    expect(a.serviceFee).toBe(0);
-    expect(a.total).toBe(95);
-    expect(a.amountCents).toBe(9500);
+  it("garde le total égal à la somme de ses lignes", () => {
+    for (const [rate, hours] of [[95, 1], [120, 3], [149, 7], [233, 24]]) {
+      const a = computeBookingAmount(rate, hours);
+      expect(a.subtotal + a.serviceFee, `${rate}×${hours}`).toBeCloseTo(a.total, 10);
+      expect(a.amountCents, `${rate}×${hours}`).toBe(Math.round(a.total * 100));
+    }
   });
 
   it("rejette un tarif horaire invalide", () => {
@@ -76,9 +93,19 @@ describe("payments — forfait transfert aéroport", () => {
   it("facture le forfait tel quel, sans multiplier par la quantité", () => {
     const a = computeAmount(170, 900, "transfer", 5, 200);
     expect(a.subtotal).toBe(200);
-    expect(a.total).toBe(200);
     expect(a.hours).toBe(1); // une seule course
-    expect(a.amountCents).toBe(20000);
+  });
+
+  it("applique le barème au forfait comme aux autres unités", () => {
+    // Le transfert et la journée ont longtemps été à zéro frais pendant que
+    // l'heure en portait : un barème qui ne vaut que pour une unité sur trois
+    // est un barème qu'on oublie d'appliquer.
+    const a = computeAmount(170, 900, "transfer", 1, 200);
+    expect(a.serviceFee).toBe(10);
+    expect(a.total).toBe(210);
+    expect(a.commission).toBe(30);
+    expect(a.driverNet).toBe(170);
+    expect(a.amountCents).toBe(21000);
   });
 
   it("ignore complètement les tarifs horaire et journalier", () => {
@@ -93,8 +120,15 @@ describe("payments — forfait transfert aéroport", () => {
     expect(() => computeAmount(170, 900, "transfer", 1, NaN)).toThrow();
   });
 
-  it("laisse les unités heure et jour inchangées", () => {
-    expect(computeAmount(170, 900, "hour", 3, 200).total).toBe(510);
-    expect(computeAmount(170, 900, "day", 2, 200).total).toBe(1800);
+  it("facture heure et jour sur leur propre tarif", () => {
+    const hour = computeAmount(170, 900, "hour", 3, 200);
+    expect(hour.subtotal).toBe(510);
+    expect(hour.total).toBe(535.5); // 510 + 5 %
+    expect(hour.driverNet).toBe(433.5); // 510 − 15 %
+
+    const day = computeAmount(170, 900, "day", 2, 200);
+    expect(day.subtotal).toBe(1800);
+    expect(day.total).toBe(1890);
+    expect(day.driverNet).toBe(1530);
   });
 });

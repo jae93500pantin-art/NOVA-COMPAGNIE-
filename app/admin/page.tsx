@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ShieldAlert, Users, CalendarClock, Activity, ExternalLink } from "lucide-react";
 import { requireAdmin, adminDb } from "@/lib/admin";
 import { isStripeConfigured, isEmailConfigured } from "@/lib/config";
+import { formatAmount } from "@/lib/utils";
 import { ApproveDriverButton } from "@/components/admin/ApproveDriverButton";
 
 export const dynamic = "force-dynamic";
@@ -277,7 +278,7 @@ export default async function AdminDashboardPage() {
                         </span>
                       </td>
                       <td className="py-4 text-right text-sm font-semibold text-white">
-                        {b.total ? `${b.total} €` : "Sur devis"}
+                        {b.total ? `${formatAmount(Number(b.total))} €` : "Sur devis"}
                       </td>
                     </tr>
                   ))}

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { serverEnv, isEmailConfigured } from "./config";
+import { formatPrice } from "./utils";
 
 /**
  * Transactional email via the Resend REST API (no SDK dependency).
@@ -110,7 +111,7 @@ export function bookingRequestEmail(d: BookingEmailData): { subject: string; htm
         ["Véhicule", d.vehicle],
         ["Date", d.whenText],
         ["Durée", d.durationText],
-        ["Montant estimé", `€${d.total}`],
+        ["Montant estimé", formatPrice(d.total)],
       ],
       "Aucun débit n'est effectué tant que le chauffeur n'a pas accepté."
     ),
@@ -128,7 +129,7 @@ export function bookingConfirmedEmail(d: BookingEmailData): { subject: string; h
         ["Véhicule", d.vehicle],
         ["Date", d.whenText],
         ["Durée", d.durationText],
-        ["Montant à régler", `€${d.total}`],
+        ["Montant à régler", formatPrice(d.total)],
       ],
       "Moyens de paiement : carte bancaire, crypto ou espèces."
     ),
@@ -168,7 +169,7 @@ export function paymentReceivedEmail(d: BookingEmailData): { subject: string; ht
         ["Véhicule", d.vehicle],
         ["Date", d.whenText],
         ["Durée", d.durationText],
-        ["Montant payé", `€${d.total}`],
+        ["Montant payé", formatPrice(d.total)],
       ],
       "Un reçu détaillé est disponible dans votre espace Nova Compagnie."
     ),

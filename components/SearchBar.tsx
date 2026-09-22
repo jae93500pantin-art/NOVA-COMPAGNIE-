@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Search, MapPin, Calendar } from "lucide-react";
+import { Search, MapPin, Calendar, Navigation, Flag } from "lucide-react";
 import { cities } from "@/lib/cities";
 import { todayISODate } from "@/lib/bookings";
 import { useI18n } from "@/lib/i18n";
 import { DatePicker } from "./DatePicker";
+import { AddressAutocomplete } from "./AddressAutocomplete";
 
 export function SearchBar() {
   const router = useRouter();
@@ -16,6 +17,9 @@ export function SearchBar() {
   const [city, setCity] = useState("paris");
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
+  const [time, setTime] = useState("");
+  const [pickup, setPickup] = useState("");
+  const [dropoff, setDropoff] = useState("");
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,8 +29,18 @@ export function SearchBar() {
       else sessionStorage.removeItem("jw_booking_date");
       if (rangeEnd) sessionStorage.setItem("jw_booking_end", rangeEnd);
       else sessionStorage.removeItem("jw_booking_end");
-      // No time in the home search — drop any slot left by the transfer form.
-      sessionStorage.removeItem("jw_booking_time");
+      // L'heure de prise en charge voyage avec la date : le widget de
+      // réservation la reprend telle quelle. Rien de choisi ici efface le
+      // créneau laissé par le formulaire de transfert.
+      if (time) sessionStorage.setItem("jw_booking_time", time);
+      else sessionStorage.removeItem("jw_booking_time");
+      // Les adresses voyagent par sessionStorage comme la date : le widget de
+      // reservation les reprend, et la course part enfin avec un vrai trajet
+      // au lieu des libelles par defaut de buildBooking.
+      if (pickup.trim()) sessionStorage.setItem("jw_booking_pickup", pickup.trim());
+      else sessionStorage.removeItem("jw_booking_pickup");
+      if (dropoff.trim()) sessionStorage.setItem("jw_booking_dropoff", dropoff.trim());
+      else sessionStorage.removeItem("jw_booking_dropoff");
     } catch {
       /* ignore */
     }
@@ -57,18 +71,48 @@ export function SearchBar() {
         </select>
       </Field>
 
+      <Field
+        icon={<Navigation className="h-4 w-4 text-royal-400" />}
+        label={t("search.pickup")}
+      >
+        <AddressAutocomplete
+          value={pickup}
+          onChange={setPickup}
+          placeholder={t("search.pickupPlaceholder")}
+          ariaLabel={t("search.pickup")}
+        />
+      </Field>
+
+      <Field
+        icon={<Flag className="h-4 w-4 text-royal-400" />}
+        label={t("search.dropoff")}
+      >
+        <AddressAutocomplete
+          value={dropoff}
+          onChange={setDropoff}
+          placeholder={t("search.dropoffPlaceholder")}
+          ariaLabel={t("search.dropoff")}
+        />
+      </Field>
+
       <Field icon={<Calendar className="h-4 w-4 text-royal-400" />} label={t("search.date")}>
         <DatePicker
           date={rangeStart}
-          time=""
+          time={time}
           endDate={rangeEnd}
           mode="range"
           min={today}
           variant="search"
-          showTime={false}
+          // L'heure de prise en charge compte autant que la date : une course
+          // sans heure n'est pas réservable (voir `BookingWidget`).
+          showTime
           onRangeChange={(s, e) => {
             setRangeStart(s);
             setRangeEnd(e);
+          }}
+          onChange={(d, tm) => {
+            setRangeStart(d);
+            setTime(tm);
           }}
         />
       </Field>

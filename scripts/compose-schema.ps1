@@ -33,6 +33,9 @@ $iEnumAdd   = Find-Marker "^-- L'enum d'origine"           "ajout enum booking_s
 $iMessages  = Find-Marker '^-- .. Messages \(chat'         "section Messages"
 $iAdminHdr  = Find-Marker '^-- Migration : back-office'    "en-tete migration admin"
 $iEnumAdmin = Find-Marker "^alter type user_role add value" "ajout enum user_role"
+# 'cnaps_card' est employé par refresh_cnaps_verified() au bloc 3 : comme
+# 'paid' et 'admin', sa valeur doit être ajoutée dans une transaction à part.
+$iEnumDoc   = Find-Marker "^alter type driver_document_kind add value" "ajout enum driver_document_kind"
 $iBloc2     = Find-Marker '^-- .. BLOC 2'                  "BLOC 2 migration admin"
 
 # L'en-tête de la migration admin est précédé d'une ligne de séparation ; on
@@ -46,6 +49,13 @@ $bookings = $a[$iBookings..($iEnumAdd - 1)]
 $enumAdd  = $a[$iEnumAdd..($iMessages - 1)]
 $rest     = $a[$iMessages..($iAdminSep - 1)]
 $adminMig = $a[$iBloc2..($a.Length - 1)]
+
+# L'ajout de 'cnaps_card' vit dans cette tranche, mais il appartient au bloc 2 :
+# le laisser ici le ferait ajouter dans la transaction même qui crée la
+# fonction l'employant. Il est retiré du bloc 3, où il n'a rien à faire.
+$adminMig = $adminMig | Where-Object {
+  $_ -notmatch "^alter type driver_document_kind add value"
+}
 
 # `alter publication ... add table` échoue si la table y est déjà publiée.
 $rest = $rest | ForEach-Object {
@@ -72,7 +82,8 @@ $rest = $rest | ForEach-Object {
   "-- transaction qui l'ajoute : 'paid' est employe par booking_chat_is_open()",
   "-- a l'etape 3, et 'admin' par le back-office.",
   ""
-) + $enumAdd + @("", $a[$iEnumAdmin]) | Set-Content (Join-Path $dir "2-enums.sql") -Encoding UTF8
+) + $enumAdd + @("", $a[$iEnumAdmin], $a[$iEnumDoc]) |
+  Set-Content (Join-Path $dir "2-enums.sql") -Encoding UTF8
 
 # ── Bloc 3 : tout ce qui dépend des tables et des nouvelles valeurs ──────
 # Les policies de schema.sql sont écrites sans `drop policy if exists` ; on les

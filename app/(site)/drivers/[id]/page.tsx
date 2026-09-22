@@ -8,9 +8,11 @@ import {
   Car,
   BadgeCheck,
   Clock,
+  ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import { getDirectoryDriver, listDirectorySlugs } from "@/lib/driverDirectory";
+import { hasVerifiedCnapsCard } from "@/lib/cnaps";
 import { getCity } from "@/lib/cities";
 import { Gallery } from "@/components/Gallery";
 import { Reviews } from "@/components/Reviews";
@@ -98,6 +100,30 @@ export default async function DriverProfile({ params }: { params: { id: string }
                   </span>
                 ))}
               </div>
+
+              {/* Qualification personnelle du chauffeur — la seule forme sous
+                  laquelle la carte CNAPS peut apparaître sur ce site.
+                  ⚠️ La mention qui suit n'est pas décorative : la plateforme
+                  encaisse la course et édite la facture, donc afficher une
+                  compétence de sécurité sans dire ce qui est vendu ferait
+                  glisser la fiche vers l'offre d'une prestation que Nova
+                  Compagnie n'a pas le droit de commercialiser (art. L612-2
+                  du Code de la sécurité intérieure). Voir lib/cnaps.ts. */}
+              {hasVerifiedCnapsCard(driver) && (
+                <div className="mt-4 rounded-2xl border border-royal-400/20 bg-royal-500/[0.06] p-3.5">
+                  <span className="chip border-royal-400/40 bg-royal-500/15 text-royal-200">
+                    <ShieldCheck className="h-3 w-3" /> Carte professionnelle
+                    CNAPS vérifiée
+                  </span>
+                  <p className="mt-2 text-[11px] leading-relaxed text-white/45">
+                    Carte délivrée par le CNAPS, vérifiée par notre équipe. Il
+                    s&apos;agit d&apos;une qualification personnelle du
+                    chauffeur. Nova Compagnie est une plateforme de mise en
+                    relation VTC : votre réservation porte sur une course de
+                    transport, et non sur une prestation de sécurité privée.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

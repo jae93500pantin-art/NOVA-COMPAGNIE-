@@ -9,6 +9,7 @@ import {
   transferDestinationsForOptIn,
 } from "@/lib/transfer";
 import { sanitizeText, rateLimit } from "@/lib/validation";
+import { isValidSiren } from "@/lib/bookingVoucher";
 import type { VehicleCategory } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +52,7 @@ const CATEGORIES: VehicleCategory[] = [
 ];
 
 const COLUMNS =
-  "id, slug, city_id, bio, languages, experience_years, categories, transfer_destinations, price_per_hour, price_per_day, available, car_make, car_model, car_year, car_color, car_photos, schedule";
+  "id, slug, city_id, bio, languages, experience_years, categories, transfer_destinations, cnaps_verified, price_per_hour, price_per_day, available, car_make, car_model, car_year, car_color, car_photos, schedule";
 
 /** Session + rôle chauffeur + client privilégié, ou la réponse d'erreur. */
 async function guard() {
@@ -147,6 +148,23 @@ export async function POST(req: NextRequest) {
     city_id: "paris",
     licence_number: sanitizeText(body.licenceNumber, 40) || null,
     vtc_card_number: sanitizeText(body.vtcCardNumber, 40) || null,
+    // Chiffres nus, et seulement si la clé de contrôle passe : un SIREN
+    // fantaisiste finirait imprimé sur le bon de réservation présenté au
+    // contrôle. Un numéro refusé laisse la colonne nulle plutôt que d'y écrire
+    // une valeur invalide — le bon dira alors franchement ce qui lui manque.
+    siret: siretOrNull(body.siret),
+    // ⚠️ Aucune déclaration de prestation n'est acceptée ici. Les colonnes
+    // `is_vtc` / `is_security` ont été retirées : la plateforme ne
+    // commercialise qu'une seule prestation, la course VTC. Rouvrir cette
+    // porte, c'est laisser un chauffeur déclarer une activité de sécurité que
+    // Nova Compagnie n'a pas le droit de vendre (art. L612-2 CSI).
+    //
+    // ⚠️ `cnaps_verified` n'est PAS écrit ici non plus, et ne doit jamais l'être : c'est
+    // la conclusion de l'examen de la carte CNAPS, pas une case du formulaire.
+    // Le trigger `refresh_cnaps_verified` le recalcule depuis le statut de la
+    // pièce, et `drivers_protect_cnaps` empêche le chauffeur d'y toucher même
+    // en écrivant directement sur PostgREST. Se déclarer et être habilité sont
+    // deux choses différentes — la confusion serait ici un délit.
     experience_years: Math.max(
       0,
       Math.min(60, Number.parseInt(String(body.experienceYears ?? 0), 10) || 0)
@@ -239,6 +257,18 @@ export async function POST(req: NextRequest) {
     pricePerHour,
     pricePerDay,
   });
+}
+
+/**
+ * SIREN/SIRET normalisé, ou `null`.
+ *
+ * Le formulaire vérifie déjà la clé de contrôle, mais il est une commodité :
+ * la règle qui compte est celle-ci, la seule que l'on ne peut pas contourner
+ * avec un `fetch`.
+ */
+function siretOrNull(raw: unknown): string | null {
+  const digits = sanitizeText(raw, 20).replace(/\s/g, "");
+  return isValidSiren(digits) ? digits : null;
 }
 
 /**

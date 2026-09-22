@@ -41,6 +41,13 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  experimental: {
+    // @react-pdf/renderer résout ses polices et ses flux au runtime Node.
+    // Bundlé par webpack, il perd cette résolution et casse au rendu du PDF
+    // (« fontkit »/« stream » introuvables) — uniquement en production, là où
+    // le dev ne l'aurait pas montré. On le laisse donc en dépendance externe.
+    serverComponentsExternalPackages: ["@react-pdf/renderer"],
+  },
   // Allow LAN devices (e.g. iPhone) to load dev assets without warnings.
   allowedDevOrigins: ["192.168.1.192"],
   images: {

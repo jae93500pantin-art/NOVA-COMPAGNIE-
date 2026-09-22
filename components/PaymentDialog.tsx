@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { Booking } from "@/lib/bookings";
 import { useI18n } from "@/lib/i18n";
+import { formatPrice } from "@/lib/utils";
 
 type Method = "card" | "crypto" | "cash";
 
@@ -125,7 +126,9 @@ export function PaymentDialog({
                   <h3 className="text-lg font-semibold text-white">{t("pay.title")}</h3>
                   <p className="mt-0.5 text-sm text-white/50">
                     {t("pay.amount")} ·{" "}
-                    <span className="font-semibold text-white">€{booking.total}</span>
+                    <span className="font-semibold text-white">
+                      {formatPrice(booking.total)}
+                    </span>
                   </p>
                 </div>
                 <button

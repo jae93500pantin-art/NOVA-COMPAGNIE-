@@ -109,13 +109,26 @@ describe("bookings — buildBooking (défauts & clamps)", () => {
       clientId: "c1",
       clientName: "",
       hours: 0,
-      total: 100.4,
+      total: 100.404,
     });
     expect(b.status).toBe("pending");
     expect(b.clientName).toBe("Client");
     expect(b.hours).toBe(1); // clampé
-    expect(b.total).toBe(100); // arrondi
+    // Au centime, pas à l'euro : les 5 % de frais client font tomber un total
+    // sur une demie (535,50 €), qu'un arrondi à l'entier effacerait.
+    expect(b.total).toBe(100.4);
     expect(b.pickup).toBeTruthy();
+  });
+
+  it("conserve les centimes d'un total avec frais de service", () => {
+    const b = buildBooking({
+      driverId: "d",
+      clientId: "c",
+      clientName: "X",
+      hours: 3,
+      total: 535.5, // 510 € de course + 5 %
+    });
+    expect(b.total).toBe(535.5);
   });
   it("clampe les heures à 24 max", () => {
     const b = buildBooking({ driverId: "d", clientId: "c", clientName: "X", hours: 99, total: 10 });

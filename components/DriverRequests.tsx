@@ -17,7 +17,11 @@ import { statusLabel, formatWhen, bookingQuantityLabel } from "@/lib/bookings";
 import { chatStateForBooking } from "@/lib/chat";
 import { getDriver } from "@/lib/drivers";
 import { useI18n } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
+import {
+  breakdownFromClientTotal,
+  PLATFORM_COMMISSION_RATE,
+} from "@/lib/pricing";
+import { cn, formatPrice } from "@/lib/utils";
 import { BookingChat } from "./BookingChat";
 
 /**
@@ -146,7 +150,12 @@ export function DriverRequests({
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-base font-semibold text-white">€{b.total}</span>
+                    {/* Le chauffeur voit SON revenu, pas le total client : le
+                        montant qui compte pour accepter une course est celui
+                        qu'il encaissera. Le détail est juste en dessous. */}
+                    <span className="text-base font-semibold text-emerald-300">
+                      {formatPrice(breakdownFromClientTotal(b.total).driverNet)}
+                    </span>
                     {b.status === "pending" ? (
                       <>
                         <button
@@ -219,6 +228,8 @@ export function DriverRequests({
                   </div>
                 </div>
 
+                <EarningsBreakdown total={b.total} />
+
                 <AnimatePresence initial={false}>
                   {chatOpen && (
                     <div className="mt-3">
@@ -238,5 +249,45 @@ export function DriverRequests({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Ce que cette course rapporte au chauffeur, en trois lignes.
+ *
+ * ⚠️ Le détail est **redérivé** du total client stocké sur la réservation, pas
+ * lu depuis des colonnes séparées : une commission figée en base au moment de
+ * la demande afficherait l'ancien barème après un changement de taux, sans que
+ * rien ne le signale. Seul le total facturé fait foi, le reste s'en déduit.
+ *
+ * Les frais de gestion du client n'apparaissent pas ici : ils ne sortent pas
+ * de la poche du chauffeur et ne modifient pas son revenu.
+ */
+function EarningsBreakdown({ total }: { total: number }) {
+  const { t } = useI18n();
+  const split = breakdownFromClientTotal(total);
+  const rate = Math.round(PLATFORM_COMMISSION_RATE * 100);
+
+  return (
+    <dl className="mt-3 space-y-1 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-xs">
+      <div className="flex items-center justify-between">
+        <dt className="text-white/50">{t("booking.driverOffered")}</dt>
+        <dd className="font-medium text-white/80">
+          {formatPrice(split.driverPrice)}
+        </dd>
+      </div>
+      <div className="flex items-center justify-between">
+        <dt className="text-white/50">
+          {t("booking.driverCommission")} ({rate} %)
+        </dt>
+        <dd className="text-white/60">−{formatPrice(split.commission)}</dd>
+      </div>
+      <div className="flex items-center justify-between border-t border-white/10 pt-1">
+        <dt className="font-medium text-white/70">{t("booking.driverNet")}</dt>
+        <dd className="text-sm font-semibold text-emerald-300">
+          {formatPrice(split.driverNet)}
+        </dd>
+      </div>
+    </dl>
   );
 }

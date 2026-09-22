@@ -50,6 +50,21 @@ export interface Driver {
    * profile. The airport-transfer flow only proposes drivers listed here.
    */
   transferDestinations: string[];
+  /**
+   * Carte professionnelle CNAPS vérifiée — une **qualification du chauffeur**,
+   * pas une prestation de la plateforme (voir `lib/cnaps.ts`).
+   *
+   * ⚠️ **Décision d'administration**, jamais une déclaration : le chauffeur
+   * dépose sa carte, un administrateur l'examine, et la valeur est recalculée
+   * depuis le statut de la pièce (`refresh_cnaps_verified`).
+   *
+   * ⚠️ Cette valeur n'ouvre **aucun** droit à réserver quoi que ce soit
+   * d'autre qu'une course VTC : Nova Compagnie n'a pas d'autorisation
+   * d'exercer CNAPS et ne peut donc pas commercialiser d'activité de sécurité
+   * privée (art. L612-2 CSI). Les drapeaux `isVtc` / `isSecurity` qui
+   * vivaient ici portaient cet axe de prestation : ils ont été retirés.
+   */
+  cnapsVerified: boolean;
   /** Online right now — about immediate rides only, never about bookings ahead. */
   available: boolean;
   /**

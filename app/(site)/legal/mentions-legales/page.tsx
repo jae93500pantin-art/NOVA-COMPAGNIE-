@@ -22,6 +22,24 @@ export default function LegalNoticePage() {
         <li>Directeur de la publication : l’équipe Nova Compagnie</li>
       </ul>
 
+      <h2>Nature de l’activité</h2>
+      <p>
+        Nova Compagnie est une plateforme de <strong>mise en relation</strong>{" "}
+        entre des clients et des chauffeurs de transport avec chauffeur (VTC)
+        indépendants. Les prestations réservées et facturées sur ce site sont
+        exclusivement des prestations de transport de personnes.
+      </p>
+      <p>
+        Nova Compagnie <strong>n’exerce ni ne commercialise aucune activité de
+        sécurité privée</strong> au sens du livre VI du Code de la sécurité
+        intérieure, et ne dispose pas d’autorisation d’exercer délivrée par le
+        CNAPS. Lorsqu’une fiche de chauffeur mentionne une carte
+        professionnelle CNAPS, cette mention décrit une{" "}
+        <strong>qualification personnelle du chauffeur</strong>, vérifiée sur
+        pièce ; elle ne constitue ni une offre, ni la vente, ni l’exécution
+        d’une prestation de protection des personnes.
+      </p>
+
       <h2>Hébergement</h2>
       <p>
         En production, l’application est destinée à être hébergée sur une

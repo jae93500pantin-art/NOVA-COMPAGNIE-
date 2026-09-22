@@ -5,13 +5,16 @@ import {
   bandFor,
   boundsFor,
   clampRate,
+  CLIENT_SERVICE_FEE_RATE,
+  breakdownFromClientTotal,
+  clientTotalOn,
   commissionOn,
   driverNetOn,
+  priceBreakdown,
   isRateInBand,
   isRateEditable,
   hasFixedPricing,
   rateError,
-  splitRate,
 } from "@/lib/pricing";
 import { FIXTURE_DRIVERS as drivers } from "./fixtures/drivers";
 
@@ -97,30 +100,98 @@ describe("pricing — clamp (dernier rempart côté serveur)", () => {
   });
 });
 
-describe("pricing — commission plateforme (25 %)", () => {
-  it("prélève la commission SUR le prix client, sans le gonfler", () => {
-    const s = splitRate(200);
-    expect(s.ttc).toBe(200); // le client paie le prix affiché
-    expect(s.commission).toBe(50);
-    expect(s.net).toBe(150);
+describe("pricing — barème (5 % client, 15 % chauffeur)", () => {
+  it("applique les deux taux au prix du chauffeur", () => {
+    const s = priceBreakdown(200);
+    expect(s.driverPrice).toBe(200);
+    expect(s.clientFee).toBe(10); // + 5 %
+    expect(s.clientTotal).toBe(210);
+    expect(s.commission).toBe(30); // − 15 %
+    expect(s.driverNet).toBe(170);
+    expect(s.platformMargin).toBe(40); // 10 + 30
   });
 
-  it("garantit commission + net = prix client, même sur un montant impair", () => {
-    for (const ttc of [120, 149, 170, 233, 999, 1501]) {
-      const s = splitRate(ttc);
-      expect(s.commission + s.net, String(ttc)).toBe(s.ttc);
+  it("suit exactement les formules du barème", () => {
+    for (const p of [120, 149, 170, 233, 999, 1501, 3000]) {
+      const s = priceBreakdown(p);
+      expect(s.clientTotal, `total ${p}`).toBe(Math.round(p * 1.05 * 100) / 100);
+      expect(s.commission, `commission ${p}`).toBe(
+        Math.round(p * 0.15 * 100) / 100
+      );
+      expect(s.clientFee, `frais ${p}`).toBe(Math.round(p * 0.05 * 100) / 100);
+      expect(s.driverNet, `net ${p}`).toBe(p - s.commission);
+      expect(s.platformMargin, `marge ${p}`).toBe(s.clientFee + s.commission);
     }
   });
 
-  it("expose le taux et les raccourcis", () => {
-    expect(PLATFORM_COMMISSION_RATE).toBe(0.25);
-    expect(commissionOn(1000)).toBe(250);
-    expect(driverNetOn(1000)).toBe(750);
+  it("garde chaque décomposition cohérente avec elle-même", () => {
+    // Une facture doit valoir la somme de ses lignes, et le décompte du
+    // chauffeur retomber exactement sur son prix : c'est le seul invariant qui
+    // empêche un centime de se perdre entre l'affichage et l'encaissement.
+    for (const p of [95, 120, 149.5, 170, 233, 999, 1501] ) {
+      const s = priceBreakdown(p);
+      expect(s.driverPrice + s.clientFee, String(p)).toBeCloseTo(s.clientTotal, 10);
+      expect(s.commission + s.driverNet, String(p)).toBeCloseTo(s.driverPrice, 10);
+    }
+  });
+
+  it("ne mélange jamais les deux bases de calcul", () => {
+    // La commission porte sur le prix chauffeur, PAS sur le total client :
+    // 15 % de 210 ferait 31,50 € et mangerait des frais que le chauffeur
+    // n'encaisse pas.
+    const s = priceBreakdown(200);
+    expect(s.commission).not.toBe(Math.round(s.clientTotal * 0.15 * 100) / 100);
+    expect(s.commission).toBe(30);
+  });
+
+  it("descend au centime quand le taux tombe sur une demie", () => {
+    const s = priceBreakdown(170); // 5 % = 8,50 € — un arrondi à l'euro mentirait
+    expect(s.clientFee).toBe(8.5);
+    expect(s.clientTotal).toBe(178.5);
+    expect(s.commission).toBe(25.5);
+    expect(s.driverNet).toBe(144.5);
+  });
+
+  it("expose les taux et les raccourcis", () => {
+    expect(PLATFORM_COMMISSION_RATE).toBe(0.15);
+    expect(CLIENT_SERVICE_FEE_RATE).toBe(0.05);
+    expect(commissionOn(1000)).toBe(150);
+    expect(driverNetOn(1000)).toBe(850);
+    expect(clientTotalOn(1000)).toBe(1050);
   });
 
   it("neutralise un montant absent ou négatif", () => {
-    expect(splitRate(0)).toEqual({ ttc: 0, commission: 0, net: 0 });
-    expect(splitRate(-100).net).toBe(0);
+    expect(priceBreakdown(0).clientTotal).toBe(0);
+    expect(priceBreakdown(-100).driverNet).toBe(0);
+    expect(priceBreakdown(Number.NaN).commission).toBe(0);
+  });
+});
+
+describe("pricing — décomposition depuis le total client", () => {
+  it("retrouve le prix chauffeur à partir du total facturé", () => {
+    for (const p of [120, 170, 200, 999, 1000, 1500]) {
+      const forward = priceBreakdown(p);
+      const back = breakdownFromClientTotal(forward.clientTotal);
+      expect(back.driverPrice, String(p)).toBe(p);
+      expect(back.commission, String(p)).toBe(forward.commission);
+      expect(back.driverNet, String(p)).toBe(forward.driverNet);
+    }
+  });
+
+  it("affiche toujours le total réellement facturé", () => {
+    // Le total stocké fait foi : il a été encaissé. Le détail s'ajuste à lui,
+    // jamais l'inverse — sinon la facture affichée cesse de correspondre au
+    // relevé bancaire du client.
+    for (const total of [178.5, 210, 535.5, 1050, 99.99]) {
+      const s = breakdownFromClientTotal(total);
+      expect(s.clientTotal, String(total)).toBe(total);
+      expect(s.driverPrice + s.clientFee, String(total)).toBeCloseTo(total, 10);
+    }
+  });
+
+  it("neutralise un total absent ou négatif", () => {
+    expect(breakdownFromClientTotal(0).driverPrice).toBe(0);
+    expect(breakdownFromClientTotal(-10).clientTotal).toBe(0);
   });
 });
 

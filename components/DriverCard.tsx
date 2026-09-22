@@ -3,14 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Languages, BadgeCheck, Clock, Car } from "lucide-react";
+import { Languages, BadgeCheck, Clock, Car, ShieldCheck } from "lucide-react";
 import type { Driver } from "@/lib/types";
 import { StarRating } from "./StarRating";
-import { cn } from "@/lib/utils";
+import { cn, formatPrice } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
+import { hasVerifiedCnapsCard } from "@/lib/cnaps";
+import { priceBreakdown } from "@/lib/pricing";
 
 export function DriverCard({ driver, index = 0 }: { driver: Driver; index?: number }) {
   const { t } = useI18n();
+  // Le meme calcul que la fiche et que la facture : une seule autorite.
+  const price = priceBreakdown(driver.pricePerHour);
 
   return (
     <motion.div
@@ -21,7 +25,15 @@ export function DriverCard({ driver, index = 0 }: { driver: Driver; index?: numb
     >
       <Link
         href={`/drivers/${driver.id}`}
-        className="group relative block overflow-hidden rounded-3xl glass transition-all duration-500 hover:border-white/20 hover:shadow-glow"
+        className={cn(
+          "group relative block overflow-hidden rounded-3xl glass transition-all duration-500 hover:border-white/20 hover:shadow-glow",
+          // Hors ligne : la carte s'efface sans disparaître. Le chauffeur
+          // reste réservable pour un créneau à venir (c'est le planning qui
+          // tranche), mais l'œil doit d'abord tomber sur ceux qui répondent
+          // maintenant. Le survol rend la carte intacte.
+          !driver.available &&
+            "opacity-70 grayscale-[0.4] hover:opacity-100 hover:grayscale-0"
+        )}
       >
         {/* Header — driver photo as focal point (no car background) */}
         <div className="relative overflow-hidden p-5">
@@ -44,7 +56,19 @@ export function DriverCard({ driver, index = 0 }: { driver: Driver; index?: numb
               />
               {driver.available ? t("drivers.available") : t("drivers.busy")}
             </span>
-            <span className="chip">{driver.categories[0]}</span>
+            <span className="flex items-center gap-1.5">
+              {/* Qualification personnelle du chauffeur, à côté de la gamme
+                  du véhicule. ⚠️ Elle ne désigne AUCUNE prestation de
+                  sécurité : la plateforme n'en vend pas (voir lib/cnaps.ts).
+                  Une carte en attente d'examen n'affiche rien. */}
+              {hasVerifiedCnapsCard(driver) && (
+                <span className="chip border-royal-400/40 bg-royal-500/15 text-royal-200">
+                  <ShieldCheck className="h-3 w-3 shrink-0" />
+                  {t("cnaps.badge")}
+                </span>
+              )}
+              <span className="chip">{driver.categories[0]}</span>
+            </span>
           </div>
 
           <div className="relative mt-5 flex items-center gap-4">
@@ -93,9 +117,19 @@ export function DriverCard({ driver, index = 0 }: { driver: Driver; index?: numb
           </div>
 
           <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-4">
+            {/* Prix transparent dès la liste : le tarif du chauffeur, les
+                frais, et ce qui sera réellement débité. Découvrir les 5 % à
+                l'écran de paiement est la meilleure façon de perdre le client
+                au dernier pas. Le détail complet reste sur la fiche. */}
             <p className="text-sm text-white/50">
               {t("drivers.fromPrice")}{" "}
-              <span className="font-medium text-white">€{driver.pricePerHour}</span>
+              <span className="font-medium text-white">
+                {formatPrice(price.clientTotal)}
+              </span>
+              <span className="block text-[10px] leading-relaxed text-white/35">
+                {formatPrice(price.driverPrice)} + {formatPrice(price.clientFee)}{" "}
+                {t("drivers.feeShort")}
+              </span>
             </p>
             <span className="rounded-full bg-white/5 px-4 py-2 text-xs font-medium text-white transition group-hover:bg-royal-500 group-hover:text-white">
               {t("drivers.viewProfile")}

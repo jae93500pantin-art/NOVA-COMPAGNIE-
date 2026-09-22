@@ -657,11 +657,27 @@ create table if not exists public.pricing_rules (
   max_hour         numeric(10,2) not null,
   min_day          numeric(10,2) not null,
   max_day          numeric(10,2) not null,
-  commission_rate  numeric(4,3)  not null default 0.250,
+  -- Prélevée SUR le prix du chauffeur (déduite de son revenu).
+  commission_rate  numeric(4,3)  not null default 0.150,
+  -- Ajoutés AU prix du chauffeur, à la charge du client. Deux taux distincts
+  -- sur deux bases distinctes : ils ne s'additionnent pas en un seul.
+  service_fee_rate numeric(4,3)  not null default 0.050,
   updated_at       timestamptz   not null default now(),
   check (max_hour >= min_hour and max_day >= min_day),
-  check (commission_rate >= 0 and commission_rate < 1)
+  check (commission_rate >= 0 and commission_rate < 1),
+  check (service_fee_rate >= 0 and service_fee_rate < 1)
 );
+
+-- Rejouable : la table existe déjà sur les bases créées avant ce barème.
+alter table public.pricing_rules
+  add column if not exists service_fee_rate numeric(4,3) not null default 0.050;
+-- ⚠️ `add column ... default` ne touche pas les lignes déjà semées avec
+-- l'ancien taux : le barème de 25 % prélevé dans le prix client doit être
+-- réécrit explicitement, sinon la base continue de calculer l'ancien partage
+-- pendant que TypeScript applique le nouveau.
+update public.pricing_rules
+   set commission_rate = 0.150, service_fee_rate = 0.050, updated_at = now()
+ where commission_rate <> 0.150 or service_fee_rate <> 0.050;
 
 -- Valeurs semées depuis lib/pricing.ts. `on conflict do nothing` : rejouer le
 -- bloc ne doit pas écraser un barème ajusté en production.
@@ -699,7 +715,8 @@ create table if not exists public.payments (
   status                   payment_status not null default 'requires_payment_method',
   capture_method           text not null default 'manual'
                              check (capture_method in ('manual', 'automatic')),
-  -- Ce que la plateforme garde, dérivé du prix client (jamais ajouté par-dessus).
+  -- La commission prélevée au chauffeur, dérivée du TARIF COURSE — pas du
+  -- montant encaissé, qui contient en plus les frais payés par le client.
   commission_cents         int not null default 0 check (commission_cents >= 0),
   last_error               text,
   authorized_at            timestamptz,
@@ -721,9 +738,13 @@ create index if not exists payments_status_idx  on public.payments (status);
  *     hors bande) ;
  *   • un transfert est un forfait : la quantité ne s'applique pas ;
  *   • les heures sont bornées à 1..24, les jours à 1..30 ;
- *   • la commission est prise DANS le prix client, jamais ajoutée par-dessus,
- *     et le net du chauffeur est obtenu par SOUSTRACTION pour que les deux
- *     retombent toujours exactement sur le total.
+ *   • le tarif course est la base des DEUX prélèvements : le client règle ce
+ *     tarif majoré des frais de service, le chauffeur encaisse ce tarif
+ *     diminué de la commission. Les deux taux ne portent pas sur le même
+ *     montant et ne s'additionnent pas ;
+ *   • le total client est obtenu par ADDITION et le net du chauffeur par
+ *     SOUSTRACTION, pour que ni la facture ni le décompte ne perdent un
+ *     centime en route.
  *
  * Sert au chemin base de données (action serveur, rapprochement, back-office).
  * Le montant réellement facturé reste calculé en TypeScript.
@@ -739,6 +760,10 @@ create or replace function public.calculate_booking_price(
 returns table (
   quantity     int,
   unit_price   numeric,
+  -- Le tarif course : la base, avant frais client et avant commission.
+  ride_fare    numeric,
+  service_fee  numeric,
+  -- Ce que règle le client : `ride_fare + service_fee`.
   total_ttc    numeric,
   commission   numeric,
   driver_net   numeric,
@@ -752,6 +777,8 @@ declare
   band    public.pricing_rules%rowtype;
   v_qty   int;
   v_unit  numeric;
+  v_fare  numeric;
+  v_fee   numeric;
   v_total numeric;
   v_comm  numeric;
 begin
@@ -781,16 +808,22 @@ begin
       using errcode = 'check_violation';
   end if;
 
-  v_total := v_unit * v_qty;
-  v_comm  := round(v_total * band.commission_rate);
+  -- Arrondi au CENTIME (et non à l'euro) : 5 % d'un tarif impair tombe sur
+  -- une demie, qu'un arrondi à l'entier ferait disparaître de la facture.
+  v_fare  := round(v_unit * v_qty, 2);
+  v_fee   := round(v_fare * band.service_fee_rate, 2);
+  v_total := v_fare + v_fee;   -- par addition : la facture vaut ses lignes
+  v_comm  := round(v_fare * band.commission_rate, 2);
 
   return query select
     v_qty,
     v_unit,
+    v_fare,
+    v_fee,
     v_total,
     v_comm,
-    v_total - v_comm,          -- par soustraction : jamais un euro d'écart
-    (v_total * 100)::int;
+    v_fare - v_comm,           -- par soustraction : jamais un centime d'écart
+    round(v_total * 100)::int;
 end;
 $$;
 
@@ -1002,14 +1035,34 @@ do $$ begin
     'vtc_card',       -- carte professionnelle VTC
     'insurance',      -- attestation d'assurance
     'registration',   -- carte grise
-    'identity'        -- pièce d'identité
+    'identity',       -- pièce d'identité
+    'cnaps_card'      -- carte professionnelle CNAPS (chauffeur de sécurité)
   );
 exception when duplicate_object then null; end $$;
+
+-- L'enum driver_document_kind d'origine n'avait pas 'cnaps_card'
+-- ⚠️ Sur une base existante, le `create type` ci-dessus est ignoré (le type
+-- existe déjà) : la valeur doit être ajoutée séparément. Elle est employée par
+-- `refresh_cnaps_verified()` plus bas, donc elle ne peut pas être ajoutée dans
+-- la même transaction — compose-schema.ps1 l'isole dans 2-enums.sql.
 
 alter table public.drivers
   add column if not exists licence_number  text,
   add column if not exists vtc_card_number text,
+  -- SIREN (9 chiffres) ou SIRET (14) de l'exploitant. Mention obligatoire du
+  -- bon de réservation préalable (lib/bookingVoucher.ts) : sans elle, aucun bon
+  -- ne peut être émis. Stocké en chiffres nus, sans espaces — la mise en forme
+  -- appartient à l'affichage, et deux écritures d'un même numéro empêcheraient
+  -- de le retrouver.
+  add column if not exists siret           text,
   add column if not exists onboarding_step int not null default 0;
+
+-- Une seule entreprise par numéro : deux chauffeurs partageant un SIREN
+-- signifient soit une faute de frappe, soit un compte dupliqué. `nulls not
+-- distinct` n'est PAS voulu ici — tant que le numéro n'est pas renseigné, la
+-- colonne reste nulle pour tout le monde, et les nulls ne se comparent pas.
+create unique index if not exists drivers_siret_idx
+  on public.drivers (siret) where siret is not null;
 
 /**
  * Les pièces déposées par un chauffeur.
@@ -1073,3 +1126,242 @@ create policy driver_documents_select_own on public.driver_documents
  * clé anon. Ajouter une policy `authenticated` ouvrirait un accès direct qui
  * ne passerait par aucune de nos vérifications.
  */
+
+-- ═════════════════════════════════════════════════════════════
+-- BLOC 8 — Qualification CNAPS du chauffeur
+-- ═════════════════════════════════════════════════════════════
+-- La plateforme ne propose **qu'une seule prestation** : la course VTC.
+--
+-- ⚠️ Ce bloc portait un second métier (`is_vtc` / `is_security`, filtres
+-- « protection rapprochée », index de recherche sécurité). Il a été réécrit
+-- avant d'avoir jamais été appliqué, pour une raison de droit et non de
+-- conception : Nova Compagnie n'a pas d'autorisation d'exercer délivrée par
+-- le CNAPS, et l'article L612-2 du Code de la sécurité intérieure interdit
+-- d'exercer **comme de commercialiser** une activité de sécurité privée sans
+-- elle. Or la plateforme encaisse la totalité du montant et édite la facture :
+-- vendre un trajet « avec protection » y serait un exercice illégal, quelle
+-- que soit la qualification du chauffeur qui l'exécute.
+--
+-- Ce qui reste, et qui est licite : **qualifier un profil**. « Ce chauffeur
+-- est titulaire d'une carte professionnelle CNAPS, que nous avons vérifiée »
+-- décrit une personne, au même titre que ses années d'expérience. D'où une
+-- seule colonne, qui n'ouvre aucun droit à réserver autre chose qu'une course.
+--
+-- ⚠️ Ne pas réintroduire `is_security` (ni un index de recherche dédié) sans
+-- l'autorisation d'exercer, ou sans un contrat de sous-traitance avec une
+-- société agréée qui facturerait elle-même la prestation.
+--
+-- ⚠️ La colonne `categories` n'est toujours pas détournée : elle porte la
+-- gamme du véhicule (`vehicle_category[]` : Business, Van, Luxury…). Y mêler
+-- une qualification mélangerait deux axes indépendants.
+-- ─────────────────────────────────────────────────────────────
+
+alter table public.drivers
+  -- ⚠️ Décision d'ADMINISTRATION, jamais une déclaration du chauffeur.
+  -- `drivers_update_own` autorise un chauffeur à écrire sur sa propre ligne :
+  -- sans le verrou ci-dessous, déposer une carte et se déclarer vérifié
+  -- seraient le même geste.
+  add column if not exists cnaps_verified boolean not null default false;
+
+/**
+ * Le chauffeur ne se qualifie pas lui-même.
+ *
+ * Même raison d'être que `profiles_protect_privileged` : la policy de mise à
+ * jour laisse le chauffeur écrire sur sa propre ligne, donc le verrou doit
+ * vivre dans un trigger, pas dans la policy. `cnaps_verified` ne peut changer
+ * que sans `auth.uid()` — c'est-à-dire depuis le service role.
+ *
+ * ⚠️ Le badge affiché au client dit qu'une carte professionnelle a été
+ * vérifiée. Une case à cocher qui produirait ce badge serait, littéralement,
+ * un bouton « déclarez-vous qualifié » — et la mention deviendrait fausse.
+ */
+create or replace function public.drivers_protect_cnaps()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if auth.uid() is not null and auth.uid() = new.id
+     and new.cnaps_verified is distinct from old.cnaps_verified then
+    new.cnaps_verified := old.cnaps_verified;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists drivers_protect_cnaps on public.drivers;
+create trigger drivers_protect_cnaps
+  before update on public.drivers
+  for each row execute function public.drivers_protect_cnaps();
+
+-- ⚠️ 'cnaps_card' est employée par refresh_cnaps_verified() juste dessous, et
+-- Postgres refuse d'utiliser une valeur d'enum dans la transaction qui
+-- l'ajoute — compose-schema.ps1 l'isole dans 2-enums.sql.
+
+/**
+ * `cnaps_verified` suit l'examen de la pièce, et rien d'autre.
+ *
+ * Même parti pris que `refresh_driver_rating()` : plutôt que de maintenir un
+ * booléen à la main quelque part dans le code d'administration, on le
+ * recalcule depuis la seule source de vérité — le statut de la carte CNAPS
+ * déposée. Deux valeurs à synchroniser finissent toujours par diverger, et
+ * celle-ci ferait afficher une qualification que personne n'a vérifiée.
+ *
+ * Effet de bord voulu : redéposer une carte la remet « en attente » (voir la
+ * route de dépôt), ce qui retire immédiatement le badge de la fiche publique.
+ */
+create or replace function public.refresh_cnaps_verified()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  target uuid := coalesce(new.driver_id, old.driver_id);
+begin
+  update public.drivers d
+     set cnaps_verified = exists (
+           select 1 from public.driver_documents x
+            where x.driver_id = target
+              and x.kind = 'cnaps_card'
+              and x.status = 'approved'
+         )
+   where d.id = target;
+  return null;
+end;
+$$;
+
+drop trigger if exists driver_documents_cnaps on public.driver_documents;
+create trigger driver_documents_cnaps
+  after insert or update or delete on public.driver_documents
+  for each row execute function public.refresh_cnaps_verified();
+
+-- ═════════════════════════════════════════════════════════════
+-- BLOC 9 — Messagerie de course : réponses rapides, accusés,
+--          délai de grâce et masquage des coordonnées
+-- ═════════════════════════════════════════════════════════════
+--
+-- Additif et rejouable. Étend `public.messages` — il n'y a **pas** de table
+-- `booking_messages` : le fil de discussion d'une course vit dans `messages`
+-- depuis le bloc 4, avec son historique, ses policies et sa publication
+-- realtime. En créer une seconde scinderait l'historique en deux moitiés dont
+-- aucune ne serait complète.
+-- ─────────────────────────────────────────────────────────────
+
+-- ── Clôture de la course : le point de départ du délai de grâce ──
+-- Sans cette colonne on sait qu'une course est close, pas DEPUIS QUAND — et
+-- le délai de 30 minutes ne peut pas se calculer.
+alter table public.bookings
+  add column if not exists closed_at timestamptz;
+
+-- ── Réponses rapides et accusés ──────────────────────────────
+alter table public.messages
+  add column if not exists is_quick_reply boolean not null default false,
+  add column if not exists delivered_at   timestamptz,
+  add column if not exists read_at        timestamptz;
+
+-- `sender_role` reste un texte contraint (il l'était déjà) plutôt qu'un enum :
+-- 'system' s'y ajoute sans `alter type ... add value`, donc sans la
+-- transaction séparée qu'imposerait un enum (cf. l'en-tête de ce fichier).
+do $$ begin
+  alter table public.messages drop constraint if exists messages_sender_role_known;
+  alter table public.messages add constraint messages_sender_role_known
+    check (sender_role in ('client', 'driver', 'system'));
+exception when duplicate_object then null; end $$;
+
+-- ── Masquage des coordonnées (anti-désintermédiation) ────────
+/**
+ * Retire numéros de téléphone et adresses e-mail d'un texte libre.
+ *
+ * ⚠️ Ce trigger est un FILET, pas la règle : le masquage a déjà eu lieu dans
+ * `lib/chat.ts` (`buildMessage`), avant la diffusion temps réel. Masquer
+ * uniquement ici laisserait le destinataire recevoir le numéro en clair par
+ * le flux SSE, la base ne gardant qu'une trace propre d'un échange qui ne
+ * l'était pas. Les deux implémentations doivent donc rester d'accord ; la
+ * version TypeScript est celle qui fait foi pour ce qui est affiché.
+ *
+ * ⚠️ Le `/` est volontairement absent des séparateurs admis : avec lui,
+ * « le 12/09/2026 14h » compte dix chiffres et se ferait masquer. Une date est
+ * exactement ce qu'on écrit le plus souvent dans une conversation de course.
+ * Les parenthèses, elles, sont admises — jusqu'à deux séparateurs d'affilée —
+ * pour la notation « +33 (0)6 12 34 56 78 », qu'un seul séparateur coupait en
+ * deux (on masquait alors « +33 (*** », c'est-à-dire rien).
+ */
+create or replace function public.mask_contact_details(txt text)
+returns text
+language sql
+immutable
+as $$
+  select regexp_replace(
+           regexp_replace(
+             txt,
+             '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}',
+             '***',
+             'g'
+           ),
+           '(^|[^0-9+])([(]?(\+[0-9]{1,3}|00[0-9]{1,3}|0)([ .()-]{0,2}[0-9]){8,13})([^0-9]|$)',
+           '\1***\5',
+           'g'
+         );
+$$;
+
+create or replace function public.messages_mask_contacts()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.body := public.mask_contact_details(new.body);
+  return new;
+end;
+$$;
+
+drop trigger if exists messages_mask_contacts on public.messages;
+create trigger messages_mask_contacts
+  before insert or update of body on public.messages
+  for each row execute function public.messages_mask_contacts();
+
+-- ── Cycle de vie : 30 minutes après la clôture ───────────────
+/**
+ * Le fil accepte-t-il encore un message ?
+ *
+ * Trois façons d'être ouvert, et une seule d'être fermé :
+ *  - course payée, dans les 24 h qui suivent la prise en charge (inchangé) ;
+ *  - course terminée ou annulée, dans les 30 minutes qui suivent sa clôture.
+ *
+ * ⚠️ `closed_at is not null` est exigé : une course close avant l'existence de
+ * cette colonne ne doit pas se rouvrir. `coalesce(closed_at, now())` aurait
+ * rouvert d'un coup tout l'historique.
+ */
+create or replace function public.booking_chat_is_open(bid uuid)
+returns boolean
+language sql
+stable
+security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.bookings b
+    where b.id = bid
+      and (
+        (
+          b.status = 'paid'
+          and now() < coalesce(b.start_at, b.created_at) + interval '24 hours'
+        )
+        or (
+          b.status in ('completed', 'cancelled')
+          and b.closed_at is not null
+          and now() < b.closed_at + interval '30 minutes'
+        )
+      )
+  );
+$$;
+
+-- ── Ce qui n'a PAS besoin d'être refait ──────────────────────
+-- • `messages` est déjà publiée sur `supabase_realtime` (bloc 1) — la RLS
+--   s'applique aussi aux événements realtime.
+-- • La policy de lecture `messages_select_parties` couvre déjà les nouvelles
+--   colonnes : Postgres n'a pas de RLS par colonne, une policy porte sur la
+--   ligne entière.
+-- • Aucune policy d'écriture pour un jeton utilisateur n'est (re)créée ici.
+--   Les écritures passent par `/api/chat/[bookingId]`, qui vérifie la session
+--   et la légitimité du participant, puis écrit avec le service role. Rouvrir
+--   PostgREST en écriture offrirait une seconde porte contournant ces règles
+--   — c'est précisément ce que le bloc 4 a fermé.

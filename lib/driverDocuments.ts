@@ -12,14 +12,24 @@ export const DOCUMENT_KINDS = [
   "insurance",
   "registration",
   "identity",
+  "cnaps_card",
 ] as const;
 
 export type DriverDocumentKind = (typeof DOCUMENT_KINDS)[number];
 
-/** Libellé et rôle de chaque pièce, dans l'ordre où on les demande. */
+/**
+ * Libellé et rôle de chaque pièce, dans l'ordre où on les demande.
+ *
+ * `required` = exigée de tout chauffeur pour que le dossier soit complet. Les
+ * autres pièces valorisent le profil sans conditionner la validation.
+ */
 export const DOCUMENT_LABELS: Record<
   DriverDocumentKind,
-  { label: string; hint: string; required: boolean }
+  {
+    label: string;
+    hint: string;
+    required: boolean;
+  }
 > = {
   licence: {
     label: "Permis de conduire",
@@ -44,6 +54,19 @@ export const DOCUMENT_LABELS: Record<
   identity: {
     label: "Pièce d'identité",
     hint: "Carte nationale d'identité ou passeport.",
+    required: false,
+  },
+  cnaps_card: {
+    label: "Carte professionnelle CNAPS",
+    hint: "Facultative. Une fois vérifiée, elle affiche un badge de qualification sur votre fiche.",
+    /**
+     * ⚠️ Facultative, et elle doit le rester.
+     *
+     * Elle ne déclenche aucune prestation de sécurité : Nova Compagnie n'a pas
+     * d'autorisation d'exercer CNAPS et ne peut donc pas en commercialiser
+     * (art. L612-2 CSI). Cette pièce ne sert qu'à qualifier le profil du
+     * chauffeur, comme son expérience ou ses langues. Voir `lib/cnaps.ts`.
+     */
     required: false,
   },
 };
@@ -99,7 +122,16 @@ export function documentError(file: {
   return null;
 }
 
-/** Les pièces obligatoires manquantes, pour savoir si le dossier est complet. */
+/**
+ * Les pièces obligatoires manquantes, pour savoir si le dossier est complet.
+ *
+ * ⚠️ Il n'y a **qu'un seul dossier**, celui du VTC. Cette fonction prenait
+ * autrefois un drapeau `security` qui ajoutait la carte CNAPS aux pièces
+ * exigées : il a été retiré avec l'axe « prestation de sécurité », que la
+ * plateforme ne peut pas commercialiser (voir `lib/cnaps.ts`). Ne pas le
+ * réintroduire pour rendre une pièce conditionnellement obligatoire — c'est
+ * la trace qu'une seconde prestation est en train de réapparaître.
+ */
 export function missingRequired(
   provided: { kind: string }[]
 ): DriverDocumentKind[] {
@@ -107,4 +139,9 @@ export function missingRequired(
   return DOCUMENT_KINDS.filter(
     (k) => DOCUMENT_LABELS[k].required && !have.has(k)
   );
+}
+
+/** Les pièces présentées dans le formulaire : toutes, obligatoires ou non. */
+export function documentsToCollect(): DriverDocumentKind[] {
+  return [...DOCUMENT_KINDS];
 }

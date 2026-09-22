@@ -309,7 +309,13 @@ export interface Database {
 export interface BookingPriceRow {
   quantity: number;
   unit_price: number | string;
+  /** Tarif course : la base, avant frais client et avant commission. */
+  ride_fare: number | string;
+  /** Frais de service à la charge du client (5 %). */
+  service_fee: number | string;
+  /** Ce que règle le client : `ride_fare + service_fee`. */
   total_ttc: number | string;
+  /** Commission prélevée au chauffeur sur `ride_fare` (15 %). */
   commission: number | string;
   driver_net: number | string;
   amount_cents: number;

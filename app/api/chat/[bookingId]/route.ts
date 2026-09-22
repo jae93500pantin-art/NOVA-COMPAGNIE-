@@ -1,6 +1,12 @@
 import { NextRequest } from "next/server";
 import { getBookingById } from "@/lib/bookingBroker";
-import { listMessages, postMessage, subscribeChat, type ChatEvent } from "@/lib/chatBroker";
+import {
+  listMessages,
+  markRead,
+  postMessage,
+  subscribeChat,
+  type ChatEvent,
+} from "@/lib/chatBroker";
 import {
   canSendMessage,
   chatStateForBooking,
@@ -106,7 +112,15 @@ export async function GET(
 
       // L'historique est relu en base au premier accès : comme pour les
       // courses, un abonné dont le client a déjà raccroché doit repartir.
-      const unsub = await subscribeChat(bookingId, auth.booking, send);
+      // Le role est transmis au broker : c'est ce qui lui permet de savoir
+      // que le destinataire est a l'ecoute, et donc de poser un accuse de
+      // remise qui veut dire quelque chose.
+      const unsub = await subscribeChat(
+        bookingId,
+        auth.booking,
+        send,
+        auth.role
+      );
       if (req.signal.aborted) {
         unsub();
         try {
@@ -204,12 +218,51 @@ export async function POST(
       senderId: auth.senderId,
       senderName,
       text,
+      // Simple statistique d'usage : le texte reste celui qui a ete recu, ce
+      // drapeau n'autorise aucun contenu particulier.
+      isQuickReply: body.isQuickReply === true,
     },
     authorAccountId,
     auth.booking
   );
 
   return Response.json({ ok: true, message });
+}
+
+/**
+ * Le lecteur a ouvert le fil : ce que l'autre partie a ecrit passe en « lu ».
+ *
+ * PATCH et non GET : marquer comme lu change l'etat, et un GET prefetche par
+ * le navigateur poserait l'accuse sans que personne n'ait rien lu. Le role du
+ * lecteur vient de la session, jamais du corps — sinon chacun pourrait
+ * declarer avoir lu a la place de l'autre.
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { bookingId: string } }
+) {
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown";
+  if (!rateLimit(`chat-read:${ip}`, 60, 60_000).ok) {
+    return Response.json({ error: "Too many requests" }, { status: 429 });
+  }
+
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    /* corps vide accepte : la seule action possible est « marquer comme lu » */
+  }
+
+  const auth = await authorise(params.bookingId, sanitizeText(body.senderId, 64));
+  if ("error" in auth) {
+    return Response.json({ error: auth.error }, { status: auth.status });
+  }
+
+  await markRead(params.bookingId, auth.booking, auth.role);
+  return Response.json({ ok: true });
 }
 
 /** Current history + state, for clients that cannot hold an SSE connection. */

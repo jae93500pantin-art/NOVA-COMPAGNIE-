@@ -113,7 +113,11 @@ function sweep(room: Room): void {
     if (!shouldAutoComplete(b, now)) return;
     b.status = "completed";
     void persistBookingStatus(b.id, "completed");
-    closeChat(b.id);
+    // Pas de closedAt ici, et c'est volontaire : ce filet se declenche 24 h
+    // apres la course, quand plus personne n'attend devant son telephone.
+    // Ouvrir un delai de grace de 30 min a ce moment-la n'aurait aucun sens.
+    // Sans closedAt, chatStateForBooking archive immediatement.
+    closeChat(b.id, now);
     room.subscribers.forEach((fn) => safe(fn, { type: "status", booking: b }));
   });
 }
@@ -162,9 +166,16 @@ export async function updateBookingStatus(
   if (!booking) return null;
   if (!canTransition(booking.status, status)) return null;
   booking.status = status;
-  await persistBookingStatus(booking.id, status);
-  // The ride is over: flip every open chat stream to read-only.
-  if (status === "completed" || status === "cancelled") closeChat(booking.id);
+  // ⚠️ L'heure de cloture est posee AVANT la diffusion : c'est elle qui ouvre
+  // le delai de grace de la messagerie, et un flux qui recevrait la course
+  // sans elle la verrouillerait sur-le-champ.
+  const closedAt =
+    status === "completed" || status === "cancelled" ? Date.now() : undefined;
+  if (closedAt) booking.closedAt = closedAt;
+  await persistBookingStatus(booking.id, status, closedAt);
+  // La course est finie : les fils ouverts passent en delai de grace, puis en
+  // lecture seule. closeChat() ne coupe plus l'ecriture, il previent.
+  if (closedAt) closeChat(booking.id, closedAt);
   room.subscribers.forEach((fn) => safe(fn, { type: "status", booking }));
   return booking;
 }

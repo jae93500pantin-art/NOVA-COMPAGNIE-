@@ -3,12 +3,14 @@ import { getStripe } from "@/lib/stripe";
 import { isStripeConfigured } from "@/lib/config";
 import { computeAmount, type BookingUnit } from "@/lib/payments";
 import { transferFareForDriver } from "@/lib/transfer";
-import { clampRate } from "@/lib/pricing";
+import { clampRate, CLIENT_SERVICE_FEE_RATE } from "@/lib/pricing";
 import { getDirectoryDriver } from "@/lib/driverDirectory";
 import { sanitizeText, rateLimit } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const SERVICE_FEE_PERCENT = Math.round(CLIENT_SERVICE_FEE_RATE * 100);
 
 /**
  * POST → create a Stripe Checkout Session for a driver booking.
@@ -84,12 +86,16 @@ export async function POST(req: NextRequest) {
       mode: "payment",
       // Apple Pay & Google Pay appear automatically in Checkout when "card" is enabled.
       payment_method_types: ["card"],
+      // Deux lignes, pas un montant unique : le client retrouve sur l'écran de
+      // paiement — et sur son reçu Stripe — le même détail que dans le
+      // récapitulatif. Des frais fondus dans le total sont des frais qu'on
+      // découvre au relevé bancaire.
       line_items: [
         {
           quantity: 1,
           price_data: {
             currency: "eur",
-            unit_amount: amount.amountCents,
+            unit_amount: Math.round(amount.subtotal * 100),
             product_data: {
               name: `Course avec ${driver.firstName} ${driver.lastName}`,
               description:
@@ -99,11 +105,29 @@ export async function POST(req: NextRequest) {
             },
           },
         },
+        // Jamais de ligne à zéro : Stripe l'accepte, mais un « 0,00 € » sur un
+        // reçu ne fait qu'ajouter une question.
+        ...(amount.serviceFee > 0
+          ? [
+              {
+                quantity: 1,
+                price_data: {
+                  currency: "eur" as const,
+                  unit_amount: Math.round(amount.serviceFee * 100),
+                  product_data: {
+                    name: `Frais de service Nova Compagnie (${SERVICE_FEE_PERCENT} %)`,
+                  },
+                },
+              },
+            ]
+          : []),
       ],
       metadata: {
         driverId: driver.id,
         bookingId,
         hours: String(amount.hours),
+        fare: String(amount.subtotal),
+        serviceFee: String(amount.serviceFee),
         total: String(amount.total),
       },
       success_url: `${origin}/compte/reservation?status=success&driver=${driver.id}&booking=${encodeURIComponent(bookingId)}`,

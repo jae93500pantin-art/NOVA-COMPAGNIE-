@@ -14,12 +14,13 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { boundsFor, hasFixedPricing, rateError } from "@/lib/pricing";
+import { isValidSiren } from "@/lib/bookingVoucher";
 import type { VehicleCategory } from "@/lib/types";
 import {
-  DOCUMENT_KINDS,
   DOCUMENT_LABELS,
   documentError,
   missingRequired,
+  documentsToCollect,
   type DriverDocumentKind,
 } from "@/lib/driverDocuments";
 import { springSnappy } from "@/lib/motion";
@@ -73,6 +74,7 @@ export function DriverOnboarding() {
   // Étape 1
   const [licence, setLicence] = useState("");
   const [vtcCard, setVtcCard] = useState("");
+  const [siret, setSiret] = useState("");
   const [experience, setExperience] = useState("");
 
   // Étape 2
@@ -83,6 +85,7 @@ export function DriverOnboarding() {
   const [year, setYear] = useState("");
   const [color, setColor] = useState("");
   const [hourRate, setHourRate] = useState("");
+  const [dayRate, setDayRate] = useState("");
 
   // Étape 3
   const [documents, setDocuments] = useState<DocumentState[]>([]);
@@ -105,9 +108,13 @@ export function DriverOnboarding() {
     if (isDriver) void loadDocuments();
   }, [isDriver, loadDocuments]);
 
-  // Le tarif suit la gamme : une classe à prix imposé n'a rien à saisir.
+  // Les tarifs suivent la gamme : une classe à prix imposé n'a rien à saisir,
+  // et ses deux champs affichent la valeur unique de sa bande.
   useEffect(() => {
-    if (hasFixedPricing(category)) setHourRate(String(boundsFor(category, "hour").min));
+    if (hasFixedPricing(category)) {
+      setHourRate(String(boundsFor(category, "hour").min));
+      setDayRate(String(boundsFor(category, "day").min));
+    }
   }, [category]);
 
   if (loading) {
@@ -134,6 +141,9 @@ export function DriverOnboarding() {
   const hourError = hasFixedPricing(category)
     ? null
     : rateError(category, "hour", Number.parseFloat(hourRate));
+  const dayError = hasFixedPricing(category)
+    ? null
+    : rateError(category, "day", Number.parseFloat(dayRate));
 
   /** Enregistre les étapes 1 et 2 sur la fiche d'annuaire. */
   const saveProfile = async (nextStep: Step) => {
@@ -146,6 +156,7 @@ export function DriverOnboarding() {
         body: JSON.stringify({
           licenceNumber: licence.trim(),
           vtcCardNumber: vtcCard.trim(),
+          siret: siret.trim(),
           experienceYears: Number.parseInt(experience, 10) || 0,
           category,
           carMake: make.trim(),
@@ -154,7 +165,11 @@ export function DriverOnboarding() {
           carYear: year,
           carColor: color.trim(),
           pricePerHour: Number.parseFloat(hourRate) || boundsFor(category, "hour").min,
-          pricePerDay: boundsFor(category, "day").min,
+          // Le tarif saisi par le chauffeur, et non plus le minimum de la
+          // bande : un chauffeur premium s'inscrivait à 1500 €/jour imposés et
+          // devait repasser par son profil pour corriger un tarif qu'il n'avait
+          // jamais choisi. Le serveur le reclampe de toute façon.
+          pricePerDay: Number.parseFloat(dayRate) || boundsFor(category, "day").min,
           onboardingStep: nextStep,
         }),
       });
@@ -201,11 +216,20 @@ export function DriverOnboarding() {
     }
   };
 
+  // Un seul dossier, celui du VTC : la carte CNAPS est facultative et ne
+  // conditionne pas la validation (voir lib/cnaps.ts).
   const missing = missingRequired(documents);
 
-  const step1Valid = licence.trim().length >= 5 && vtcCard.trim().length >= 5;
+  // Le SIREN est vérifié par sa clé de contrôle : un numéro inventé sur le bon
+  // de réservation est exactement ce que ce document ne doit pas porter.
+  const step1Valid =
+    licence.trim().length >= 5 && vtcCard.trim().length >= 5 && isValidSiren(siret);
   const step2Valid =
-    make.trim().length >= 2 && model.trim().length >= 1 && plate.trim().length >= 4 && !hourError;
+    make.trim().length >= 2 &&
+    model.trim().length >= 1 &&
+    plate.trim().length >= 4 &&
+    !hourError &&
+    !dayError;
 
   if (done) {
     return (
@@ -268,6 +292,26 @@ export function DriverOnboarding() {
                 autoComplete="off"
                 placeholder="VTC-075-2024-000000"
               />
+            </Field>
+            <Field
+              label="SIREN ou SIRET"
+              hint="Mention obligatoire du bon de réservation remis au client."
+            >
+              <input
+                value={siret}
+                // Chiffres seuls : le numéro est stocké nu, la mise en forme
+                // appartient à l'affichage (voir lib/bookingVoucher.ts).
+                onChange={(e) => setSiret(e.target.value.replace(/\D/g, "").slice(0, 14))}
+                inputMode="numeric"
+                className="input"
+                autoComplete="off"
+                placeholder="123456789"
+              />
+              {siret.length > 0 && !isValidSiren(siret) && (
+                <span className="mt-1 block text-[11px] text-amber-300">
+                  9 chiffres (SIREN) ou 14 (SIRET), clé de contrôle comprise.
+                </span>
+              )}
             </Field>
             <Field label="Années d'expérience">
               <input
@@ -356,6 +400,23 @@ export function DriverOnboarding() {
                   className="input disabled:opacity-60"
                 />
               </Field>
+              <Field
+                label="Tarif journalier (TTC)"
+                hint={
+                  hasFixedPricing(category)
+                    ? `Imposé par la plateforme : ${boundsFor(category, "day").min} € / jour.`
+                    : `Entre ${boundsFor(category, "day").min} et ${boundsFor(category, "day").max} € / jour.`
+                }
+                error={dayError}
+              >
+                <input
+                  value={dayRate}
+                  onChange={(e) => setDayRate(e.target.value)}
+                  disabled={hasFixedPricing(category)}
+                  inputMode="decimal"
+                  className="input disabled:opacity-60"
+                />
+              </Field>
             </div>
 
             <div className="flex gap-3">
@@ -383,7 +444,7 @@ export function DriverOnboarding() {
             </p>
 
             <div className="space-y-2">
-              {DOCUMENT_KINDS.map((kind) => (
+              {documentsToCollect().map((kind) => (
                 <DocumentRow
                   key={kind}
                   kind={kind}

@@ -184,18 +184,33 @@ export async function createBooking(
       transferFare: transferFareForDriver(driver),
     });
 
-    if (priced && priced.amount_cents !== amount.amountCents) {
-      // Ni exception ni correction : le calcul testé reste la référence, mais
-      // un écart signifie que l'un des deux barèmes a bougé sans l'autre.
-      console.error(
-        `[booking] écart de tarification pour ${driverId} : ` +
-          `TypeScript ${amount.amountCents} c ≠ SQL ${priced.amount_cents} c`
-      );
-    }
+    // La commission porte sur le **tarif course**, pas sur le total réglé par
+    // le client : appliquer le taux à `amountCents` reviendrait à prélever le
+    // chauffeur sur des frais qu'il n'encaisse pas.
+    //
+    // ⚠️ Elle vient du calcul TypeScript, **pas** de la base, comme le montant
+    // facturé. La lire depuis SQL en priorité faisait de la base l'autorité
+    // sur la moitié du barème seulement : une instance où la migration du
+    // barème n'a pas encore été appliquée aurait tranquillement écrit
+    // l'ancienne commission à côté du nouveau total, sans rien casser de
+    // visible. La base reste la contre-mesure, jamais la référence.
+    const commissionCents = Math.round(amount.commission * 100);
 
-    const commissionCents = priced
-      ? Math.round(Number(priced.commission) * 100)
-      : Math.round(amount.amountCents * 0.25);
+    if (priced) {
+      const sqlCommissionCents = Math.round(Number(priced.commission) * 100);
+      if (
+        priced.amount_cents !== amount.amountCents ||
+        sqlCommissionCents !== commissionCents
+      ) {
+        // Ni exception ni correction : le calcul testé reste la référence, mais
+        // un écart signifie que l'un des deux barèmes a bougé sans l'autre.
+        console.error(
+          `[booking] écart de tarification pour ${driverId} : ` +
+            `TypeScript ${amount.amountCents} c / ${commissionCents} c de commission ` +
+            `≠ SQL ${priced.amount_cents} c / ${sqlCommissionCents} c`
+        );
+      }
+    }
 
     /* c) La course, via le broker : persistée ET diffusée au chauffeur. */
     const booking = await createBookingRecord({
