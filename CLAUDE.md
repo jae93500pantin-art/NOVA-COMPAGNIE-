@@ -1033,9 +1033,12 @@ interrompu se reprend. `/compte/profil` reste l'édition ultérieure.
 
 **Pièces justificatives** (`driver_documents` + bucket `driver-docs`) :
 
-- ⚠️ **Le bucket doit être créé PRIVÉ à la main** dans le dashboard Supabase
-  (Storage → New bucket → `driver-docs` → Public : OFF). Le SQL ne peut pas le
-  faire sur une instance hébergée. Aucune policy Storage : les dépôts passent
+- ⚠️ **Le bucket doit être créé PRIVÉ**, le SQL ne pouvant pas le faire sur une
+  instance hébergée. Deux chemins : le dashboard (Storage → New bucket →
+  `driver-docs` → Public : OFF), ou l'API Storage avec la clé de service
+  (`POST /storage/v1/bucket`, `{"name":"driver-docs","public":false}`).
+  ✅ Déjà créé sur le projet `goayrdtgblpczbcojkaq` (privé, plafond 8 Mo, MIME
+  restreints aux JPEG/PNG/WebP/PDF). Aucune policy Storage : les dépôts passent
   par le service role côté serveur, jamais par la clé anon — en ajouter une
   ouvrirait un accès direct qui ne passerait par aucune vérification.
 - Les fichiers **ne partent jamais directement** du navigateur : tout transite

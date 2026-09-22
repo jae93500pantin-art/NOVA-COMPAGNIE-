@@ -1029,22 +1029,15 @@ revoke execute on function public.driver_slug_from_name(text, text) from anon, a
 -- droit d'exercer.
 -- ─────────────────────────────────────────────────────────────
 
-do $$ begin
-  create type driver_document_kind as enum (
-    'licence',        -- permis de conduire
-    'vtc_card',       -- carte professionnelle VTC
-    'insurance',      -- attestation d'assurance
-    'registration',   -- carte grise
-    'identity',       -- pièce d'identité
-    'cnaps_card'      -- carte professionnelle CNAPS (chauffeur de sécurité)
-  );
-exception when duplicate_object then null; end $$;
-
--- L'enum driver_document_kind d'origine n'avait pas 'cnaps_card'
--- ⚠️ Sur une base existante, le `create type` ci-dessus est ignoré (le type
--- existe déjà) : la valeur doit être ajoutée séparément. Elle est employée par
--- `refresh_cnaps_verified()` plus bas, donc elle ne peut pas être ajoutée dans
--- la même transaction — compose-schema.ps1 l'isole dans 2-enums.sql.
+-- L'enum `driver_document_kind` est déclaré en tête de ce fichier, avec les
+-- autres types, et non ici : `compose-schema.ps1` place les créations d'enum
+-- dans 1-tables.sql et les `alter type ... add value` dans 2-enums.sql, si
+-- bien qu'un type déclaré dans ce bloc-ci (fichier 3) n'existerait pas encore
+-- au moment de l'étape 2. Voir le commentaire qui l'accompagne.
+--
+-- ⚠️ Sur une base où ce bloc a déjà tourné, le type existe sans 'cnaps_card' :
+-- la valeur doit donc être ajoutée séparément. Elle est employée par
+-- `refresh_cnaps_verified()` (bloc 8), donc pas dans la même transaction.
 
 alter table public.drivers
   add column if not exists licence_number  text,

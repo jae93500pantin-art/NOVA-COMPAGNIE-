@@ -40,6 +40,29 @@ do $$ begin
   create type booking_status as enum ('pending', 'confirmed', 'completed', 'cancelled');
 exception when duplicate_object then null; end $$;
 
+/**
+ * Pièces justificatives d'un chauffeur (employé par `driver_documents`,
+ * bloc 7).
+ *
+ * ⚠️ Déclaré **ici**, avec les autres enums, et non au bloc 7 où vit la table
+ * qui l'emploie. Raison d'ordonnancement, pas de rangement :
+ * `compose-schema.ps1` isole les `alter type ... add value` dans
+ * `2-enums.sql` (Postgres refuse d'employer une valeur d'enum dans la
+ * transaction qui l'ajoute). Déclaré au bloc 7, le type n'existait donc pas
+ * encore quand `2-enums.sql` tentait d'y ajouter 'cnaps_card' — sur une base
+ * vierge, l'étape 2 échouait avec « type does not exist ».
+ */
+do $$ begin
+  create type driver_document_kind as enum (
+    'licence',        -- permis de conduire
+    'vtc_card',       -- carte professionnelle VTC
+    'insurance',      -- attestation d'assurance
+    'registration',   -- carte grise
+    'identity',       -- pièce d'identité
+    'cnaps_card'      -- carte professionnelle CNAPS
+  );
+exception when duplicate_object then null; end $$;
+
 -- ── Profiles (1:1 avec auth.users) ───────────────────────────
 create table if not exists public.profiles (
   id          uuid primary key references auth.users (id) on delete cascade,
