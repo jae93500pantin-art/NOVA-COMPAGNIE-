@@ -175,8 +175,11 @@ lib/
   motion.ts                   Shared Apple-grade motion tokens (ease [0.22,1,0.36,1], springSoft/Snappy, reveal, popover, stagger).
   schedule.ts                 Weekly availability planning (pure): DaySchedule/WeeklySchedule (7 entries, Monday-first), DEFAULT_SCHEDULE (= no constraint, so an unconfigured driver behaves as before), PRESET_WEEKDAYS (Mon–Fri 07:00–19:00), isWithinSchedule/isDayOpen/dayScheduleFor, sanitizeSchedule (repairs bad times and an end before its start). Unit-tested.
   bookings.ts                 Booking domain types + pure helpers: canTransition, statusLabel, buildBooking, scheduling helpers (todayISODate, composeWhen, isFutureBooking, formatWhen) AND auto-close (bookingStartsAt, shouldAutoComplete, AUTO_COMPLETE_AFTER_MS). Unit-tested.
-  chat.ts                     Chat domain: ChatMessage, chatStateFor/chatStateForBooking (locked|open|archived), canSendMessage, participantRole, buildMessage, formatMessageTime. Pure, unit-tested.
+  chat.ts                     Chat domain: ChatMessage, chatStateFor/chatStateForBooking (locked|open|grace|archived), chatClosesAt/graceMinutesLeft (30 min après la clôture), canSendMessage, participantRole, buildMessage (c'est lui qui masque), messageStatus, formatMessageTime. Pure, unit-tested.
   chatBroker.ts               In-memory per-booking chat rooms + SSE pub/sub (postMessage, subscribeChat, closeChat, dropChat). Mirrors bookingBroker.
+  chatMasking.ts              Masquage des coordonnées (anti-désintermédiation) : maskContacts/hasContactDetails. Pur, rejoué par le trigger SQL mask_contact_details. ⚠️ Appliqué avant la DIFFUSION, pas seulement avant l'insertion.
+  chatQuickReplies.ts         Jeu fermé de réponses rapides par rôle (chat.quick.*) — sécurité routière, pas confort. Le serveur n'accorde aucune confiance au drapeau isQuickReply.
+  useBookingChat.ts           Hook navigateur de la messagerie (SSE, accusés, délai de grâce). ⚠️ Prend la réservation résolue, jamais un simple bookingId.
   transfer.ts                 Airport-transfer domain data (Paris airports, Île-de-France zone, vehicle classes) + pure estimateTransfer() pricing helper (flat fare per vehicle: Berline 100 € / Van 150 € / Première classe 200 €). `transferVehicleForCategories` / `transferFareForDriver` derive a driver's flat transfer fare from their declared categories — the server recomputes it, the client never sends a price. `transferDestinations` are **directional routes** (`{id, from, to}`, label = "from → to"): 3 Paris→airport, 3 airport→Paris, plus the legacy catch-all `paris` ("Aéroport → Paris · Île-de-France") kept so existing driver opt-ins stay valid. Drivers opt in with **one global switch** in `ProfileEditor` ("Accepter les transferts aéroport"), so a profile holds either every route or none — `acceptsAirportTransfers` / `transferDestinationsForOptIn` / `ALL_TRANSFER_DESTINATION_IDS` do the expansion. Kept as a `text[]` (no extra boolean column) so `transfer_destinations @> array['cdg']` and its GIN index still answer "who serves CDG?" with no migration. Reading is lenient (≥1 route = opted in) so legacy partial lists don't silently drop drivers; the next save normalises them.
   cities.ts, drivers.ts       Mock data + accessors (getDriver, driversByCity…)
   drivers.ts                  Includes `jeremy-driver` (Jérémy Dubois, Mercedes-AMG E63 S)
@@ -531,8 +534,10 @@ et ces contrôles se désactivent plutôt que de bloquer la démonstration.
   - `pending` / `confirmed` / `refused` → **locked** (a "chat opens once the ride
     is paid" notice; no stream is opened).
   - `paid` → **open** (both parties write).
-  - `completed` / `cancelled` → **archived** (history readable, sending refused
-    server-side with 409). Also reached automatically 24 h after the ride date.
+  - `completed` / `cancelled` → **grace** : le fil reste **inscriptible 30 min**
+    après la clôture (`CHAT_GRACE_AFTER_CLOSE_MS`), puis **archived** (historique
+    lisible, envoi refusé en 409). L'archivage est aussi atteint 24 h après la
+    date de la course.
 - **UI**: a "Discuter" toggle on the booking card expands `BookingChat` inline —
   in `ClientBookings` (`/compte/reservations`) and `DriverRequests`
   (`/compte/courses` + dashboard). Bubbles grouped per sender, timestamps via
@@ -559,7 +564,62 @@ et ces contrôles se désactivent plutôt que de bloquer la démonstration.
   réservation : en base un message porte le **compte** de son auteur, alors que
   l'interface raisonne sur les parties de la course, et `rowToMessage` fait la
   traduction. Éphémère sans clé de service, comme avant.
-- i18n under `chat.*`. Tested in `tests/chat.test.ts` (17).
+- **Délai de grâce de 30 min** (`chatStateForBooking`, `chatClosesAt`,
+  `graceMinutesLeft`) : l'essentiel de ce qui se dit entre un client et son
+  chauffeur se dit **juste après la descente du véhicule** — objet oublié,
+  facture, porte du hall. Couper le fil à la seconde où le chauffeur clôture
+  renvoyait ces échanges vers WhatsApp, donc hors de la plateforme.
+  ⚠️ L'échéance se calcule depuis `Booking.closedAt` (colonne
+  `bookings.closed_at`, bloc 9) : sans elle on sait qu'une course est close,
+  pas **depuis quand**. ⚠️ Une réservation close **avant** cette règle n'a pas
+  de `closedAt` et retombe sur l'archivage immédiat d'origine — un
+  `coalesce(closed_at, now())` rouvrirait des fils que leurs participants
+  croient clos depuis des semaines.
+- **Masquage des coordonnées** (`lib/chatMasking.ts`, pur, 15 tests) —
+  anti-désintermédiation. Téléphones et e-mails (y compris `nom (at) domaine.fr`)
+  sont remplacés par `***`.
+  - ⚠️ **Le masquage a lieu avant la DIFFUSION, pas seulement avant
+    l'insertion.** Posé uniquement en trigger `BEFORE INSERT`, la copie en base
+    serait propre alors que le destinataire a **déjà reçu le numéro en clair**
+    par le flux SSE : la règle ne protégerait plus rien, elle en donnerait
+    seulement l'apparence. D'où l'appel dans `buildMessage()`, passage obligé du
+    broker comme de la base. Le trigger SQL `mask_contact_details` (bloc 9) est
+    le **filet** pour ce qui entrerait par une autre porte ; la version
+    TypeScript fait foi pour ce qui est affiché, les deux doivent rester
+    d'accord.
+  - ⚠️ **Le `/` est exclu des séparateurs** : avec lui, « le 12/09/2026 14h »
+    compte dix chiffres et se ferait masquer. Les parenthèses sont admises, avec
+    **jusqu'à deux séparateurs d'affilée**, pour « +33 (0)6 12 34 56 78 » — avec
+    un seul on affichait « +33 (*** », c'est-à-dire aucun masquage.
+  - ⚠️ **Aucun lookbehind** (`(?<!…)`) : Safari ne l'admet qu'à partir de 16.4 et
+    le refuse **à l'analyse**, ce qui casserait le bundle entier sur un iPhone un
+    peu ancien. La borne gauche passe par un groupe capturé réinjecté.
+  - Parti pris : **ne jamais masquer un faux positif** (prix, date, heure, numéro
+    de vol, adresse), quitte à laisser passer les chiffres en toutes lettres et
+    les pseudos. Un message mutilé pendant une course est un incident immédiat ;
+    un numéro qui fuit est un risque commercial différé.
+- **Réponses rapides** (`lib/chatQuickReplies.ts`, 5 tests) : jeu **fermé** de 4
+  libellés chauffeur / 3 client (`chat.quick.*`), envoyés dans la langue de
+  l'expéditeur. C'est une mesure de **sécurité routière** avant un confort — un
+  chauffeur qui tape au volant lit son écran plusieurs secondes.
+  ⚠️ Le serveur ne fait pas confiance au drapeau `isQuickReply` du navigateur
+  pour composer le texte : le texte reste celui reçu, le drapeau n'est qu'une
+  statistique d'usage. Sinon n'importe quel contenu passerait pour un libellé de
+  la plateforme.
+- **Accusés de réception** : `delivered_at` / `read_at` sur `messages`,
+  `messageStatus()` → `sent` / `delivered` / `read` (une coche, deux, deux
+  colorées). Poussés hors bande par un événement SSE `receipts`, donc sans
+  réécrire l'historique ; `markRead` est appelé par le `GET` du participant
+  d'en face et persisté.
+- **`lib/useBookingChat.ts`** porte toute la logique navigateur. ⚠️ Il prend la
+  **réservation résolue**, pas un `bookingId` : le cycle de vie du fil se déduit
+  de la course, et la relire ici donnerait deux sources de vérité qui divergent
+  le temps d'un aller-retour réseau (bandeau « course terminée » avec un champ
+  de saisie encore actif). La réservation arrive du flux SSE que
+  `ClientBookings` et `DriverRequests` tiennent déjà ouvert.
+- i18n under `chat.*`. Tested in `tests/chat.test.ts` (17),
+  `tests/chatGrace.test.ts` (15), `tests/chatMasking.test.ts` (15),
+  `tests/chatQuickReplies.test.ts` (5).
 
 ## Certified reviews (avis certifiés)
 
