@@ -19,6 +19,7 @@ import {
   Hourglass,
   CreditCard,
   Star,
+  AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { getDriver } from "@/lib/drivers";
@@ -42,7 +43,20 @@ import { ReviewForm } from "./ReviewForm";
  * Subscribes to every driver room the client has booked, filtering to their
  * own bookings via the stable client id.
  */
-export function ClientBookings() {
+export function ClientBookings({
+  settlementAllowed,
+}: {
+  /**
+   * Le serveur accepte-t-il de passer une course en « payée » ?
+   *
+   * Lu côté serveur par la page (`isSettlementAllowed`) et descendu en prop :
+   * la clé Stripe ne quitte pas le serveur, et le navigateur n'a donc aucun
+   * moyen de le deviner seul. ⚠️ Prop **obligatoire** : un défaut permissif
+   * ferait réapparaître le bouton au premier appelant qui l'oublie, et un
+   * oubli ne produirait aucune erreur — seulement une course réglée pour rien.
+   */
+  settlementAllowed: boolean;
+}) {
   const { user, loading } = useAuth();
   const { t, lang } = useI18n();
   const router = useRouter();
@@ -193,15 +207,27 @@ export function ClientBookings() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge status={b.status} />
-                      {b.status === "confirmed" && (
-                        <button
-                          onClick={() => setPayBooking(b)}
-                          className="btn-primary text-xs"
-                        >
-                          <CreditCard className="h-4 w-4" />
-                          Payer {formatPrice(b.total)}
-                        </button>
-                      )}
+                      {b.status === "confirmed" &&
+                        (settlementAllowed ? (
+                          <button
+                            onClick={() => setPayBooking(b)}
+                            className="btn-primary text-xs"
+                          >
+                            <CreditCard className="h-4 w-4" />
+                            Payer {formatPrice(b.total)}
+                          </button>
+                        ) : (
+                          /* Signalé, pas masqué : une course qui attend son
+                             règlement doit rester lisible comme telle, sinon
+                             le client conclut que son paiement est passé. */
+                          <span
+                            title={t("pay.blockedHint")}
+                            className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-200"
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            {t("pay.blocked")}
+                          </span>
+                        ))}
                       {chatState !== "locked" && (
                         <button
                           onClick={() => setOpenChatId(chatOpen ? null : b.id)}

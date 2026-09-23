@@ -11,6 +11,7 @@ import {
   Wifi,
   WifiOff,
   MessagesSquare,
+  AlertTriangle,
 } from "lucide-react";
 import type { Booking, BookingStatus } from "@/lib/bookings";
 import { statusLabel, formatWhen, bookingQuantityLabel } from "@/lib/bookings";
@@ -30,9 +31,19 @@ import { BookingChat } from "./BookingChat";
  */
 export function DriverRequests({
   driverId,
+  settlementAllowed,
   onBookingsChange,
 }: {
   driverId: string;
+  /**
+   * La plateforme est-elle en état d'encaisser ? Lu côté serveur et descendu
+   * en prop (voir `isSettlementAllowed`). Accepter une course la passe
+   * directement en « payée » : sans dispositif d'encaissement, le chauffeur
+   * se verrait annoncer un paiement qui n'a pas eu lieu et roulerait pour
+   * rien. Le serveur refuse la transition de toute façon ; ce drapeau évite
+   * de le découvrir après le clic.
+   */
+  settlementAllowed: boolean;
   /** Lets a parent derive state (e.g. "En course") off this same stream. */
   onBookingsChange?: (bookings: Booking[]) => void;
 }) {
@@ -164,13 +175,29 @@ export function DriverRequests({
                         >
                           <XCircle className="h-4 w-4" /> Refuser
                         </button>
+                        {!settlementAllowed && (
+                          <span
+                            className="flex items-center gap-1.5 text-xs font-medium text-amber-200"
+                            role="status"
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                            {t("pay.blocked")}
+                          </span>
+                        )}
                         {/* Accepter ENCAISSE : les fonds du client sont déjà
                             autorisés depuis sa demande, l'acceptation
                             déclenche la capture côté serveur. D'où `paid`
-                            directement, sans étape « à payer » intermédiaire. */}
+                            directement, sans étape « à payer » intermédiaire.
+                            C'est aussi pourquoi le bouton se désactive sans
+                            dispositif d'encaissement : il n'y aurait rien à
+                            capturer, et la course serait dite payée. */}
                         <button
                           onClick={() => act(b.id, "paid")}
-                          className="btn-primary text-xs"
+                          disabled={!settlementAllowed}
+                          title={
+                            settlementAllowed ? undefined : t("pay.blockedDriver")
+                          }
+                          className="btn-primary text-xs disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <CheckCircle2 className="h-4 w-4" /> Accepter
                         </button>

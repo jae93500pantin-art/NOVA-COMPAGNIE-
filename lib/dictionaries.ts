@@ -352,6 +352,11 @@ const fr = {
     successText: "Votre réservation est réglée. Bon voyage !",
     cashDoneTitle: "Réservation confirmée",
     cashDoneText: "Vous réglerez en espèces directement au chauffeur.",
+    blocked: "Paiement indisponible",
+    blockedHint:
+      "Aucun dispositif d'encaissement n'est configuré sur la plateforme. Une course ne peut pas être réglée pour l'instant — nos équipes sont prévenues.",
+    blockedDriver:
+      "Acceptation indisponible : aucun dispositif d'encaissement n'est configuré. Accepter marquerait la course payée sans qu'elle le soit.",
   },
   chat: {
     open: "Discuter",
@@ -906,6 +911,11 @@ const en: Dict = {
     successText: "Your booking is paid. Have a great ride!",
     cashDoneTitle: "Booking confirmed",
     cashDoneText: "You'll pay the driver directly in cash.",
+    blocked: "Payment unavailable",
+    blockedHint:
+      "No payment processor is configured on the platform. A ride cannot be settled right now — our team has been notified.",
+    blockedDriver:
+      "Accepting is unavailable: no payment processor is configured. Accepting would mark the ride paid when it is not.",
   },
   chat: {
     open: "Chat",

@@ -8,7 +8,12 @@ import { useAuth } from "@/lib/auth";
 import { getDriver } from "@/lib/drivers";
 import { DriverRequests } from "@/components/DriverRequests";
 
-export function DriverCourses() {
+export function DriverCourses({
+  settlementAllowed,
+}: {
+  /** Passe-plat vers `DriverRequests` — la valeur vient de la page serveur. */
+  settlementAllowed: boolean;
+}) {
   const { user, loading } = useAuth();
   const router = useRouter();
 
@@ -48,7 +53,10 @@ export function DriverCourses() {
 
       <div className="mt-8">
         {driver ? (
-          <DriverRequests driverId={driver.id} />
+          <DriverRequests
+            driverId={driver.id}
+            settlementAllowed={settlementAllowed}
+          />
         ) : (
           <div className="rounded-2xl glass p-8 text-center">
             <p className="text-sm text-white/70">

@@ -6,6 +6,8 @@
  * always runs without any external service.
  */
 
+import { isSettlementAllowed } from "./payments";
+
 export const env = {
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
@@ -56,3 +58,22 @@ export const isStripeLiveMode =
  * works end-to-end in demo mode.
  */
 export const isEmailConfigured = serverEnv.resendApiKey.startsWith("re_");
+
+/**
+ * Une course peut-elle être réglée sur cette instance ?
+ *
+ * Applique `isSettlementAllowed` aux drapeaux réels, en **un seul endroit** :
+ * trois pages ont besoin de la réponse pour désactiver leurs boutons, et trois
+ * recopies de la même condition finiraient par ne plus dire la même chose —
+ * celle qui se tromperait n'afficherait aucune erreur, elle rouvrirait
+ * simplement le règlement gratuit.
+ *
+ * ⚠️ À lire **côté serveur uniquement** : `isStripeConfigured` dépend d'une
+ * variable sans `NEXT_PUBLIC`, donc un composant client la verrait toujours
+ * fausse et bloquerait le paiement sans raison. Les pages la descendent en
+ * prop.
+ */
+export const isSettlementOperative = isSettlementAllowed({
+  stripeConfigured: isStripeConfigured,
+  realAccounts: isSupabaseConfigured,
+});

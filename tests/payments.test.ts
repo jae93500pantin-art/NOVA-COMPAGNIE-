@@ -3,6 +3,7 @@ import {
   computeAmount,
   computeBookingAmount,
   clampHours,
+  isSettlementAllowed,
   MIN_HOURS,
   MAX_HOURS,
 } from "@/lib/payments";
@@ -130,5 +131,34 @@ describe("payments — forfait transfert aéroport", () => {
     expect(day.subtotal).toBe(1800);
     expect(day.total).toBe(1890);
     expect(day.driverNet).toBe(1530);
+  });
+});
+
+describe("payments — isSettlementAllowed", () => {
+  it("autorise le reglement quand Stripe est configure", () => {
+    expect(
+      isSettlementAllowed({ stripeConfigured: true, realAccounts: true })
+    ).toBe(true);
+  });
+
+  it("laisse la demo sans cles regler une course", () => {
+    // C'est ce que la demo demontre : la couper reviendrait a casser le
+    // parcours qu'un visiteur sans compte vient voir.
+    expect(
+      isSettlementAllowed({ stripeConfigured: false, realAccounts: false })
+    ).toBe(true);
+  });
+
+  it("REFUSE des comptes reels sans dispositif de paiement", () => {
+    // Le seul cas dangereux : deux vraies personnes, et un reglement fictif.
+    expect(
+      isSettlementAllowed({ stripeConfigured: false, realAccounts: true })
+    ).toBe(false);
+  });
+
+  it("autorise Stripe seul, sans comptes reels (test local)", () => {
+    expect(
+      isSettlementAllowed({ stripeConfigured: true, realAccounts: false })
+    ).toBe(true);
   });
 });

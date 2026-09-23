@@ -135,3 +135,36 @@ export function computeAmount(
   }
   return computeBookingAmount(pricePerHour, quantity);
 }
+
+/**
+ * Une course peut-elle passer à « payée » ?
+ *
+ * ## Le trou que cette règle ferme
+ *
+ * Sans clé Stripe, `captureBookingPayment` n'a rien à capturer et répond
+ * `true` — délibérément, pour que l'absence de dispositif de paiement ne
+ * bloque pas la démonstration. Conséquence en production : accepter une course
+ * (`pending → paid`) ou cliquer « Payer » (espèces, crypto, carte sans clé) la
+ * marquait **payée sans qu'un centime ne circule**, et le chauffeur recevait
+ * l'e-mail « paiement reçu ». Une course gratuite à la demande.
+ *
+ * ## Pourquoi le critère est « comptes réels », pas « mode démo »
+ *
+ * La démo sans clés a besoin du paiement simulé : c'est ce qu'elle démontre.
+ * Le discriminant n'est donc pas l'absence de Stripe seule, mais **Stripe
+ * absent alors que les comptes sont réels** — à ce moment-là les deux parties
+ * sont de vraies personnes, et un règlement fictif est un préjudice, pas une
+ * illustration.
+ *
+ * ⚠️ Cette fonction est le **dernier mot du serveur**, pas un état d'interface.
+ * Les boutons désactivés qu'elle pilote ne sont qu'une politesse : la route
+ * refuse la transition de toute façon (503), sinon un `fetch` suffirait.
+ */
+export function isSettlementAllowed(opts: {
+  /** Une clé `sk_…` est présente. */
+  stripeConfigured: boolean;
+  /** Les comptes sont de vrais comptes (Supabase configuré). */
+  realAccounts: boolean;
+}): boolean {
+  return opts.stripeConfigured || !opts.realAccounts;
+}

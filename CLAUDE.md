@@ -726,6 +726,52 @@ verrouillent explicitement des deux côtés (TS et SQL).
   (cash = settled directly with the driver). i18n under `pay.*`.
 - To enable: put `STRIPE_SECRET_KEY=sk_test_…` in `.env.local`, restart.
 
+### ⚠️ Pas de règlement sans dispositif d'encaissement
+
+`captureBookingPayment` répond **`true` quand il n'y a rien à capturer** — c'est
+voulu, pour que l'absence de Stripe ne bloque pas la démo. Conséquence sur des
+comptes réels : une course passait `paid` **sans qu'un centime ne circule**,
+aussi bien à l'acceptation du chauffeur (`pending → paid`) qu'au clic « Payer »
+du client (espèces, crypto, ou carte sans clé), et l'e-mail « paiement reçu »
+partait. Une course gratuite à la demande.
+
+`isSettlementAllowed` (`lib/payments.ts`, pur, testé) tranche :
+
+| Stripe | Comptes réels | Règlement |
+|---|---|---|
+| clé `sk_…` | oui | **autorisé** |
+| aucune | non (démo) | **autorisé** — c'est ce que la démo démontre |
+| aucune | **oui** | **refusé** |
+
+⚠️ Le critère est « Stripe absent **alors que** les comptes sont réels », pas
+« mode démo » : la démo sans clés a besoin du paiement simulé, et deux vraies
+personnes ont besoin du contraire.
+
+- **Le dernier mot est au serveur** : `PATCH /api/bookings/[driverId]` refuse
+  toute transition vers `paid` en **503** (rien n'est reproché à l'appelant,
+  c'est la plateforme qui n'est pas en état d'encaisser). Le contrôle est placé
+  **après** l'autorisation, pour ne pas révéler l'existence d'une réservation à
+  un tiers.
+- **`isSettlementOperative` (`lib/config.ts`) applique la règle en un seul
+  endroit**, et les trois pages serveur de `/compte` la descendent en prop
+  (`settlementAllowed`) vers `ClientBookings`, `DriverCourses` et
+  `AccountDashboard`. ⚠️ Prop **obligatoire**, jamais un défaut permissif : un
+  appelant qui l'oublie ne produirait pas d'erreur, il rouvrirait le règlement
+  gratuit. ⚠️ Et jamais lue dans un composant client : `isStripeConfigured`
+  dépend d'une variable sans `NEXT_PUBLIC`, donc le navigateur la verrait
+  toujours fausse et bloquerait le paiement sans raison.
+- Côté interface, « Accepter » se désactive avec sa raison et « Payer » cède la
+  place à un signalement ambre — **signalé, pas masqué** : une course qui
+  attend son règlement doit rester lisible comme telle.
+- ⚠️ **Ce que ça ne corrige pas** : le parcours câblé ne prend **aucun**
+  paiement avant `paid`. `BookingWidget` poste sur `/api/bookings/[driverId]`,
+  qui crée une course `pending` **sans intention de paiement** ; l'autorisation
+  à la demande n'existe que dans la Server Action `createBooking`, qui n'est
+  branchée sur aucun bouton. Le bouton « Payer » de `ClientBookings`, lui, ne
+  s'affiche que pour un statut `confirmed` — que plus rien ne produit. Poser
+  une clé Stripe rend donc le règlement *permis*, pas *effectif* : il reste à
+  brancher l'un des deux chemins sur l'interface.
+
 ## Airport transfer & Contact
 
 - **Airport transfer / private chauffeur** (`/transfert-aeroport`): marketing +

@@ -16,7 +16,12 @@ import {
 import { isValidRoom, sanitizeText, rateLimit } from "@/lib/validation";
 import { getDirectoryDriver } from "@/lib/driverDirectory";
 import type { Driver } from "@/lib/types";
-import { computeAmount, type BookingUnit } from "@/lib/payments";
+import {
+  computeAmount,
+  isSettlementAllowed,
+  type BookingUnit,
+} from "@/lib/payments";
+import { isStripeConfigured, isSupabaseConfigured } from "@/lib/config";
 import {
   driverServesTransferDestination,
   getTransferDestination,
@@ -296,6 +301,35 @@ export async function PATCH(
       // distinguer les deux révélerait l'existence de la réservation.
       return Response.json({ error: "Action non autorisée" }, { status: 403 });
     }
+  }
+
+  /**
+   * Pas de règlement sans dispositif de paiement.
+   *
+   * ⚠️ `captureBookingPayment` répond `true` quand il n'y a rien à capturer —
+   * volontairement, pour ne pas bloquer la démo. Sans ce garde-fou, une course
+   * passait donc `paid` **sans qu'un centime ne circule**, aussi bien à
+   * l'acceptation du chauffeur qu'au clic « Payer » du client, et l'e-mail
+   * « paiement reçu » partait. Sur des comptes réels c'est une course gratuite
+   * à la demande ; en démo sans clés, c'est précisément ce qu'on démontre.
+   *
+   * 503 et non 403 : rien n'est reproché à l'appelant, c'est la plateforme qui
+   * n'est pas en état de recevoir un paiement.
+   */
+  if (
+    status === "paid" &&
+    !isSettlementAllowed({
+      stripeConfigured: isStripeConfigured,
+      realAccounts: isSupabaseConfigured,
+    })
+  ) {
+    return Response.json(
+      {
+        error:
+          "Le paiement est indisponible : aucun dispositif d'encaissement n'est configuré. La course reste en attente.",
+      },
+      { status: 503 }
+    );
   }
 
   /**

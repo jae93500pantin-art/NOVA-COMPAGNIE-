@@ -31,7 +31,12 @@ import { DriverRequests } from "./DriverRequests";
 import { driverPresence, type Booking } from "@/lib/bookings";
 import { initials } from "@/lib/utils";
 
-export function AccountDashboard() {
+export function AccountDashboard({
+  settlementAllowed,
+}: {
+  /** Passe-plat vers `DriverRequests` — la valeur vient de la page serveur. */
+  settlementAllowed: boolean;
+}) {
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
 
@@ -90,7 +95,10 @@ export function AccountDashboard() {
 
       <div className="mt-8">
         {user.role === "driver" ? (
-          <DriverDashboard driverId={user.driverId} />
+          <DriverDashboard
+            driverId={user.driverId}
+            settlementAllowed={settlementAllowed}
+          />
         ) : (
           <ClientDashboard firstName={user.firstName} />
         )}
@@ -222,7 +230,13 @@ function ClientDashboard({ firstName }: { firstName: string }) {
 
 /* ───────────────────────── DRIVER ───────────────────────── */
 
-function DriverDashboard({ driverId }: { driverId: string | null }) {
+function DriverDashboard({
+  driverId,
+  settlementAllowed,
+}: {
+  driverId: string | null;
+  settlementAllowed: boolean;
+}) {
   const driver = driverId ? getDriver(driverId) : undefined;
   const [available, setAvailable] = useState(driver?.available ?? true);
   // Fed by the same SSE stream DriverRequests already opens — no second
@@ -364,7 +378,11 @@ function DriverDashboard({ driverId }: { driverId: string | null }) {
 
       {/* Requests */}
       <Section title="Demandes de course" icon={TrendingUp} href="/compte/courses">
-        <DriverRequests driverId={driver.id} onBookingsChange={setBookings} />
+        <DriverRequests
+          driverId={driver.id}
+          settlementAllowed={settlementAllowed}
+          onBookingsChange={setBookings}
+        />
       </Section>
 
       {/* Recent reviews */}

@@ -1,5 +1,6 @@
 import { ClientBookings } from "@/components/ClientBookings";
 import { requireUser } from "@/lib/session";
+import { isSettlementOperative } from "@/lib/config";
 
 export const metadata = { title: "Mes réservations — Nova Compagnie" };
 
@@ -8,7 +9,7 @@ export default async function ReservationsPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-5 pb-16 pt-28 lg:px-8 lg:pt-32">
-      <ClientBookings />
+      <ClientBookings settlementAllowed={isSettlementOperative} />
     </div>
   );
 }
