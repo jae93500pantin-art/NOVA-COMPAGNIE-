@@ -108,6 +108,7 @@ app/
     drivers/page.tsx          Listing + filters (Suspense → DriversExplorer)
     drivers/[id]/page.tsx     Driver profile (SSG via generateStaticParams): gallery, facts, reviews, booking
     transfert-aeroport/page.tsx  Airport-transfer / private-chauffeur landing: hero + trust badges, features, instant price estimate, pickup-zones map
+    vol-prive/page.tsx      Vol privé : page « bientôt disponible » + liste d'attente (clé i18n `jet.*`), liée depuis la Navbar. ⚠️ L'inscription est SIMULÉE — aucun backend ne recueille l'adresse, elle est perdue à la soumission.
     contact/page.tsx          Contact page (SectionHeader + ContactForm): info panel + professional contact form
     compte/page.tsx           Personal dashboard (AccountDashboard) — client & driver views; redirects to login if no session
     legal/layout.tsx          Legal shell with sidebar nav
@@ -130,7 +131,7 @@ app/
     booking/[id]/pdf/route.ts     GET → bon de réservation préalable en PDF. Parties seules, courses payées, refuse (409) si une mention obligatoire manque.
 
 components/                   All client components unless noted
-  Navbar                      Front bar = logo (Nova Compagnie) + "Réservation" (→ /drivers) + "Transfert Aéroport" + "Contact" links + CitySwitcher + LanguageSwitcher + account dropdown/login. Account dropdown has a **WhatsApp contact** link (messaging feature removed).
+  Navbar                      Front bar = logo (Nova Compagnie) + "Réservation" (→ /drivers) + "Transfert Aéroport" + "Vol privé" + "Contact" links + CitySwitcher + LanguageSwitcher + account dropdown/login. Account dropdown has a **WhatsApp contact** link (messaging feature removed).
   CitySwitcher                City dropdown (front bar, next to LanguageSwitcher) — cities from lib/cities.ts (Paris only for now); selecting routes to /drivers?city=<id>, persisted in localStorage `nova_city`.
   LanguageSwitcher            FR/EN dropdown (globe icon). Persists choice; default = browser language.
   Footer, SectionHeader, Reveal (anim wrapper)
