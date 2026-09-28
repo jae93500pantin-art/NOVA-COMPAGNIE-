@@ -137,8 +137,8 @@ components/                   All client components unless noted
   LanguageSwitcher            FR/EN dropdown (globe icon). Persists choice; default = browser language.
   Footer, SectionHeader, Reveal (anim wrapper)
   Hero                        Uber-inspired homepage hero: tagline ("Trouvez votre chauffeur" / "Find your driver") + Uber-style booking card on the left, Globe focal point on the right. Left scrim keeps text legible. Below: 3 FICTIONAL client testimonials (about the SITE/reliability, not drivers). No big title/subtitle, no stats row.
-  SearchBar                   Carte de recherche de l'accueil : Ville + Date et heure (`DatePicker`) + CTA → /drivers?city=&date=&time=. ⚠️ Le créneau est un CRITÈRE DE RECHERCHE, pas une réservation : il filtre sur le planning déclaré, il ne bloque rien. Il voyage par l'URL (filtre partageable), plus par `sessionStorage`. Le bouton reste « Voir les chauffeurs » — ne pas le retitrer « Réserver ».
-  DatePicker                  Sélecteur date + heure premium (popover glass par portail) : chips rapides (aujourd'hui / demain / ce week-end), calendrier lundi-first, chips d'heures, navigation clavier, bascule vers le haut quand l'écran manque, `prefers-reduced-motion`, i18n. Logique pure dans lib/calendar.ts. ⚠️ Ne rend jamais un créneau passé (`rollPastTimeToNextDay` reporte au lendemain, une heure passée sur une autre date est effacée) — les deux cas sont expliqués par une note. ⚠️ Son `mode="range"` n'a plus d'appelant depuis que la recherche porte sur un seul créneau.
+  SearchBar                   Carte de recherche de l'accueil : Ville + Date et heure, sur un jour ou **plusieurs** (`DatePicker` en `mode="range"`) + CTA → /drivers?city=&date=&dateEnd=&time=. ⚠️ Le créneau est un CRITÈRE DE RECHERCHE, pas une réservation : il filtre sur le planning déclaré, il ne bloque rien. Il voyage par l'URL (filtre partageable), plus par `sessionStorage`. Le bouton reste « Voir les chauffeurs » — ne pas le retitrer « Réserver ».
+  DatePicker                  Sélecteur date + heure premium (popover glass par portail) : chips rapides (aujourd'hui / demain / ce week-end), calendrier lundi-first, chips d'heures, navigation clavier, bascule vers le haut quand l'écran manque, `prefers-reduced-motion`, i18n. Logique pure dans lib/calendar.ts. ⚠️ Ne rend jamais un créneau passé (`rollPastTimeToNextDay` reporte au lendemain, une heure passée sur une autre date est effacée) — les deux cas sont expliqués par une note. ⚠️ Le `mode="range"` est celui utilisé par `SearchBar` : un clic ouvre la plage, le second la ferme, un troisième repart — un seul clic suffit donc toujours pour un jour unique. Sur une plage, l'heure s'affiche à la FIN et une seule fois (elle vaut pour chaque jour, pas comme un départ suivi d'un retour).
   Globe                       Animated WebGL globe (cobe) — Google-Earth "blue marble" hero backdrop, slow auto-rotation. NOTE: pin cobe to 0.6.3; v2 has a WebGL regression that renders only markers (no sphere).
   InteractiveMap              Stylised fallback map (no token needed)
   MapboxMap                   Real Mapbox map (token required)
@@ -162,7 +162,7 @@ lib/
   dictionaries.ts             FR + EN translation dictionaries (typed; EN must match FR shape).
   calendar.ts                 Aides de calendrier pures (monthGrid, shiftMonth, isBefore, addDays, nextWeekendISO) **et de créneau** (todayISODate, composeSlot, isFutureSlot, rollPastTimeToNextDay, formatSlot). ⚠️ Ces cinq dernières viennent de `lib/bookings.ts` : renommées depuis `isFutureBooking` / `formatWhen`, parce qu'elles décrivent un créneau RECHERCHÉ, pas réservé. Testées (35).
   motion.ts                   Shared Apple-grade motion tokens (ease [0.22,1,0.36,1], springSoft/Snappy, reveal, popover, stagger).
-  schedule.ts                 Weekly availability planning (pure): DaySchedule/WeeklySchedule (7 entries, Monday-first), DEFAULT_SCHEDULE (= no constraint, so an unconfigured driver behaves as before), PRESET_WEEKDAYS (Mon–Fri 07:00–19:00), isWithinSchedule/isDayOpen/dayScheduleFor, sanitizeSchedule (repairs bad times and an end before its start). Unit-tested.
+  schedule.ts                 Planning hebdomadaire (pur) : DaySchedule/WeeklySchedule (7 entrées, lundi-first), DEFAULT_SCHEDULE (= aucune contrainte, donc un chauffeur sans planning reste visible partout), PRESET_WEEKDAYS (lun–ven 07:00–19:00), isWithinSchedule / isDayOpen / dayScheduleFor, sanitizeSchedule (répare une heure invalide et une fin avant son début), et **isWithinScheduleRange** pour une recherche sur plusieurs jours — TOUS les jours doivent être ouverts, borné par MAX_SLOT_RANGE_DAYS. Testé (22).
   transfer.ts                 Aéroports parisiens, zones desservies, classes de véhicule, et `transferDestinations` = trajets DIRECTIONNELS (`{id, from, to}`) : 3 Paris→aéroport, 3 aéroport→Paris, plus le fourre-tout historique `paris`. Les chauffeurs adhèrent par UN interrupteur global (`ProfileEditor`), donc une fiche porte tous les trajets ou aucun — `acceptsAirportTransfers` / `transferDestinationsForOptIn` / `ALL_TRANSFER_DESTINATION_IDS` font la conversion. Stocké en `text[]` pour que `transfer_destinations @> array['cdg']` et son index GIN répondent sans migration. ⚠️ AUCUN PRIX : plus de forfait par classe, plus de `estimateTransfer`, plus de `transferFareForDriver`, plus de `baseFare`. `transferVehicleForCategories` ne sert plus qu'à CLASSER un chauffeur.
   cities.ts                   Villes (Paris seule pour l'instant) + accesseurs.
   drivers.ts                  ⚠️ VIDE, et doit le rester (§ Mock data). La vraie source est `public.drivers`, lue par `driverDirectory.ts`.
@@ -401,10 +401,18 @@ Pour le réactiver un jour : recréer un bouton appelant
   d'un chauffeur qui n'a rien renseigné : l'afficher comme une disponibilité
   déclarée serait une information inventée, d'où le test `hasRealSchedule`.
 - **Le planning est ce que filtre la recherche.** `DriversExplorer` lit
-  `?date=&time=` (posés par la carte d'accueil) et écarte, via
-  `isWithinSchedule(scheduleOf(d), date, time)`, les chauffeurs qui ne
-  travaillent pas à ce moment-là. C'est le seul usage « actif » du planning
-  depuis le retrait de la réservation — et il n'engage rien.
+  `?date=&dateEnd=&time=` (posés par la carte d'accueil) et écarte, via
+  `isWithinScheduleRange(scheduleOf(d), date, dateEnd, time)`, les chauffeurs
+  qui ne travaillent pas à ce moment-là. C'est le seul usage « actif » du
+  planning depuis le retrait de la réservation — et il n'engage rien.
+- **Plusieurs jours** : `isWithinScheduleRange` exige que le chauffeur travaille
+  **tous** les jours de la plage, et que l'heure tienne dans le créneau de
+  chacun. ⚠️ La conjonction est volontaire : « un chauffeur du vendredi au
+  lundi » veut dire les quatre jours, et un « au moins un jour » ferait
+  découvrir le trou au moment de l'appel. L'heure s'applique donc à chaque jour,
+  ce n'est pas un départ suivi d'un retour.
+  ⚠️ `MAX_SLOT_RANGE_DAYS = 31` borne le parcours : sans lui,
+  `?dateEnd=2090-01-01` ferait itérer 23 000 jours dans le navigateur.
   ⚠️ **`scheduleOf` retombe sur `DEFAULT_SCHEDULE` (aucune contrainte)** pour un
   chauffeur qui n'a rien déclaré : il reste donc visible sur tous les créneaux.
   C'est voulu — l'absence de planning n'est pas une indisponibilité, et exclure

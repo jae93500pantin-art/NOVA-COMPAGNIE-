@@ -10,7 +10,7 @@
  * Days are Monday-first (0 = Mon … 6 = Sun) to match lib/calendar.ts.
  */
 
-import { parseISO } from "./calendar";
+import { addDays, parseISO } from "./calendar";
 
 export interface DaySchedule {
   /** The driver works that day at all. */
@@ -125,4 +125,46 @@ export function sanitizeSchedule(raw: unknown): WeeklySchedule {
 
 export function cloneSchedule(schedule: WeeklySchedule): WeeklySchedule {
   return schedule.map((d) => ({ ...d }));
+}
+
+/**
+ * Plafond d'itération d'une recherche sur plusieurs jours.
+ *
+ * ⚠️ Il ne limite pas ce que le visiteur peut choisir dans le calendrier : il
+ * empêche une URL bricolée (`?date=2026-01-01&dateEnd=2090-01-01`) de faire
+ * tourner le navigateur sur 23 000 jours. Au-delà d'un mois, une recherche
+ * « suis-je couvert tous les jours ? » ne veut plus dire grand-chose.
+ */
+export const MAX_SLOT_RANGE_DAYS = 31;
+
+/**
+ * Le chauffeur travaille-t-il **tous les jours** de la plage demandée ?
+ *
+ * ⚠️ La conjonction est volontaire. « J'ai besoin d'un chauffeur du vendredi au
+ * lundi » veut dire les quatre jours : quelqu'un qui ne travaille pas le
+ * dimanche ne répond pas au besoin, et l'afficher quand même ferait découvrir
+ * le trou au moment de l'appel. Un « au moins un jour » serait plus permissif
+ * et plus trompeur.
+ *
+ * `endISO` vide ou antérieur au début ⇒ un seul jour, comme `isWithinSchedule`.
+ * L'heure, si elle est donnée, doit tenir dans le créneau de **chaque** jour.
+ */
+export function isWithinScheduleRange(
+  schedule: WeeklySchedule,
+  startISO: string,
+  endISO: string,
+  time: string
+): boolean {
+  if (!isWithinSchedule(schedule, startISO, time)) return false;
+  if (!endISO || endISO <= startISO) return true;
+
+  let cursor = startISO;
+  for (let i = 0; i < MAX_SLOT_RANGE_DAYS; i++) {
+    cursor = addDays(cursor, 1);
+    if (cursor > endISO) return true;
+    if (!isWithinSchedule(schedule, cursor, time)) return false;
+  }
+  // Plage plus longue que le plafond : on a vérifié le mois demandé, on s'en
+  // tient là plutôt que de boucler.
+  return true;
 }

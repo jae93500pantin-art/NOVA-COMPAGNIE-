@@ -34,6 +34,7 @@ export function SearchBar() {
   const today = todayISODate();
   const [city, setCity] = useState("paris");
   const [date, setDate] = useState("");
+  const [dateEnd, setDateEnd] = useState("");
   const [time, setTime] = useState("");
 
   const submit = (e: React.FormEvent) => {
@@ -43,6 +44,10 @@ export function SearchBar() {
     // Rien de choisi = aucun filtre. Un paramètre vide dans l'URL se lirait
     // comme « le 1ᵉʳ janvier de l'an zéro » côté annuaire.
     if (date) params.set("date", date);
+    // Plusieurs jours : on ne pose la fin que si elle ajoute quelque chose.
+    // `dateEnd` egal au debut serait un parametre pour rien, et l'annuaire
+    // doit pouvoir distinguer « un jour » de « une plage d'un jour ».
+    if (date && dateEnd && dateEnd > date) params.set("dateEnd", dateEnd);
     if (date && time) params.set("time", time);
     router.push(`/drivers?${params.toString()}`);
   };
@@ -70,12 +75,22 @@ export function SearchBar() {
       </Field>
 
       <Field icon={<Calendar className="h-4 w-4 text-royal-400" />} label={t("search.date")}>
+        {/* `mode="range"` : un premier clic ouvre la plage, le second la ferme,
+            un troisieme repart de zero. Un seul clic suffit donc toujours pour
+            un jour unique — les plusieurs jours ne coutent rien a qui n'en veut
+            pas. L'heure, si elle est donnee, vaut pour CHAQUE jour. */}
         <DatePicker
           date={date}
           time={time}
+          endDate={dateEnd}
+          mode="range"
           min={today}
           variant="search"
           showTime
+          onRangeChange={(start, end) => {
+            setDate(start);
+            setDateEnd(end);
+          }}
           onChange={(d, tm) => {
             setDate(d);
             setTime(tm);

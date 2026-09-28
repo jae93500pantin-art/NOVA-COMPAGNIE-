@@ -170,23 +170,29 @@ export function DatePicker({
   );
 
   /**
-   * L'heure choisie porte sur le jour de prise en charge — donc sur le début,
-   * même quand la sélection est une plage. Sans ça le champ n'affichait que la
-   * date une fois l'heure renseignée : le réglage semblait n'avoir rien fait.
+   * ⚠️ Sur une plage, l'heure est collée à la FIN, une seule fois.
+   *
+   * Elle ne désigne plus une prise en charge le premier jour : c'est un critère
+   * de recherche que `isWithinScheduleRange` applique à **chaque** jour de la
+   * plage. L'écrire sur le début (« 29 sept. à 04:35 → 2 oct. ») se lirait
+   * comme un départ suivi d'un retour, et le même libellé sert de puce de
+   * filtre dans `DriversExplorer` — les deux doivent dire la même chose.
+   *
+   * Sur un jour unique, l'heure suit la date. Sans ça le champ n'affichait que
+   * le jour une fois l'heure renseignée : le réglage semblait n'avoir rien fait.
    */
-  const startLabel = date
-    ? formatSlot(time ? `${date}T${time}` : date, lang)
-    : "";
+  const withTime = (iso: string) =>
+    formatSlot(time ? `${iso}T${time}` : iso, lang);
 
   const label =
     mode === "range"
       ? date
         ? endDate && endDate !== date
-          ? `${startLabel} → ${formatSlot(endDate, lang)}`
-          : startLabel
+          ? `${formatSlot(date, lang)} → ${withTime(endDate)}`
+          : withTime(date)
         : placeholder
       : date
-      ? startLabel
+      ? withTime(date)
       : placeholder;
 
   const pickDate = (iso: string) => {

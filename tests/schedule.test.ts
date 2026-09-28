@@ -9,7 +9,10 @@ import {
   isDayOpen,
   isUnconstrained,
   isWithinSchedule,
+  isWithinScheduleRange,
+  MAX_SLOT_RANGE_DAYS,
   sanitizeSchedule,
+  type WeeklySchedule,
 } from "@/lib/schedule";
 
 // 2026-07-01 is a Wednesday; 2026-07-04 a Saturday, 2026-07-05 a Sunday.
@@ -115,5 +118,71 @@ describe("schedule — affichage et copie", () => {
     const copy = cloneSchedule(PRESET_WEEKDAYS);
     copy[0].start = "05:00";
     expect(PRESET_WEEKDAYS[0].start).toBe("07:00");
+  });
+});
+
+describe("schedule — recherche sur plusieurs jours", () => {
+  /** Lun–Ven 07:00–19:00, week-end fermé. */
+  const weekdays: WeeklySchedule = [
+    ...Array.from({ length: 5 }, () => ({
+      open: true,
+      start: "07:00",
+      end: "19:00",
+    })),
+    { open: false, start: "07:00", end: "19:00" },
+    { open: false, start: "07:00", end: "19:00" },
+  ];
+
+  // 2026-09-28 = lundi · 10-02 = vendredi · 10-03 = samedi.
+  it("accepte une plage entièrement ouvrée", () => {
+    expect(
+      isWithinScheduleRange(weekdays, "2026-09-28", "2026-10-02", "09:00")
+    ).toBe(true);
+  });
+
+  it("⚠️ REFUSE dès qu'un seul jour de la plage est fermé", () => {
+    // Lundi → samedi : le samedi suffit à disqualifier. « J'ai besoin d'un
+    // chauffeur du lundi au samedi » veut dire les six jours.
+    expect(
+      isWithinScheduleRange(weekdays, "2026-09-28", "2026-10-03", "09:00")
+    ).toBe(false);
+  });
+
+  it("applique l'heure à CHAQUE jour, pas seulement au premier", () => {
+    expect(
+      isWithinScheduleRange(weekdays, "2026-09-28", "2026-10-02", "21:00")
+    ).toBe(false);
+  });
+
+  it("se comporte comme un jour unique sans fin, ou avec une fin incohérente", () => {
+    expect(isWithinScheduleRange(weekdays, "2026-10-03", "", "09:00")).toBe(false);
+    expect(isWithinScheduleRange(weekdays, "2026-09-28", "", "09:00")).toBe(true);
+    // Fin antérieure au début : on ne parcourt rien à l'envers.
+    expect(
+      isWithinScheduleRange(weekdays, "2026-09-28", "2026-09-01", "09:00")
+    ).toBe(true);
+  });
+
+  it("ignore l'heure quand elle n'est pas renseignée", () => {
+    expect(isWithinScheduleRange(weekdays, "2026-09-28", "2026-10-02", "")).toBe(
+      true
+    );
+  });
+
+  it("⚠️ borne son parcours au lieu de boucler sur une URL absurde", () => {
+    // Sans plafond, `?dateEnd=2090-01-01` ferait itérer 23 000 jours dans le
+    // navigateur. On vérifie le mois demandé et on s'arrête.
+    const open = DEFAULT_SCHEDULE;
+    expect(
+      isWithinScheduleRange(open, "2026-01-01", "2090-01-01", "09:00")
+    ).toBe(true);
+    expect(MAX_SLOT_RANGE_DAYS).toBe(31);
+  });
+
+  it("laisse passer un planning sans contrainte, sur n'importe quelle plage", () => {
+    // Le cas le plus fréquent aujourd'hui : un chauffeur qui n'a rien déclaré.
+    expect(
+      isWithinScheduleRange(DEFAULT_SCHEDULE, "2026-09-28", "2026-10-05", "04:35")
+    ).toBe(true);
   });
 });

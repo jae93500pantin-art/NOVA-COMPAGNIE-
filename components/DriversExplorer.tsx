@@ -16,7 +16,7 @@ import {
   driverHasTransferVehicle,
   getVehicle,
 } from "@/lib/transfer";
-import { isWithinSchedule } from "@/lib/schedule";
+import { isWithinScheduleRange } from "@/lib/schedule";
 import { composeSlot, formatSlot } from "@/lib/calendar";
 import {
   applyDriverOverrides,
@@ -66,6 +66,7 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
    * L'heure est facultative — une date seule ne demande que le jour ouvert.
    */
   const [slotDate, setSlotDate] = useState(params.get("date") ?? "");
+  const [slotEnd, setSlotEnd] = useState(params.get("dateEnd") ?? "");
   const [slotTime, setSlotTime] = useState(params.get("time") ?? "");
   const [query, setQuery] = useState("");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
@@ -93,6 +94,21 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
 
   const transferDestination = getTransferDestination(transfer);
 
+  /**
+   * Libellé du créneau recherché : « 29 septembre 2026 à 04:35 », ou
+   * « 29 septembre 2026 → 2 octobre 2026 à 04:35 » sur plusieurs jours.
+   *
+   * ⚠️ L'heure est collée à la FIN, une seule fois : elle vaut pour chaque jour
+   * de la plage, et la répéter sur les deux bornes laisserait croire à un
+   * départ le premier jour et un retour le dernier.
+   */
+  const slotLabel = slotEnd
+    ? `${formatSlot(slotDate, lang)} → ${formatSlot(
+        composeSlot(slotEnd, slotTime),
+        lang
+      )}`
+    : formatSlot(composeSlot(slotDate, slotTime), lang);
+
   /** Nobody ticked this destination → the transfer booking must stop here. */
   const transferUnserved = useMemo(
     () =>
@@ -113,7 +129,10 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
       // chauffeur qui n'a rien declare : il reste donc visible sur tous les
       // creneaux. C'est voulu — l'absence de planning n'est pas une
       // indisponibilite, et exclure ces profils viderait l'annuaire.
-      if (slotDate && !isWithinSchedule(scheduleOf(d), slotDate, slotTime))
+      if (
+        slotDate &&
+        !isWithinScheduleRange(scheduleOf(d), slotDate, slotEnd, slotTime)
+      )
         return false;
       if (query) {
         const q = query.toLowerCase();
@@ -148,6 +167,7 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
     query,
     onlyAvailable,
     slotDate,
+    slotEnd,
     slotTime,
     sort,
   ]);
@@ -248,11 +268,12 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
             <button
               onClick={() => {
                 setSlotDate("");
+                setSlotEnd("");
                 setSlotTime("");
               }}
               className="flex w-full items-center justify-between rounded-xl border border-royal-400/50 bg-royal-500/20 px-3 py-2 text-sm text-white transition hover:bg-royal-500/30"
             >
-              <span>{formatSlot(composeSlot(slotDate, slotTime), lang)}</span>
+              <span>{slotLabel}</span>
               <X className="h-3.5 w-3.5 text-white/60" />
             </button>
             <p className="mt-1.5 text-[11px] leading-relaxed text-white/35">
