@@ -199,9 +199,6 @@ function toDriver(row: DriverRow, profile: ProfileRow): Driver {
     age: row.age ?? 0,
     avatar: profile.avatar_url ?? "",
     cityId: row.city_id,
-    rating: num(row.rating, 5),
-    reviewsCount: row.reviews_count ?? 0,
-    trips: row.trips ?? 0,
     languages: row.languages ?? [],
     experienceYears: row.experience_years ?? 0,
     car: {
@@ -232,7 +229,6 @@ function toDriver(row: DriverRow, profile: ProfileRow): Driver {
     mapY: 50,
     lng: row.lng ?? undefined,
     lat: row.lat ?? undefined,
-    reviews: [],
   };
 }
 

@@ -13,7 +13,6 @@ import {
   CarFront,
   User,
   ChevronDown,
-  Calendar,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { useAuth, type SessionUser } from "@/lib/auth";
@@ -190,20 +189,14 @@ export function Navbar() {
                     >
                       <LayoutDashboard className="h-4 w-4" /> {t("nav.account")}
                     </Link>
-                    {user.role === "client" && (
-                      <Link
-                        href="/compte/reservations"
-                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/80 transition hover:bg-white/5"
-                      >
-                        <Calendar className="h-4 w-4" /> {t("nav.myBookings")}
-                      </Link>
-                    )}
+                    {/* ⚠️ Plus de « Mes réservations » ni « Mes courses » :
+                        les deux espaces ont disparu avec la réservation. */}
                     {user.role === "driver" && (
                       <Link
-                        href="/compte/courses"
+                        href="/compte/profil"
                         className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm text-white/80 transition hover:bg-white/5"
                       >
-                        <CarFront className="h-4 w-4" /> {t("nav.myCourses")}
+                        <CarFront className="h-4 w-4" /> {t("nav.myProfile")}
                       </Link>
                     )}
                     <a

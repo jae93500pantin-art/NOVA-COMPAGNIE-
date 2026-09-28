@@ -9,7 +9,7 @@ import {
   transferDestinationsForOptIn,
 } from "@/lib/transfer";
 import { sanitizeText, rateLimit } from "@/lib/validation";
-import { isValidSiren } from "@/lib/bookingVoucher";
+import { isValidSiren } from "@/lib/siren";
 import type { VehicleCategory } from "@/lib/types";
 
 export const dynamic = "force-dynamic";

@@ -15,15 +15,14 @@ export interface City {
   primary?: boolean;
 }
 
-export interface Review {
-  id: string;
-  author: string;
-  avatar: string;
-  rating: number;
-  date: string;
-  comment: string;
-  trip?: string;
-}
+/**
+ * ⚠️ L interface `Review` a été retirée avec les avis certifiés.
+ *
+ * Un avis n existait que parce qu une course terminée l avait produit : sans
+ * réservation, plus rien ne le certifie. Réintroduire un avis libre sur un site
+ * marchand accessible, c est le faux avis que ce dépôt a déjà nettoyé une fois
+ * (voir CLAUDE.md, § Mock data).
+ */
 
 export interface Driver {
   id: string;
@@ -32,9 +31,15 @@ export interface Driver {
   age: number;
   avatar: string;
   cityId: string;
-  rating: number;
-  reviewsCount: number;
-  trips: number;
+  /**
+   * ⚠️ Ni `rating`, ni `reviewsCount`, ni `trips`.
+   *
+   * Les trois ne pouvaient être renseignés que par des courses passées par la
+   * plateforme. Elle n en organise plus : les colonnes existent encore en base
+   * avec leurs valeurs par défaut (`rating` vaut 5.0), et les publier
+   * afficherait « 5,0 ★ · 0 avis · 0 trajet » sur chaque fiche — une note
+   * inventée sur un professionnel réel.
+   */
   languages: string[];
   experienceYears: number;
   car: {
@@ -85,5 +90,4 @@ export interface Driver {
   /** Optional real-world coordinates (populated when backed by Supabase). */
   lng?: number;
   lat?: number;
-  reviews: Review[];
 }

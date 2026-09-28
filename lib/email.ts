@@ -1,14 +1,19 @@
 import "server-only";
 
 import { serverEnv, isEmailConfigured } from "./config";
-import { formatPrice } from "./utils";
 
 /**
  * Transactional email via the Resend REST API (no SDK dependency).
  *
- * Graceful degradation: when `RESEND_API_KEY` is absent the send is skipped and
- * returns false, so the booking flow keeps working in demo mode. Provide
- * `RESEND_API_KEY` (+ a verified `EMAIL_FROM`) to send real confirmation emails.
+ * Graceful degradation: sans `RESEND_API_KEY`, l'envoi est ignoré et la
+ * fonction rend `false` — rien n'échoue pour autant.
+ *
+ * ⚠️ **Un seul e-mail transactionnel subsiste** : la validation d'un chauffeur
+ * par un administrateur. `bookingRequestEmail`, `bookingConfirmedEmail` et
+ * `paymentReceivedEmail` ont été retirés avec la réservation et le paiement
+ * (statut d'annuaire) — la plateforme n'a plus de course à confirmer ni de
+ * règlement à accuser. Les e-mails d'inscription et de mot de passe oublié,
+ * eux, partent de Supabase (SMTP), pas d'ici.
  */
 
 interface SendArgs {
@@ -91,51 +96,6 @@ function layout(heading: string, intro: string, rows: [string, string][], footer
   </div>`;
 }
 
-interface BookingEmailData {
-  clientName: string;
-  driverName: string;
-  vehicle: string;
-  whenText: string;
-  durationText: string;
-  total: number;
-}
-
-export function bookingRequestEmail(d: BookingEmailData): { subject: string; html: string } {
-  return {
-    subject: "Votre demande de course a bien été reçue — Nova Compagnie",
-    html: layout(
-      `Demande envoyée, ${d.clientName} !`,
-      `Votre demande a été transmise à ${d.driverName}. Vous recevrez un e-mail dès qu'elle sera acceptée, puis vous pourrez procéder au paiement.`,
-      [
-        ["Chauffeur", d.driverName],
-        ["Véhicule", d.vehicle],
-        ["Date", d.whenText],
-        ["Durée", d.durationText],
-        ["Montant estimé", formatPrice(d.total)],
-      ],
-      "Aucun débit n'est effectué tant que le chauffeur n'a pas accepté."
-    ),
-  };
-}
-
-export function bookingConfirmedEmail(d: BookingEmailData): { subject: string; html: string } {
-  return {
-    subject: "Votre course est confirmée — procédez au paiement — Nova Compagnie",
-    html: layout(
-      `Course confirmée, ${d.clientName} !`,
-      `${d.driverName} a accepté votre course. Rendez-vous dans « Mes réservations » pour régler et finaliser votre réservation.`,
-      [
-        ["Chauffeur", d.driverName],
-        ["Véhicule", d.vehicle],
-        ["Date", d.whenText],
-        ["Durée", d.durationText],
-        ["Montant à régler", formatPrice(d.total)],
-      ],
-      "Moyens de paiement : carte bancaire, crypto ou espèces."
-    ),
-  };
-}
-
 /**
  * Sent when an admin approves a driver profile from the /admin back-office.
  * `loginUrl` points at the real login route (/auth/login), not a placeholder.
@@ -148,30 +108,12 @@ export function driverApprovedEmail(d: {
     subject: "Votre compte chauffeur est activé — Nova Compagnie",
     html: layout(
       `Félicitations ${d.firstName} !`,
-      `Votre dossier a été vérifié et validé par notre équipe. Votre compte chauffeur Nova Compagnie est désormais actif : vous pouvez renseigner vos disponibilités et recevoir vos premières courses.`,
+      `Votre dossier a été vérifié et validé par notre équipe. Votre compte chauffeur Nova Compagnie est désormais actif : votre fiche est désormais visible dans l'annuaire, et vos clients peuvent vous contacter.`,
       [
         ["Statut du compte", "Activé"],
         ["Espace chauffeur", `<a href="${d.loginUrl}" style="color:#c9a75f">Se connecter</a>`],
       ],
       "Besoin d'aide pour démarrer ? Répondez à cet e-mail ou contactez-nous sur WhatsApp."
-    ),
-  };
-}
-
-export function paymentReceivedEmail(d: BookingEmailData): { subject: string; html: string } {
-  return {
-    subject: "Paiement confirmé — votre réservation est réglée — Nova Compagnie",
-    html: layout(
-      `Merci ${d.clientName}, paiement confirmé !`,
-      `Votre réservation avec ${d.driverName} est réglée. Bon voyage !`,
-      [
-        ["Chauffeur", d.driverName],
-        ["Véhicule", d.vehicle],
-        ["Date", d.whenText],
-        ["Durée", d.durationText],
-        ["Montant payé", formatPrice(d.total)],
-      ],
-      "Un reçu détaillé est disponible dans votre espace Nova Compagnie."
     ),
   };
 }

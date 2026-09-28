@@ -1,11 +1,17 @@
 /**
- * Airport-transfer domain data + pure pricing helpers.
+ * Airport-transfer domain data : aéroports, zones desservies, classes de
+ * véhicule. Pur et testé.
  *
- * The estimate is deterministic and side-effect free so it can be unit-tested
- * and reused on both the transfer page and (later) a real quote endpoint.
+ * ## ⚠️ Ce module ne porte PLUS aucun prix
  *
- * Pricing is a flat fare per vehicle type (Île-de-France transfers):
- *   estimate = vehicle.price
+ * Statut d'annuaire : la plateforme n'impose aucun tarif. Les forfaits par
+ * classe (Berline 100 € / Van 150 € / Première 200 €), `estimateTransfer`,
+ * `transferFareForDriver` et le `baseFare` de chaque aéroport ont été retirés —
+ * c'étaient des prix décidés par Nova pour une prestation qu'elle ne vend pas.
+ *
+ * Ce qui reste est de la **mise en relation** : quelles classes existent, quels
+ * chauffeurs desservent quel trajet. Le tarif affiché est celui que chaque
+ * chauffeur annonce sur sa fiche.
  */
 
 export type TransferVehicleId = "business" | "van" | "premium";
@@ -19,8 +25,6 @@ export interface TransferAirport {
   cityId: string;
   /** Display name. */
   name: string;
-  /** Flat base fare (euros) covering terminal pickup + first kilometres. */
-  baseFare: number;
   /** Position on the stylised map, 0–100. */
   mapX: number;
   mapY: number;
@@ -42,15 +46,13 @@ export interface TransferVehicle {
   id: TransferVehicleId;
   /** i18n key suffix under `transfer.veh*`. */
   labelKey: string;
-  /** Flat fare in euros for an Île-de-France transfer. */
-  price: number;
 }
 
 export const airports: TransferAirport[] = [
-  { id: "paris", code: "IDF", cityId: "paris", name: "Paris · Île-de-France", baseFare: 40, mapX: 50, mapY: 42, origin: true },
-  { id: "cdg", code: "CDG", cityId: "paris", name: "Paris · Charles de Gaulle", baseFare: 45, mapX: 51, mapY: 36 },
-  { id: "ory", code: "ORY", cityId: "paris", name: "Paris · Orly", baseFare: 40, mapX: 49, mapY: 40 },
-  { id: "lbg", code: "LBG", cityId: "paris", name: "Paris · Le Bourget", baseFare: 45, mapX: 53, mapY: 38 },
+  { id: "paris", code: "IDF", cityId: "paris", name: "Paris · Île-de-France", mapX: 50, mapY: 42, origin: true },
+  { id: "cdg", code: "CDG", cityId: "paris", name: "Paris · Charles de Gaulle", mapX: 51, mapY: 36 },
+  { id: "ory", code: "ORY", cityId: "paris", name: "Paris · Orly", mapX: 49, mapY: 40 },
+  { id: "lbg", code: "LBG", cityId: "paris", name: "Paris · Le Bourget", mapX: 53, mapY: 38 },
 ];
 
 export const zones: TransferZone[] = [
@@ -171,18 +173,19 @@ export function sanitizeTransferDestinationIds(ids: unknown): string[] {
 }
 
 export const vehicles: TransferVehicle[] = [
-  // "business" is the entry class: berline **and** moto, same flat fare — a
-  // moto transfer is a vehicle option, not a different price.
-  { id: "business", labelKey: "vehBusiness", price: 100 },
-  { id: "van", labelKey: "vehVan", price: 150 },
-  { id: "premium", labelKey: "vehPremium", price: 200 },
+  // "business" est la classe d'entrée : berline **et** moto. Une moto est une
+  // option de véhicule, pas une autre classe.
+  { id: "business", labelKey: "vehBusiness" },
+  { id: "van", labelKey: "vehVan" },
+  { id: "premium", labelKey: "vehPremium" },
 ];
 
 /**
- * Transfer class a driver is billed at, derived from the categories declared on
- * their profile — the best class they can offer. Kept pure and separate from the
- * driver record so the fare can be recomputed server-side: a client can never
- * suggest its own transfer price.
+ * Classe de transfert d'un chauffeur, déduite des catégories déclarées sur sa
+ * fiche — la meilleure qu'il peut offrir.
+ *
+ * ⚠️ C'est un **classement**, plus une tarification : la classe sert à filtrer
+ * l'annuaire (« qui fait du van vers CDG ? »), elle ne détermine aucun prix.
  */
 export function transferVehicleForCategories(
   categories: readonly string[] | undefined
@@ -194,9 +197,9 @@ export function transferVehicleForCategories(
 }
 
 /**
- * Whether the driver drives exactly this transfer class. Deliberately the same
- * function that prices the ride, so the class shown, the drivers listed and the
- * fare charged can never disagree.
+ * Le chauffeur conduit-il exactement cette classe de transfert ? Même fonction
+ * de classement que ci-dessus, pour que la classe affichée et les chauffeurs
+ * listés ne puissent pas se contredire.
  */
 export function driverHasTransferVehicle(
   driver: { categories?: readonly string[] },
@@ -214,30 +217,6 @@ export function driversForTransferVehicle<
   return list.filter((d) => driverHasTransferVehicle(d, vehicleId));
 }
 
-/** Flat airport-transfer fare (euros) for a driver. */
-export function transferFareForDriver(driver: {
-  categories?: readonly string[];
-}): number {
-  const vehicle = getVehicle(transferVehicleForCategories(driver.categories));
-  return vehicle ? vehicle.price : vehicles[0].price;
-}
-
 export const getAirport = (id: string) => airports.find((a) => a.id === id);
 export const getZone = (id: string) => zones.find((z) => z.id === id);
 export const getVehicle = (id: string) => vehicles.find((v) => v.id === id);
-
-/**
- * Estimate a transfer fare in euros (flat fare per vehicle type). Returns 0 for
- * unknown inputs so the UI can decide how to render rather than throwing.
- */
-export function estimateTransfer(
-  airportId: string,
-  zoneId: string,
-  vehicleId: string
-): number {
-  const airport = getAirport(airportId);
-  const zone = getZone(zoneId);
-  const vehicle = getVehicle(vehicleId);
-  if (!airport || !zone || !vehicle) return 0;
-  return vehicle.price;
-}

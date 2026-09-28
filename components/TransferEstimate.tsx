@@ -7,21 +7,12 @@ import {
   Plane,
   MapPin,
   Car,
-  Calendar,
   ArrowRight,
   AlertCircle,
   MessageCircle,
   Users,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import { formatPrice } from "@/lib/utils";
-import {
-  composeWhen,
-  formatWhen,
-  isFutureBooking,
-  todayISODate,
-} from "@/lib/bookings";
-import { DatePicker } from "./DatePicker";
 import { drivers as allDrivers } from "@/lib/drivers";
 import type { Driver } from "@/lib/types";
 import {
@@ -33,7 +24,6 @@ import {
   airports,
   zones,
   vehicles,
-  estimateTransfer,
   getAirport,
   getVehicle,
   driversForTransferDestination,
@@ -43,24 +33,33 @@ import {
   zoneDestinationId,
 } from "@/lib/transfer";
 
+/**
+ * Qui dessert ce trajet ? — page Transfert Aéroport.
+ *
+ * ## ⚠️ Ce bloc n'estime plus aucun prix, et ne prend aucun créneau
+ *
+ * Statut d'annuaire. Deux choses ont disparu :
+ *
+ * - **le forfait** (Berline 100 € / Van 150 € / Première 200 €) : c'était un
+ *   prix décidé par Nova pour une prestation qu'elle ne vend pas. Chaque
+ *   chauffeur annonce son tarif sur sa fiche, et c'est le seul montant qui
+ *   existe désormais ;
+ * - **la date et l'heure de prise en charge** : choisir un créneau est le geste
+ *   de réservation. Les clés `jw_booking_*` qui les transmettaient au
+ *   formulaire de réservation n'ont plus de destinataire.
+ *
+ * Ce qui reste est la seule question qu'un annuaire sait trancher : **quels
+ * chauffeurs desservent ce trajet, dans cette classe de véhicule ?** Le refus
+ * nomme toujours sa cause — trajet non desservi ou classe vide — parce que les
+ * deux se corrigent différemment.
+ */
 export function TransferEstimate() {
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const router = useRouter();
   const [airport, setAirport] = useState<string>(airports[0].id);
   const [zone, setZone] = useState<string>(zones[0].id);
   const [vehicle, setVehicle] = useState<string>(vehicles[0].id);
-
-  const today = todayISODate();
-  const [date, setDate] = useState(today);
-  const [time, setTime] = useState("");
   const [blocked, setBlocked] = useState(false);
-  const [pastError, setPastError] = useState(false);
-
-  const price = useMemo(
-    () => estimateTransfer(airport, zone, vehicle),
-    [airport, zone, vehicle]
-  );
-  const chosenVehicle = getVehicle(vehicle);
 
   /**
    * Drivers merged with their own saved settings, so ticking/unticking a
@@ -86,9 +85,9 @@ export function TransferEstimate() {
     [pool, destinationId]
   );
   /**
-   * Picking a vehicle narrows the search to that class only. Same rule that
-   * prices the ride, so the estimate below is what these drivers actually
-   * charge — not an average across classes.
+   * Choisir une classe restreint la recherche à cette classe seule, via la même
+   * fonction de classement que la fiche : la classe affichée et les chauffeurs
+   * comptés ne peuvent pas se contredire.
    */
   const eligible = useMemo(
     () => driversForTransferVehicle(servingDestination, vehicle),
@@ -105,29 +104,15 @@ export function TransferEstimate() {
   // Changing the form clears a previous refusal.
   useEffect(() => setBlocked(false), [zone, airport, vehicle]);
 
-  const book = () => {
+  /** Va voir les chauffeurs qui desservent ce trajet. Ne réserve rien. */
+  const showDrivers = () => {
     // Nobody serves this destination, or nobody drives this class → stop here.
     if (blockedBy) {
       setBlocked(true);
       return;
     }
-    if (!isFutureBooking(date, time)) {
-      setPastError(true);
-      return;
-    }
-    // Carry the pickup slot to the booking widget (same channel as the home
-    // search bar). Strictly-necessary functional storage, cleared on tab close.
-    try {
-      sessionStorage.setItem("jw_booking_date", date);
-      sessionStorage.removeItem("jw_booking_end");
-      if (time) sessionStorage.setItem("jw_booking_time", time);
-      else sessionStorage.removeItem("jw_booking_time");
-      // The driver's booking widget opens on the flat transfer fare for it.
-      sessionStorage.setItem("jw_booking_transfer", destinationId);
-      sessionStorage.setItem("jw_booking_vehicle", vehicle);
-    } catch {
-      /* ignore */
-    }
+    // Le trajet et la classe voyagent par l'URL, pas par `sessionStorage` :
+    // ils filtrent une liste, ils ne préremplissent plus de réservation.
     const cityId = getAirport(airport)?.cityId ?? "paris";
     router.push(
       `/drivers?city=${cityId}&transfer=${encodeURIComponent(
@@ -168,25 +153,12 @@ export function TransferEstimate() {
           </select>
         </EstField>
 
-        <EstField
-          icon={<Calendar className="h-4 w-4 text-royal-400" />}
-          label={t("transfer.estWhen")}
-        >
-          <DatePicker
-            date={date}
-            time={time}
-            min={today}
-            variant="search"
-            onChange={(d, tm) => {
-              setDate(d);
-              setTime(tm);
-              setPastError(false);
-            }}
-          />
-        </EstField>
+        {/* ⚠️ Plus de champ « quand » : un créneau choisi ici était le premier
+            pas d'une réservation. Le client convient de l'horaire avec le
+            chauffeur qu'il a retenu. */}
 
-        {/* Vehicle class — one card per class, each showing how many drivers
-            are actually bookable for the destination above. */}
+        {/* Classe de véhicule — une carte par classe, avec le nombre de
+            chauffeurs qui desservent réellement le trajet ci-dessus. */}
         <div>
           <p className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-white/40">
             <Car className="h-3.5 w-3.5 text-royal-400" /> {t("transfer.estVehicle")}
@@ -213,9 +185,9 @@ export function TransferEstimate() {
                   <span className="block text-sm font-medium text-white">
                     {t(`transfer.${v.labelKey}`)}
                   </span>
-                  <span className="mt-0.5 block text-sm font-semibold text-royal-200">
-                    {formatPrice(v.price)}
-                  </span>
+                  {/* ⚠️ Plus de prix par classe : c'était un forfait décidé
+                      par Nova. Chaque chauffeur annonce son tarif sur sa
+                      fiche. */}
                   <span
                     className={`mt-1 flex items-center gap-1 text-[11px] ${
                       count > 0 ? "text-white/40" : "text-amber-300/80"
@@ -235,25 +207,32 @@ export function TransferEstimate() {
         </div>
       </div>
 
-      {/* Result */}
+      {/* Résultat : un décompte de chauffeurs, plus un montant. */}
       <div className="flex flex-col justify-between rounded-2xl bg-gradient-to-br from-ink-800 to-ink-900 p-6">
         <div>
           <p className="text-[11px] uppercase tracking-wider text-white/40">
             {t("transfer.estResult")}
           </p>
           <motion.p
-            key={price}
+            key={eligible.length}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
             className="mt-1 text-4xl font-semibold tracking-tight text-white"
           >
-            {formatPrice(price)}
+            {eligible.length}
           </motion.p>
-          <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-white/70">
-            <Calendar className="h-3.5 w-3.5 text-royal-400" />
-            {formatWhen(composeWhen(date, time), lang)}
+          <p className="mt-1 text-sm text-white/60">
+            {eligible.length > 1
+              ? t("transfer.estAvailableMany")
+              : t("transfer.estAvailableOne")}
           </p>
+          {destination && (
+            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-white/70">
+              <MapPin className="h-3.5 w-3.5 shrink-0 text-royal-400" />
+              {transferDestinationLabel(destination)}
+            </p>
+          )}
           <p className="mt-2 text-xs leading-relaxed text-white/45">
             {t("transfer.estNote")}
           </p>
@@ -276,7 +255,7 @@ export function TransferEstimate() {
               </p>
               <p className="mt-1 text-xs leading-relaxed text-amber-100/75">
                 {blockedBy === "vehicle"
-                  ? `${t(`transfer.${chosenVehicle?.labelKey ?? "vehBusiness"}`)} — ${t(
+                  ? `${t(`transfer.${getVehicle(vehicle)?.labelKey ?? "vehBusiness"}`)} — ${t(
                       "transfer.estNoneVehicleText"
                     )}`
                   : destination
@@ -305,25 +284,10 @@ export function TransferEstimate() {
               exit={{ opacity: 0 }}
               className="mt-6"
             >
-              {pastError && (
-                <p className="mb-2 flex items-center gap-1.5 rounded-xl border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs text-red-300">
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                  {t("transfer.estPastError")}
-                </p>
-              )}
-              <button onClick={book} className="btn-primary w-full text-sm">
+              <button onClick={showDrivers} className="btn-primary w-full text-sm">
                 {t("transfer.estCta")}
                 <ArrowRight className="h-4 w-4" />
               </button>
-              {eligible.length > 0 && (
-                <p className="mt-2 flex items-center justify-center gap-1.5 text-center text-[11px] leading-relaxed text-white/40">
-                  <Users className="h-3 w-3 shrink-0 text-emerald-400" />
-                  {eligible.length}{" "}
-                  {eligible.length > 1
-                    ? t("transfer.estAvailableMany")
-                    : t("transfer.estAvailableOne")}
-                </p>
-              )}
             </motion.div>
           )}
         </AnimatePresence>

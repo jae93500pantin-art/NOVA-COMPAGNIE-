@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ShieldAlert, Users, CalendarClock, Activity, ExternalLink } from "lucide-react";
 import { requireAdmin, adminDb } from "@/lib/admin";
-import { isStripeConfigured, isEmailConfigured } from "@/lib/config";
+import { isEmailConfigured } from "@/lib/config";
 import { formatAmount } from "@/lib/utils";
 import { ApproveDriverButton } from "@/components/admin/ApproveDriverButton";
 
@@ -163,8 +163,7 @@ export default async function AdminDashboardPage() {
             </p>
             <p className="mt-3 text-3xl font-bold text-emerald-400">Opérationnel</p>
             <p className="mt-2 text-[11px] text-white/40">
-              Supabase ✓ · Stripe {isStripeConfigured ? "✓" : "—"} · E-mails{" "}
-              {isEmailConfigured ? "✓" : "—"}
+              Supabase ✓ · E-mails {isEmailConfigured ? "✓" : "—"}
             </p>
           </div>
         </section>

@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { rateError } from "@/lib/pricing";
-import { isValidSiren } from "@/lib/bookingVoucher";
+import { isValidSiren } from "@/lib/siren";
 import type { VehicleCategory } from "@/lib/types";
 import {
   DOCUMENT_LABELS,

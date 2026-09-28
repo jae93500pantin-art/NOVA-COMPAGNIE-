@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Navigation, Car } from "lucide-react";
 import type { Driver } from "@/lib/types";
 import { cities } from "@/lib/cities";
-import { StarRating } from "./StarRating";
 
 export function InteractiveMap({ drivers }: { drivers: Driver[] }) {
   const [active, setActive] = useState<Driver | null>(drivers[0] ?? null);
@@ -128,12 +127,10 @@ export function InteractiveMap({ drivers }: { drivers: Driver[] }) {
                   <p className="truncate text-xs text-white/50">
                     {active.car.make} {active.car.model}
                   </p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <StarRating value={active.rating} size={11} showValue />
-                    <span className="text-[11px] text-white/40">
-                      · {active.responseTime}
-                    </span>
-                  </div>
+                  {/* Plus d'étoiles : il n'y a plus d'avis à certifier. */}
+                  <p className="mt-1 text-[11px] text-white/40">
+                    {active.responseTime}
+                  </p>
                 </div>
               </Link>
             </motion.div>

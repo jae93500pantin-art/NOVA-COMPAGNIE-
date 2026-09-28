@@ -1,16 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  isValidRoom,
   sanitizeText,
   rateLimit,
   safeReturnPath,
-  MAX_MESSAGE_LEN,
 } from "@/lib/validation";
 
 describe("validation — retour après connexion OAuth", () => {
   it("conserve un chemin relatif de l'application", () => {
     expect(safeReturnPath("/drivers?city=paris")).toBe("/drivers?city=paris");
-    expect(safeReturnPath("/compte/reservations")).toBe("/compte/reservations");
+expect(safeReturnPath("/compte/profil")).toBe("/compte/profil");
   });
 
   it("refuse les redirections vers un domaine externe", () => {
@@ -27,22 +25,6 @@ describe("validation — retour après connexion OAuth", () => {
   });
 });
 
-describe("validation — rooms de conversation", () => {
-  it("accepte des noms de room valides", () => {
-    expect(isValidRoom("salon-demo")).toBe(true);
-    expect(isValidRoom("dm-jeremy-driver")).toBe(true);
-    expect(isValidRoom("a")).toBe(true);
-  });
-
-  it("rejette les tentatives d'injection / traversal", () => {
-    expect(isValidRoom("../etc")).toBe(false);
-    expect(isValidRoom("<script>")).toBe(false);
-    expect(isValidRoom("a/b")).toBe(false);
-    expect(isValidRoom("")).toBe(false);
-    expect(isValidRoom("a".repeat(41))).toBe(false); // trop long
-  });
-});
-
 describe("validation — sanitisation du texte", () => {
   it("retire les espaces superflus", () => {
     expect(sanitizeText("  bonjour  ", 100)).toBe("bonjour");
@@ -53,8 +35,8 @@ describe("validation — sanitisation du texte", () => {
   });
 
   it("tronque à la longueur max", () => {
-    const long = "x".repeat(MAX_MESSAGE_LEN + 50);
-    expect(sanitizeText(long, MAX_MESSAGE_LEN).length).toBe(MAX_MESSAGE_LEN);
+    const long = "x".repeat(2050);
+    expect(sanitizeText(long, 2000).length).toBe(2000);
   });
 
   it("renvoie une chaîne vide pour une entrée non-string", () => {

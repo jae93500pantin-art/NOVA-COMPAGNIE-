@@ -17,7 +17,11 @@ const securityHeaders = [
   },
   { key: "X-DNS-Prefetch-Control", value: "off" },
   // Content-Security-Policy (OWASP A03/A05). Allowances cover Next.js inline
-  // runtime, Mapbox, Stripe Checkout, Supabase and the allow-listed image CDNs.
+  // runtime, Mapbox, Supabase and the allow-listed image CDNs.
+  // ⚠️ Les autorisations Stripe (js.stripe.com, hooks.stripe.com,
+  // api.stripe.com) ont été RETIRÉES avec le paiement — statut d'annuaire, la
+  // plateforme n'encaisse plus rien. Ne pas les remettre « au cas où » : chaque
+  // domaine autorisé ici l'est pour tout le site.
   // 'unsafe-inline'/'unsafe-eval' are required by Next dev + Mapbox GL workers.
   {
     key: "Content-Security-Policy",
@@ -30,10 +34,9 @@ const securityHeaders = [
       "img-src 'self' data: blob: https://images.unsplash.com https://i.pravatar.cc https://*.mapbox.com https://*.googleusercontent.com",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://api.mapbox.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://api.mapbox.com",
       "worker-src 'self' blob:",
-      "frame-src https://js.stripe.com https://hooks.stripe.com",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mapbox.com https://events.mapbox.com https://api.stripe.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mapbox.com https://events.mapbox.com",
     ].join("; "),
   },
 ];
@@ -41,13 +44,6 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  experimental: {
-    // @react-pdf/renderer résout ses polices et ses flux au runtime Node.
-    // Bundlé par webpack, il perd cette résolution et casse au rendu du PDF
-    // (« fontkit »/« stream » introuvables) — uniquement en production, là où
-    // le dev ne l'aurait pas montré. On le laisse donc en dépendance externe.
-    serverComponentsExternalPackages: ["@react-pdf/renderer"],
-  },
   // Allow LAN devices (e.g. iPhone) to load dev assets without warnings.
   allowedDevOrigins: ["192.168.1.192"],
   images: {

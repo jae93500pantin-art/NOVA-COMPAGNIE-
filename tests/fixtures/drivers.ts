@@ -38,9 +38,6 @@ function makeDriver(
     age: 38,
     avatar: "https://i.pravatar.cc/300?u=" + id,
     cityId: "paris",
-    rating: 4.8,
-    reviewsCount: 12,
-    trips: 340,
     languages: ["Français", "Anglais"],
     experienceYears: 9,
     car: {
@@ -61,7 +58,6 @@ function makeDriver(
     badges: ["Vérifié"],
     mapX: 20 + (seed % 61),
     mapY: 20 + ((seed * 7) % 61),
-    reviews: [],
     ...extra,
   };
 }

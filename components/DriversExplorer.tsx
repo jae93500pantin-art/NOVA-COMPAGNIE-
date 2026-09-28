@@ -57,8 +57,9 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
   );
   const [query, setQuery] = useState("");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
-  const [minRating, setMinRating] = useState(0);
-  const [sort, setSort] = useState("rating");
+  // ⚠️ Plus de filtre « note minimum » ni de tri par note : il n y a plus de
+  // note. Le tri par défaut passe donc à l expérience déclarée.
+  const [sort, setSort] = useState("experience");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   /**
@@ -96,7 +97,6 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
       if (!driverServesTransferDestination(d, transfer)) return false;
       if (!driverHasTransferVehicle(d, vehicle)) return false;
       if (onlyAvailable && !d.available) return false;
-      if (minRating > 0 && d.rating < minRating) return false;
       if (query) {
         const q = query.toLowerCase();
         const hay =
@@ -112,7 +112,6 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
       // ceux qui peuvent répondre tout de suite. (Le filtre « Disponibles
       // uniquement » reste là pour qui ne veut vraiment qu'eux.)
       if (a.available !== b.available) return a.available ? -1 : 1;
-      if (sort === "rating") return b.rating - a.rating;
       if (sort === "experience") return b.experienceYears - a.experienceYears;
       // Le tri porte sur le TARIF CHAUFFEUR affiche sur la carte. Trier sur le
       // total client donnerait exactement le meme ordre (les 5 pourcent sont
@@ -122,7 +121,7 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
       return 0;
     });
     return list;
-  }, [pool, city, category, transfer, vehicle, query, onlyAvailable, minRating, sort]);
+  }, [pool, city, category, transfer, vehicle, query, onlyAvailable, sort]);
 
   return (
     <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
@@ -150,30 +149,6 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
         <div className="hidden items-center gap-2 text-sm font-semibold text-white lg:flex">
           <SlidersHorizontal className="h-4 w-4 text-royal-400" />
           {t("drivers.filters")}
-        </div>
-
-        <div>
-          <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
-            {t("drivers.minRating")}
-          </p>
-          <div className="grid grid-cols-4 gap-1">
-            {[0, 4, 4.5, 4.8].map((r) => (
-              <button
-                key={r}
-                type="button"
-                aria-pressed={minRating === r}
-                onClick={() => setMinRating(r)}
-                className={cn(
-                  "rounded-xl border px-1 py-2 text-xs font-medium transition",
-                  minRating === r
-                    ? "border-royal-400/50 bg-royal-500/15 text-white"
-                    : "border-white/10 text-white/55 hover:bg-white/5"
-                )}
-              >
-                {r === 0 ? t("drivers.all") : `${r}+`}
-              </button>
-            ))}
-          </div>
         </div>
 
         <div className="relative">
@@ -303,7 +278,6 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
             onChange={(e) => setSort(e.target.value)}
             className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white outline-none [&>option]:text-ink-900"
           >
-            <option value="rating">{t("drivers.sortRating")}</option>
             <option value="experience">{t("drivers.sortExperience")}</option>
             <option value="priceAsc">{t("drivers.sortPriceAsc")}</option>
             <option value="priceDesc">{t("drivers.sortPriceDesc")}</option>

@@ -9,9 +9,7 @@ import {
   driverServesTransferDestination,
   driversForTransferDestination,
   sanitizeTransferDestinationIds,
-  estimateTransfer,
   transferVehicleForCategories,
-  transferFareForDriver,
   vehicles,
   ALL_TRANSFER_DESTINATION_IDS,
   acceptsAirportTransfers,
@@ -160,50 +158,6 @@ describe("chauffeurs (fixtures)", () => {
   });
 });
 
-describe("estimateTransfer stays a flat fare per vehicle", () => {
-  it("is unaffected by the new destination", () => {
-    expect(estimateTransfer("cdg", "lbg", "business")).toBe(100);
-    expect(estimateTransfer("cdg", "lbg", "van")).toBe(150);
-  });
-
-  it("returns 0 for unknown inputs", () => {
-    expect(estimateTransfer("nope", "lbg", "business")).toBe(0);
-  });
-});
-
-describe("flat transfer fare charged for a driver", () => {
-  it("maps a vehicle category to a transfer class", () => {
-    expect(transferVehicleForCategories(["Business"])).toBe("business");
-    expect(transferVehicleForCategories(["Moto"])).toBe("business");
-    expect(transferVehicleForCategories(["Van"])).toBe("van");
-    expect(transferVehicleForCategories(["Luxury"])).toBe("premium");
-    expect(transferVehicleForCategories(["Van Luxury"])).toBe("premium");
-  });
-
-  it("keeps the best class a driver offers", () => {
-    expect(transferVehicleForCategories(["Business", "Van"])).toBe("van");
-    expect(transferVehicleForCategories(["Van", "Luxury"])).toBe("premium");
-  });
-
-  it("falls back to business on missing categories", () => {
-    expect(transferVehicleForCategories(undefined)).toBe("business");
-    expect(transferVehicleForCategories([])).toBe("business");
-  });
-
-  it("prices the fare from the vehicle table, never from the client", () => {
-    const price = (id: string) => vehicles.find((v) => v.id === id)!.price;
-    expect(transferFareForDriver({ categories: ["Business"] })).toBe(price("business"));
-    expect(transferFareForDriver({ categories: ["Van"] })).toBe(price("van"));
-    expect(transferFareForDriver({ categories: ["Luxury"] })).toBe(price("premium"));
-  });
-
-  it("gives every driver a bookable transfer fare", () => {
-    for (const d of drivers) {
-      expect(transferFareForDriver(d), d.id).toBeGreaterThan(0);
-    }
-  });
-});
-
 describe("global airport opt-in (single switch)", () => {
   it("expands the switch to every route, or to nothing", () => {
     expect(transferDestinationsForOptIn(true)).toEqual(ALL_TRANSFER_DESTINATION_IDS);
@@ -254,11 +208,10 @@ describe("strict filtering by vehicle class", () => {
     expect(driverHasTransferVehicle(withCats(["Luxury"]), "business")).toBe(false);
   });
 
-  it("ranks a multi-category driver by their best class, like the fare does", () => {
+  it("ranks a multi-category driver by their best class", () => {
     const d = withCats(["Business", "Luxury"]);
     expect(driverHasTransferVehicle(d, "premium")).toBe(true);
     expect(driverHasTransferVehicle(d, "business")).toBe(false);
-    expect(transferFareForDriver(d)).toBe(200);
   });
 
   it("does not filter on an empty or unknown class", () => {
@@ -273,13 +226,5 @@ describe("strict filtering by vehicle class", () => {
       0
     );
     expect(total).toBe(drivers.length);
-  });
-
-  it("charges every listed driver exactly the advertised class price", () => {
-    for (const v of vehicles) {
-      for (const d of driversForTransferVehicle(drivers, v.id)) {
-        expect(transferFareForDriver(d), `${d.id} / ${v.id}`).toBe(v.price);
-      }
-    }
   });
 });

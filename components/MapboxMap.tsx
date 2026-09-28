@@ -9,7 +9,6 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import type { Driver } from "@/lib/types";
 import { driverCoords } from "@/lib/geo";
 import { env } from "@/lib/config";
-import { StarRating } from "./StarRating";
 
 export function MapboxMap({ drivers }: { drivers: Driver[] }) {
   const [active, setActive] = useState<Driver | null>(null);
@@ -91,12 +90,10 @@ export function MapboxMap({ drivers }: { drivers: Driver[] }) {
                   <p className="truncate text-xs text-white/60">
                     {active.car.make} {active.car.model}
                   </p>
-                  <div className="mt-0.5 flex items-center gap-1.5">
-                    <StarRating value={active.rating} size={10} showValue />
-                    <span className="text-[11px] text-white/50">
-                      · €{active.pricePerHour}/h
-                    </span>
-                  </div>
+                  {/* Plus d'étoiles : il n'y a plus d'avis à certifier. */}
+                  <p className="mt-0.5 text-[11px] text-white/50">
+                    €{active.pricePerHour}/h
+                  </p>
                 </div>
               </Link>
             </Popup>

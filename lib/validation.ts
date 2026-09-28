@@ -1,14 +1,12 @@
-/** Shared input validation & sanitisation for the live-chat API. */
-
-export const ROOM_RE = /^[a-zA-Z0-9_-]{1,40}$/;
-export const MAX_MESSAGE_LEN = 2000;
-export const MAX_NAME_LEN = 40;
-/** Hard cap on the raw request body to mitigate DoS via huge payloads. */
-export const MAX_BODY_BYTES = 8 * 1024; // 8 KB
-
-export function isValidRoom(room: string): boolean {
-  return ROOM_RE.test(room);
-}
+/**
+ * Validation et assainissement partagés des entrées.
+ *
+ * ⚠️ `ROOM_RE` / `isValidRoom` / `MAX_MESSAGE_LEN` / `MAX_NAME_LEN` /
+ * `MAX_BODY_BYTES` ont été retirés avec la messagerie de course et les API de
+ * réservation : ils validaient un identifiant de salle et la taille d un
+ * message. Plus aucun appelant, et un validateur orphelin finit par être
+ * réemployé pour ce qu il ne valide pas.
+ */
 
 /** Collapse whitespace, strip control chars, clamp length. */
 export function sanitizeText(input: unknown, max: number): string {

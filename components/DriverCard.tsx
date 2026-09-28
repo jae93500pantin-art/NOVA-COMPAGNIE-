@@ -5,16 +5,12 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Languages, BadgeCheck, Clock, Car, ShieldCheck } from "lucide-react";
 import type { Driver } from "@/lib/types";
-import { StarRating } from "./StarRating";
 import { cn, formatPrice } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import { hasVerifiedCnapsCard } from "@/lib/cnaps";
-import { priceBreakdown } from "@/lib/pricing";
 
 export function DriverCard({ driver, index = 0 }: { driver: Driver; index?: number }) {
   const { t } = useI18n();
-  // Le meme calcul que la fiche et que la facture : une seule autorite.
-  const price = priceBreakdown(driver.pricePerHour);
 
   return (
     <motion.div
@@ -98,12 +94,15 @@ export function DriverCard({ driver, index = 0 }: { driver: Driver; index?: numb
                 <Languages className="h-3 w-3 shrink-0" />
                 <span className="truncate">{driver.languages.join(", ")}</span>
               </p>
-              <div className="mt-2 flex items-center gap-2">
-                <StarRating value={driver.rating} size={12} showValue />
-                <span className="text-[11px] text-white/40">
-                  {driver.reviewsCount} {t("drivers.reviews")}
-                </span>
-              </div>
+              {/* ⚠️ Plus de note ni d'étoiles. Un avis ne pouvait être certifié
+                  que par la course qui l'a produite ; sans réservation, il n'y
+                  a plus rien à certifier. `drivers.rating` vaut 5.0 par défaut
+                  en base : l'afficher publierait « 5,0 ★ · 0 avis » sur chaque
+                  fiche neuve, c'est-à-dire une note inventée. */}
+              <p className="mt-2 flex items-center gap-1 text-[11px] text-white/40">
+                <Clock className="h-3 w-3 shrink-0" />
+                {driver.experienceYears} {t("drivers.yearsExp")}
+              </p>
             </div>
           </div>
         </div>
@@ -117,19 +116,16 @@ export function DriverCard({ driver, index = 0 }: { driver: Driver; index?: numb
           </div>
 
           <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-4">
-            {/* Prix transparent dès la liste : le tarif du chauffeur, les
-                frais, et ce qui sera réellement débité. Découvrir les 5 % à
-                l'écran de paiement est la meilleure façon de perdre le client
-                au dernier pas. Le détail complet reste sur la fiche. */}
+            {/* Le tarif ANNONCÉ PAR LE CHAUFFEUR, seul et tel quel. Plus de
+                total client ni de ligne de frais : la plateforme n'ajoute rien
+                et n'encaisse rien, donc afficher un autre montant que le sien
+                laisserait croire qu'elle vend la course. */}
             <p className="text-sm text-white/50">
               {t("drivers.fromPrice")}{" "}
               <span className="font-medium text-white">
-                {formatPrice(price.clientTotal)}
+                {formatPrice(driver.pricePerHour)}
               </span>
-              <span className="block text-[10px] leading-relaxed text-white/35">
-                {formatPrice(price.driverPrice)} + {formatPrice(price.clientFee)}{" "}
-                {t("drivers.feeShort")}
-              </span>
+              <span className="text-white/40"> / h</span>
             </p>
             <span className="rounded-full bg-white/5 px-4 py-2 text-xs font-medium text-white transition group-hover:bg-royal-500 group-hover:text-white">
               {t("drivers.viewProfile")}

@@ -14,28 +14,6 @@ const ADMIN_LOGIN = "/admin/login";
 /** Auth pages a signed-in visitor has no reason to see. */
 const GUEST_ONLY_PATHS = ["/auth/login", "/auth/register"];
 
-/**
- * Espaces réservés à un rôle.
- *
- * Jusqu'ici le middleware ne vérifiait que l'existence d'une session : un
- * client pouvait ouvrir `/compte/courses`, l'espace chauffeur, et un chauffeur
- * l'historique client. Les composants s'en tiraient par une redirection côté
- * navigateur — c'est-à-dire par rien du tout, puisqu'elle s'exécute après que
- * la page a été servie.
- *
- * Chacun est renvoyé chez lui plutôt que vers une erreur : se tromper d'onglet
- * n'est pas une faute, et un 403 sur son propre compte serait déroutant.
- */
-const DRIVER_ONLY = ["/compte/courses"];
-const CLIENT_ONLY = ["/compte/reservations", "/compte/reservation"];
-
-/** Accueil de chaque rôle, où le renvoyer quand il se trompe d'espace. */
-const HOME_FOR = { driver: "/compte/courses", client: "/compte/reservations" };
-
-function matches(pathname: string, prefixes: string[]) {
-  return prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
-
 function isProtected(pathname: string) {
   if (pathname === ADMIN_LOGIN) return false;
   return PROTECTED_PREFIXES.some(
@@ -118,31 +96,18 @@ export async function middleware(request: NextRequest) {
   if (user && GUEST_ONLY_PATHS.includes(pathname)) return redirectTo("/compte");
 
   /**
-   * Cloisonnement des espaces client / chauffeur.
+   * ⚠️ **Plus de cloisonnement par rôle ici.** Il gardait `/compte/courses`
+   * (chauffeur) et `/compte/reservations` (client), deux espaces supprimés avec
+   * la réservation — statut d'annuaire. Les pages qui restent (`/compte`,
+   * `/compte/profil`, `/compte/onboarding`) sont communes ou se protègent
+   * elles-mêmes, et la lecture de `profiles.role` qui coûtait une requête sur
+   * chaque passage n'a plus d'objet.
    *
-   * ⚠️ Le rôle est lu dans `profiles`, **jamais dans `user_metadata`** : un
-   * utilisateur peut réécrire ses propres métadonnées avec
-   * `supabase.auth.updateUser({ data: { role: "driver" } })`. La colonne, elle,
-   * est verrouillée par le trigger `profiles_protect_privileged`.
-   *
-   * Coût assumé : une requête supplémentaire, et seulement sur les deux
-   * espaces cloisonnés — pas sur `/compte` ni `/compte/profil`, communs aux
-   * deux rôles.
+   * Si un espace réservé à un rôle réapparaît : relire le rôle dans
+   * **`profiles`**, jamais dans `user_metadata` — un utilisateur peut réécrire
+   * ses propres métadonnées avec `supabase.auth.updateUser()`, alors que la
+   * colonne est verrouillée par `profiles_protect_privileged`.
    */
-  if (user && (matches(pathname, DRIVER_ONLY) || matches(pathname, CLIENT_ONLY))) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    const role = profile?.role === "driver" ? "driver" : "client";
-    const wrongSpace =
-      (role === "client" && matches(pathname, DRIVER_ONLY)) ||
-      (role === "driver" && matches(pathname, CLIENT_ONLY));
-
-    if (wrongSpace) return redirectTo(HOME_FOR[role]);
-  }
 
   return response;
 }

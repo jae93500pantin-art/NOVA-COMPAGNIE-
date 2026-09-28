@@ -15,9 +15,7 @@ import { getDirectoryDriver, listDirectorySlugs } from "@/lib/driverDirectory";
 import { hasVerifiedCnapsCard } from "@/lib/cnaps";
 import { getCity } from "@/lib/cities";
 import { Gallery } from "@/components/Gallery";
-import { Reviews } from "@/components/Reviews";
-import { BookingWidget } from "@/components/BookingWidget";
-import { StarRating } from "@/components/StarRating";
+import { DriverContactCard } from "@/components/DriverContactCard";
 import { DriverAvatar } from "@/components/DriverAvatar";
 import { DriverVehicle } from "@/components/DriverVehicle";
 
@@ -48,7 +46,6 @@ export default async function DriverProfile({ params }: { params: { id: string }
 
   const facts = [
     { icon: CalendarClock, label: "Expérience", value: `${driver.experienceYears} ans` },
-    { icon: Car, label: "Trajets", value: driver.trips.toLocaleString("fr-FR") },
     { icon: Clock, label: "Réponse", value: driver.responseTime },
     { icon: MapPin, label: "Ville", value: city?.name ?? "" },
   ];
@@ -85,9 +82,11 @@ export default async function DriverProfile({ params }: { params: { id: string }
                   · {driver.age} ans
                 </span>
               </h1>
+              {/* ⚠️ Ni note ni compteur d'avis : un avis n'etait certifie que
+                  par la course qui l'avait produite. Sans reservation, il n'y a
+                  plus rien a certifier — et `rating` vaut 5.0 par defaut en
+                  base, donc l'afficher publierait une note inventee. */}
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/60">
-                <StarRating value={driver.rating} size={14} showValue />
-                <span className="text-white/40">{driver.reviewsCount} avis</span>
                 <span className="inline-flex items-center gap-1">
                   <MapPin className="h-3.5 w-3.5" />
                   {city?.name}, {city?.country}
@@ -178,18 +177,11 @@ export default async function DriverProfile({ params }: { params: { id: string }
             <p className="mt-3 leading-relaxed text-white/65">{driver.bio}</p>
           </section>
 
-          {/* Reviews */}
-          <section className="mt-10">
-            <h2 className="mb-5 text-lg font-semibold text-white">
-              Avis & commentaires
-            </h2>
-            <Reviews driver={driver} />
-          </section>
         </div>
 
-        {/* Right column — booking */}
+        {/* Colonne de droite — contact, pas reservation */}
         <div>
-          <BookingWidget driver={driver} />
+          <DriverContactCard driver={driver} />
         </div>
       </div>
     </div>

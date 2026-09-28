@@ -32,13 +32,9 @@ import {
   saveDriverOverrides,
 } from "@/lib/driverOverrides";
 import {
-  CLIENT_SERVICE_FEE_RATE,
-  PLATFORM_COMMISSION_RATE,
   boundsFor,
   clampRate,
-  priceBreakdown,
   rateError,
-  type PriceBreakdown,
 } from "@/lib/pricing";
 import { formatPrice } from "@/lib/utils";
 import { whatsappUrl } from "@/lib/whatsapp";
@@ -317,8 +313,6 @@ export function ProfileEditor() {
   const dayValue = Number.parseFloat(dayRate);
   const hourError = rateError("hour", hourValue);
   const dayError = rateError("day", dayValue);
-  const hourSplit = priceBreakdown(hourValue);
-  const daySplit = priceBreakdown(dayValue);
 
   const patchDay = (i: number, patch: Partial<DaySchedule>) =>
     setSchedule((prev) =>
@@ -554,12 +548,16 @@ export function ProfileEditor() {
                   />
                 </div>
 
-                {/* Live commission breakdown — the driver sees what lands in
-                    their pocket while they type, not after the first ride. */}
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <CommissionCard label="Sur une heure" split={hourSplit} />
-                  <CommissionCard label="Sur une journée" split={daySplit} />
-                </div>
+                {/* ⚠️ Plus de decompte commission / revenu net : la plateforme
+                    ne prelevait 15 % que parce qu elle encaissait la course.
+                    Elle n encaisse plus rien, donc le tarif saisi EST ce que le
+                    chauffeur facturera. Reafficher un "revenu net" ici
+                    laisserait croire a une retenue qui n existe pas. */}
+                <p className="mt-3 rounded-2xl border border-white/10 bg-white/[0.02] p-3 text-[11px] leading-relaxed text-white/45">
+                  Ce que vous affichez est ce que vous facturez : Nova ne prend
+                  aucune commission sur vos courses et n encaisse pas vos
+                  clients.
+                </p>
 
                 <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
                   <p className="flex items-center gap-2 text-sm font-medium text-white">
@@ -917,55 +915,6 @@ function RateInput({
         <span className="mt-0.5 block text-[11px] text-red-300">{error}</span>
       )}
     </label>
-  );
-}
-
-/**
- * Ce que le tarif saisi devient des deux côtés, en direct.
- *
- * L'ordre des lignes suit l'ordre des prélèvements : le prix proposé, ce que
- * la plateforme retient dessus, ce qu'il reste. Le total client est relégué en
- * note — c'est une information utile au chauffeur, pas son revenu, et le
- * placer dans la même liste inviterait à confondre les deux pourcentages.
- */
-function CommissionCard({
-  label,
-  split,
-}: {
-  label: string;
-  split: PriceBreakdown;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3 text-xs">
-      <p className="text-[11px] uppercase tracking-wider text-white/35">
-        {label}
-      </p>
-      <dl className="mt-2 space-y-1">
-        <div className="flex items-center justify-between">
-          <dt className="text-white/50">Prix proposé</dt>
-          <dd className="font-medium text-white">
-            {formatPrice(split.driverPrice)}
-          </dd>
-        </div>
-        <div className="flex items-center justify-between">
-          <dt className="text-white/50">
-            Commission plateforme ({Math.round(PLATFORM_COMMISSION_RATE * 100)} %)
-          </dt>
-          <dd className="text-white/60">−{formatPrice(split.commission)}</dd>
-        </div>
-        <div className="flex items-center justify-between border-t border-white/10 pt-1">
-          <dt className="font-medium text-white/70">Votre revenu net</dt>
-          <dd className="text-sm font-semibold text-emerald-300">
-            {formatPrice(split.driverNet)}
-          </dd>
-        </div>
-      </dl>
-      <p className="mt-2 text-[11px] leading-relaxed text-white/30">
-        Le client règle {formatPrice(split.clientTotal)}, frais de service de{" "}
-        {Math.round(CLIENT_SERVICE_FEE_RATE * 100)} % compris. Ces frais sont à
-        sa charge : ils ne sont pas prélevés sur votre revenu.
-      </p>
-    </div>
   );
 }
 
