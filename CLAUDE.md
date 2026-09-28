@@ -112,7 +112,7 @@ app/
     page.tsx                  Accueil : Hero (carte de recherche + globe), teaser transfert, how-it-works, features, CTA
     drivers/page.tsx          Listing + filters (Suspense → DriversExplorer)
     drivers/[id]/page.tsx     Fiche chauffeur (SSG via generateStaticParams) : galerie, faits, vehicule, badge CNAPS + bloc de contact. Plus de section avis, plus de reservation.
-    transfert-aeroport/page.tsx  Page transfert aeroport : hero + gages de confiance, services, bloc "qui dessert ce trajet" (TransferEstimate), carte des zones
+    transfert-aeroport/page.tsx  Composant SERVEUR : lit l'annuaire (listDirectory, service role) et le passe a TransferAirport. force-dynamic.
     vol-prive/page.tsx      Vol privé : page « bientôt disponible » + liste d'attente (clé i18n `jet.*`). ⚠️ **Plus aucun lien n'y mène** — retirée de la Navbar, elle ne répond qu'à l'URL directe. Le fichier et les clés `nav.privateJet` sont conservés (restaurer = une ligne dans `links`). ⚠️ L'inscription est SIMULÉE — aucun backend ne recueille l'adresse, elle est perdue à la soumission.
     contact/page.tsx          Contact page (SectionHeader + ContactForm): info panel + professional contact form
     compte/page.tsx           Personal dashboard (AccountDashboard) — client & driver views; redirects to login if no session
@@ -146,7 +146,8 @@ components/                   All client components unless noted
   DriverCard, DriversExplorer, Gallery   ⚠️ Plus de `Reviews` ni de `StarRating` : sans course, aucun avis n'est certifiable (voir § STATUT D'ANNUAIRE).
   DriverContactCard           Colonne de droite de la fiche chauffeur, en remplacement de `BookingWidget`. Composant SERVEUR. Trois choses : les tarifs tels que le chauffeur les annonce, ses disponibilités s'il en a déclaré, et un lien de mise en relation (WhatsApp Nova). Plus la mention qui dit avec qui le contrat se noue. ⚠️ Aucun sélecteur d'unité, aucun créneau, aucun total client.
   ContactForm                 Professional contact form (nom/prénom, e-mail, téléphone, type de demande, message) with client-side validation + animated success confirmation. ⚠️ L'envoi est SIMULÉ — aucun backend ne reçoit le message.
-  TransferEstimate            « Qui dessert ce trajet ? » : aéroport + zone + classe de véhicule → un décompte de chauffeurs et un lien vers l'annuaire filtré (/drivers?city=&transfer=&vehicle=). Le refus nomme sa cause (trajet non desservi vs classe vide), parce que les deux se corrigent différemment. ⚠️ Plus AUCUN prix (le forfait était un tarif Nova) et plus de date/heure.
+  TransferEstimate            Recherche « qui dessert ce trajet ? » : aeroport + zone + classe → la LISTE des chauffeurs concernes, chacun avec le tarif qu'IL a annonce, plus un « a partir de » qui est le MINIMUM de ces tarifs (jamais une moyenne, jamais une valeur plateforme ; un 0 est exclu, aucun tarif ⇒ aucun montant). Etat vide qui nomme sa cause et propose une suite. Recoit les chauffeurs en prop depuis la page serveur.
+  TransferAirport             Corps client de la page transfert (i18n) : hero, gages de confiance + ce que « habilitations verifiees » recouvre, 5 services « selon le chauffeur », la recherche, « Comment ca marche » en 3 etapes, la carte des zones, et la mention legale d'annuaire en bas de page.
   TransferPickupMap           Stylised pickup-zones map (airport pins + animated rings), same aesthetic as InteractiveMap.
   CityShowcase
   AuthForm                    Client/driver toggle, Supabase auth + demo fallback. Props `embedded`/`onSuccess`/`onSwitchMode` when rendered inside AuthModal.
@@ -460,16 +461,48 @@ Pour le réactiver un jour : recréer un bouton appelant
 
 ## Airport transfer & Contact
 
-- **Transfert aéroport** (`/transfert-aeroport`) : page de présentation + le bloc
-  `TransferEstimate`, qui répond à **une seule question** — *quels chauffeurs
-  desservent ce trajet, dans cette classe de véhicule ?* Aéroport, zone, classe,
-  puis un décompte et un lien vers l'annuaire filtré. Plus une carte stylisée des
-  zones de prise en charge (`TransferPickupMap`).
-- ⚠️ **Ce bloc n'estime plus aucun prix et ne prend aucun créneau.** Les forfaits
-  par classe (Berline 100 € / Van 150 € / Première 200 €), `estimateTransfer`,
-  `transferFareForDriver` et le `baseFare` de chaque aéroport ont été retirés de
-  `lib/transfer.ts` : c'étaient des prix décidés par Nova. La date et l'heure
-  sont parties avec eux — choisir un créneau est le geste de réservation.
+- **Transfert aéroport** (`/transfert-aeroport`) : `page.tsx` est un composant
+  **serveur** qui lit l'annuaire (`listDirectory`) et le passe à
+  `components/TransferAirport.tsx` (client, i18n). ⚠️ Ce découpage est
+  indispensable : `listDirectory` exige le service role, donc un composant
+  client ne peut pas l'appeler — et avant ce câblage la page annonçait
+  « 0 chauffeur » sur tous les trajets.
+- **La page décrit ce que les CHAUFFEURS proposent, jamais ce que Nova
+  garantit.** Quatre promesses ont été retirées, et ne doivent pas revenir :
+  « Confirmation e-mail & SMS » (bloc supprimé — plus aucun envoi au titre d'une
+  course), « Disponible 24h/24 · 7j/7 » (la disponibilité de qui ? chacun a son
+  planning), « Tout est pris en charge, de l'atterrissage à destination » (rien
+  n'est pris en charge par Nova), « à la sortie de l'avion » (personne ne peut
+  promettre un accueil en zone réservée à la place du chauffeur). Les cinq
+  services restants portent tous **« selon le chauffeur »**.
+- **`TransferEstimate` est une recherche, plus une estimation.** Elle liste les
+  chauffeurs qui desservent le trajet, chacun avec **le tarif qu'il a annoncé**,
+  et un « à partir de » qui est le **minimum de ces tarifs** — jamais une
+  moyenne, jamais une valeur choisie par la plateforme. ⚠️ Un tarif à 0 (« non
+  communiqué ») est exclu du calcul, et aucun tarif exploitable ⇒ **aucun montant
+  affiché** : il n'y en a aucun à citer.
+  ⚠️ **Le montant cité est HORAIRE**, avec son suffixe « / h ». Les chauffeurs
+  déclarent un tarif à l'heure et à la journée ; **aucun ne déclare de forfait
+  transfert** (il n'existe pas de colonne pour ça). Écrire « forfait » sur un
+  tarif horaire serait un prix inventé. Un vrai forfait par chauffeur demande une
+  colonne, un champ dans le tunnel et une migration.
+- **L'état vide nomme sa cause et propose une suite** (autre classe, autre
+  destination, WhatsApp, annuaire complet) au lieu d'afficher « 0 chauffeur
+  habilité ». ⚠️ Il distingue « personne ne dessert ce trajet » de « personne
+  dans cette classe » : les deux se corrigent autrement.
+- **« Habilitations vérifiées » est explicité** sous les badges : carte
+  professionnelle VTC et son numéro au registre des exploitants, attestation
+  d'assurance RC professionnelle, permis, carte grise — *contrôlés sur pièces*,
+  avec la précision que Nova constate l'existence des pièces et n'exécute aucun
+  transport. ⚠️ Un badge « vérifié » qui ne dit pas quoi ne vaut rien.
+- **« Comment ça marche » en 3 étapes** (chercher · contacter · convenir) et la
+  **mention légale d'annuaire** en bas de page — celle qui qualifie tout ce qui
+  précède, donc lisible sans avoir à la chercher.
+- ⚠️ Les forfaits par classe (Berline 100 € / Van 150 € / Première 200 €),
+  `estimateTransfer`, `transferFareForDriver` et le `baseFare` de chaque aéroport
+  ont été retirés de `lib/transfer.ts` : c'étaient des prix décidés par Nova. La
+  date et l'heure de prise en charge sont parties avec eux — choisir un créneau
+  ici était le premier pas d'une réservation.
 - `transferVehicleForCategories` subsiste, mais comme **classement** : la classe
   sert à filtrer l'annuaire, elle ne détermine plus aucun prix.
 - **Contact** (`/contact`): `ContactForm` with nom/prénom, e-mail, téléphone,

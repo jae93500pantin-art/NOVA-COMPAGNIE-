@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Plane,
@@ -11,9 +11,10 @@ import {
   AlertCircle,
   MessageCircle,
   Users,
+  ChevronRight,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import { drivers as allDrivers } from "@/lib/drivers";
+import { formatPrice, initials } from "@/lib/utils";
 import type { Driver } from "@/lib/types";
 import {
   applyDriverOverrides,
@@ -34,40 +35,42 @@ import {
 } from "@/lib/transfer";
 
 /**
- * Qui dessert ce trajet ? — page Transfert Aéroport.
+ * Recherche « qui dessert ce trajet ? » de la page Transfert Aéroport.
  *
- * ## ⚠️ Ce bloc n'estime plus aucun prix, et ne prend aucun créneau
+ * ## ⚠️ Une recherche, pas une estimation
  *
- * Statut d'annuaire. Deux choses ont disparu :
+ * Statut d'annuaire. Ce bloc s'appelait « Estimation instantanée » et
+ * annonçait un montant : c'était un **forfait décidé par Nova** (Berline 100 € /
+ * Van 150 € / Première 200 €) pour une prestation qu'elle ne vend pas. Il rend
+ * maintenant la seule réponse qu'un annuaire peut donner : **la liste des
+ * chauffeurs qui desservent ce trajet, avec les tarifs qu'ils ont eux-mêmes
+ * annoncés.**
  *
- * - **le forfait** (Berline 100 € / Van 150 € / Première 200 €) : c'était un
- *   prix décidé par Nova pour une prestation qu'elle ne vend pas. Chaque
- *   chauffeur annonce son tarif sur sa fiche, et c'est le seul montant qui
- *   existe désormais ;
- * - **la date et l'heure de prise en charge** : choisir un créneau est le geste
- *   de réservation. Les clés `jw_booking_*` qui les transmettaient au
- *   formulaire de réservation n'ont plus de destinataire.
+ * ⚠️ **Le « à partir de » ne se calcule que sur des prix réellement annoncés** :
+ * c'est le minimum des tarifs des chauffeurs listés, jamais une moyenne, jamais
+ * une valeur de départ que la plateforme aurait choisie. Aucun chauffeur qui
+ * corresponde ⇒ **aucun montant affiché**, parce qu'il n'y en a aucun à citer.
  *
- * Ce qui reste est la seule question qu'un annuaire sait trancher : **quels
- * chauffeurs desservent ce trajet, dans cette classe de véhicule ?** Le refus
- * nomme toujours sa cause — trajet non desservi ou classe vide — parce que les
- * deux se corrigent différemment.
+ * ⚠️ **Le tarif cité est HORAIRE.** Les chauffeurs déclarent un tarif à l'heure
+ * et à la journée ; aucun ne déclare de forfait transfert (il n'y a pas de
+ * colonne pour ça). Écrire « forfait » sur un tarif horaire serait un prix
+ * inventé — d'où le suffixe « / h » partout, et la note qui dit que le montant
+ * exact se convient avec le chauffeur.
  */
-export function TransferEstimate() {
+export function TransferEstimate({ drivers = [] }: { drivers?: Driver[] }) {
   const { t } = useI18n();
-  const router = useRouter();
   const [airport, setAirport] = useState<string>(airports[0].id);
   const [zone, setZone] = useState<string>(zones[0].id);
   const [vehicle, setVehicle] = useState<string>(vehicles[0].id);
-  const [blocked, setBlocked] = useState(false);
 
   /**
-   * Drivers merged with their own saved settings, so ticking/unticking a
-   * destination in the driver profile is reflected here without a reload.
+   * L'annuaire arrive de la page serveur (`listDirectory`), puis on ré-applique
+   * les réglages que le chauffeur a enregistrés dans son navigateur : cocher
+   * une destination dans son profil change cette liste sans rechargement.
    */
-  const [pool, setPool] = useState<Driver[]>(allDrivers);
+  const [pool, setPool] = useState<Driver[]>(drivers);
   useEffect(() => {
-    const sync = () => setPool(allDrivers.map(applyDriverOverrides));
+    const sync = () => setPool(drivers.map(applyDriverOverrides));
     sync();
     window.addEventListener(DRIVER_OVERRIDES_EVENT, sync);
     window.addEventListener("storage", sync);
@@ -75,9 +78,8 @@ export function TransferEstimate() {
       window.removeEventListener(DRIVER_OVERRIDES_EVENT, sync);
       window.removeEventListener("storage", sync);
     };
-  }, []);
+  }, [drivers]);
 
-  // The destination picked in the form drives everything below.
   const destinationId = zoneDestinationId(zone);
   const destination = getTransferDestination(destinationId);
   const servingDestination = useMemo(
@@ -87,43 +89,40 @@ export function TransferEstimate() {
   /**
    * Choisir une classe restreint la recherche à cette classe seule, via la même
    * fonction de classement que la fiche : la classe affichée et les chauffeurs
-   * comptés ne peuvent pas se contredire.
+   * listés ne peuvent pas se contredire.
    */
-  const eligible = useMemo(
+  const matching = useMemo(
     () => driversForTransferVehicle(servingDestination, vehicle),
     [servingDestination, vehicle]
   );
-  /** Told apart so the refusal can name the real cause. */
+
+  /**
+   * « À partir de » = le plus bas des tarifs ANNONCÉS par les chauffeurs
+   * listés. ⚠️ Un tarif à 0 (« non communiqué ») est exclu du calcul : le faire
+   * entrer donnerait un « à partir de 0 € » qui n'est le prix de personne.
+   * Aucun tarif exploitable ⇒ `null`, et rien ne s'affiche.
+   */
+  const fromPrice = useMemo(() => {
+    const rates = matching.map((d) => d.pricePerHour).filter((p) => p > 0);
+    return rates.length > 0 ? Math.min(...rates) : null;
+  }, [matching]);
+
+  /** Distingués pour que le refus nomme sa cause — les deux se corrigent autrement. */
   const blockedBy: "destination" | "vehicle" | null =
     servingDestination.length === 0
       ? "destination"
-      : eligible.length === 0
+      : matching.length === 0
       ? "vehicle"
       : null;
 
-  // Changing the form clears a previous refusal.
-  useEffect(() => setBlocked(false), [zone, airport, vehicle]);
-
-  /** Va voir les chauffeurs qui desservent ce trajet. Ne réserve rien. */
-  const showDrivers = () => {
-    // Nobody serves this destination, or nobody drives this class → stop here.
-    if (blockedBy) {
-      setBlocked(true);
-      return;
-    }
-    // Le trajet et la classe voyagent par l'URL, pas par `sessionStorage` :
-    // ils filtrent une liste, ils ne préremplissent plus de réservation.
-    const cityId = getAirport(airport)?.cityId ?? "paris";
-    router.push(
-      `/drivers?city=${cityId}&transfer=${encodeURIComponent(
-        destinationId
-      )}&vehicle=${encodeURIComponent(vehicle)}`
-    );
-  };
+  const cityId = getAirport(airport)?.cityId ?? "paris";
+  const listingHref = `/drivers?city=${cityId}&transfer=${encodeURIComponent(
+    destinationId
+  )}&vehicle=${encodeURIComponent(vehicle)}`;
 
   return (
-    <div className="grid gap-6 rounded-3xl glass-strong p-6 shadow-card lg:grid-cols-[1.2fr_0.8fr] lg:p-8">
-      {/* Inputs */}
+    <div className="grid gap-6 rounded-3xl glass-strong p-6 shadow-card lg:grid-cols-[1fr_1fr] lg:p-8">
+      {/* Critères */}
       <div className="space-y-4">
         <EstField icon={<Plane className="h-4 w-4 text-royal-400" />} label={t("transfer.estFrom")}>
           <select
@@ -153,12 +152,8 @@ export function TransferEstimate() {
           </select>
         </EstField>
 
-        {/* ⚠️ Plus de champ « quand » : un créneau choisi ici était le premier
-            pas d'une réservation. Le client convient de l'horaire avec le
-            chauffeur qu'il a retenu. */}
-
-        {/* Classe de véhicule — une carte par classe, avec le nombre de
-            chauffeurs qui desservent réellement le trajet ci-dessus. */}
+        {/* Une carte par classe, avec le nombre de chauffeurs qui desservent
+            réellement le trajet ci-dessus. */}
         <div>
           <p className="mb-2 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-white/40">
             <Car className="h-3.5 w-3.5 text-royal-400" /> {t("transfer.estVehicle")}
@@ -185,17 +180,14 @@ export function TransferEstimate() {
                   <span className="block text-sm font-medium text-white">
                     {t(`transfer.${v.labelKey}`)}
                   </span>
-                  {/* ⚠️ Plus de prix par classe : c'était un forfait décidé
-                      par Nova. Chaque chauffeur annonce son tarif sur sa
-                      fiche. */}
                   <span
                     className={`mt-1 flex items-center gap-1 text-[11px] ${
-                      count > 0 ? "text-white/40" : "text-amber-300/80"
+                      count > 0 ? "text-white/40" : "text-white/30"
                     }`}
                   >
                     <Users
                       className={`h-3 w-3 ${
-                        count > 0 ? "text-emerald-400" : "text-amber-400"
+                        count > 0 ? "text-emerald-400" : "text-white/30"
                       }`}
                     />
                     {count}
@@ -207,87 +199,146 @@ export function TransferEstimate() {
         </div>
       </div>
 
-      {/* Résultat : un décompte de chauffeurs, plus un montant. */}
-      <div className="flex flex-col justify-between rounded-2xl bg-gradient-to-br from-ink-800 to-ink-900 p-6">
-        <div>
-          <p className="text-[11px] uppercase tracking-wider text-white/40">
-            {t("transfer.estResult")}
-          </p>
-          <motion.p
-            key={eligible.length}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="mt-1 text-4xl font-semibold tracking-tight text-white"
-          >
-            {eligible.length}
-          </motion.p>
-          <p className="mt-1 text-sm text-white/60">
-            {eligible.length > 1
-              ? t("transfer.estAvailableMany")
-              : t("transfer.estAvailableOne")}
-          </p>
-          {destination && (
-            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-white/70">
-              <MapPin className="h-3.5 w-3.5 shrink-0 text-royal-400" />
-              {transferDestinationLabel(destination)}
-            </p>
-          )}
-          <p className="mt-2 text-xs leading-relaxed text-white/45">
-            {t("transfer.estNote")}
-          </p>
-        </div>
+      {/* Résultat : des chauffeurs, pas un montant */}
+      <div className="flex flex-col rounded-2xl bg-gradient-to-br from-ink-800 to-ink-900 p-6">
         <AnimatePresence mode="wait">
-          {blocked ? (
+          {blockedBy ? (
             <motion.div
-              key="blocked"
+              key="empty"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.25 }}
-              className="mt-6 rounded-2xl border border-amber-400/25 bg-amber-400/10 p-4"
             >
+              {/* État vide utile : il nomme la cause, dit quoi faire, et laisse
+                  une porte de sortie. Un « 0 chauffeur » sec laissait le
+                  visiteur devant un compteur sans action. */}
               <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-200">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 {blockedBy === "vehicle"
                   ? t("transfer.estNoneVehicleTitle")
                   : t("transfer.estNoneTitle")}
               </p>
-              <p className="mt-1 text-xs leading-relaxed text-amber-100/75">
+              <p className="mt-2 text-xs leading-relaxed text-white/55">
                 {blockedBy === "vehicle"
-                  ? `${t(`transfer.${getVehicle(vehicle)?.labelKey ?? "vehBusiness"}`)} — ${t(
-                      "transfer.estNoneVehicleText"
-                    )}`
-                  : destination
-                  ? `${transferDestinationLabel(destination)} — ${t("transfer.estNoneText")}`
+                  ? t("transfer.estNoneVehicleText")
                   : t("transfer.estNoneText")}
               </p>
+              <ul className="mt-3 space-y-1.5 text-xs text-white/45">
+                <li className="flex gap-2">
+                  <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-royal-300" />
+                  {t("transfer.estEmptyTry1")}
+                </li>
+                <li className="flex gap-2">
+                  <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-royal-300" />
+                  {t("transfer.estEmptyTry2")}
+                </li>
+              </ul>
               <a
                 href={whatsappUrl(
                   destination
-                    ? `Bonjour, je cherche un transfert vers ${transferDestinationLabel(destination)}.`
+                    ? `Bonjour, je cherche un chauffeur pour ${transferDestinationLabel(
+                        destination
+                      )}.`
                     : undefined
                 )}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn-primary mt-3 w-full text-sm"
+                className="btn-primary mt-4 w-full text-sm"
               >
                 <MessageCircle className="h-4 w-4" />
                 {t("transfer.estSupport")}
               </a>
+              <Link href="/drivers" className="btn-ghost mt-2 w-full text-sm">
+                {t("transfer.estEmptyAll")}
+              </Link>
             </motion.div>
           ) : (
             <motion.div
-              key="cta"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="mt-6"
+              key="results"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="flex h-full flex-col"
             >
-              <button onClick={showDrivers} className="btn-primary w-full text-sm">
+              <p className="text-[11px] uppercase tracking-wider text-white/40">
+                {t("transfer.estResult")}
+              </p>
+              <p className="mt-1 text-2xl font-semibold tracking-tight text-white">
+                {matching.length}{" "}
+                <span className="text-base font-normal text-white/60">
+                  {matching.length > 1
+                    ? t("transfer.estAvailableMany")
+                    : t("transfer.estAvailableOne")}
+                </span>
+              </p>
+
+              {/* ⚠️ Affiché seulement s'il existe un tarif annoncé à citer. */}
+              {fromPrice !== null && (
+                <p className="mt-2 text-sm text-white/60">
+                  {t("drivers.fromPrice")}{" "}
+                  <span className="font-semibold text-white">
+                    {formatPrice(fromPrice)}
+                  </span>
+                  <span className="text-white/40"> / h</span>
+                </p>
+              )}
+
+              {destination && (
+                <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-white/70">
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-royal-400" />
+                  {transferDestinationLabel(destination)}
+                </p>
+              )}
+
+              {/* La liste elle-même : chaque chauffeur avec SON tarif. */}
+              <ul className="mt-4 space-y-2">
+                {matching.slice(0, 4).map((d) => (
+                  <li key={d.id}>
+                    <Link
+                      href={`/drivers/${d.id}`}
+                      className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 transition hover:border-white/25 hover:bg-white/[0.06]"
+                    >
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/10 text-xs font-semibold text-white">
+                        {initials(d.firstName, d.lastName)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-white">
+                          {d.firstName} {d.lastName}
+                        </span>
+                        <span className="block truncate text-[11px] text-white/45">
+                          {d.car.make} {d.car.model}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        {d.pricePerHour > 0 ? (
+                          <span className="block text-sm font-semibold text-white">
+                            {formatPrice(d.pricePerHour)}
+                            <span className="text-[11px] font-normal text-white/40">
+                              {" "}
+                              / h
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="block text-[11px] text-white/40">
+                            {t("transfer.estNoRate")}
+                          </span>
+                        )}
+                      </span>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-white/30 transition group-hover:translate-x-0.5 group-hover:text-white/60" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+
+              <p className="mt-3 text-[11px] leading-relaxed text-white/40">
+                {t("transfer.estNote")}
+              </p>
+
+              <Link href={listingHref} className="btn-primary mt-4 w-full text-sm">
                 {t("transfer.estCta")}
                 <ArrowRight className="h-4 w-4" />
-              </button>
+              </Link>
             </motion.div>
           )}
         </AnimatePresence>

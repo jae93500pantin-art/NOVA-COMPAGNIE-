@@ -333,48 +333,69 @@ const fr = {
   },
   transfer: {
     eyebrow: "Transfert Aéroport",
-    title: "Votre chauffeur privé vous attend à l'aéroport",
+    title: "Trouvez un chauffeur pour votre trajet aéroport",
     subtitle:
-      "Trouvez le chauffeur qui dessert votre trajet, convenez avec lui de votre arrivée, et soyez accueilli au terminal avec une pancarte nominative. Suivi de vol, assistance bagages et service VIP selon le chauffeur.",
+      "Nova Compagnie référence des chauffeurs VTC indépendants qui desservent les aéroports parisiens. Vous consultez leurs tarifs, vous choisissez, puis vous convenez de votre arrivée directement avec celui que vous avez retenu.",
     bookCta: "Voir les chauffeurs",
-    estimateCta: "Estimer mon trajet",
+    estimateCta: "Trouver un chauffeur",
     heroImageAlt: "Chauffeur privé accueillant un client à l'aéroport",
-    badge247: "Disponible 24h/24 · 7j/7",
-    badgePro: "Chauffeurs professionnels",
+    badgePro: "Chauffeurs indépendants",
     badgeSecure: "Habilitations vérifiées",
     badgeInstant: "Mise en relation directe",
     badgeFlexible: "Tarifs annoncés par le chauffeur",
-    featuresEyebrow: "Un accueil sur-mesure",
-    featuresTitle: "Tout est pris en charge, de l'atterrissage à destination",
-    feat1Title: "Réservation avant l'arrivée",
+    badgeSecureDetail:
+      "Avant tout référencement, nous contrôlons sur pièces : la carte professionnelle VTC et son numéro d'inscription au registre des exploitants, l'attestation d'assurance responsabilité civile professionnelle, le permis de conduire et la carte grise du véhicule déclaré. Nous vérifions l'existence de ces pièces — nous n'exécutons aucun transport.",
+    featuresEyebrow: "Ce que proposent les chauffeurs",
+    featuresTitle: "Des prestations qui se conviennent avec le chauffeur",
+    featuresSubtitle:
+      "Ces services sont courants chez les chauffeurs référencés, sans être garantis par Nova Compagnie : chacun exerce à son compte et décide de ce qu'il propose. Demandez-lui ce qui est inclus avant de convenir de la course.",
+    feat1Title: "Trajet convenu à l'avance",
     feat1Text:
-      "Planifiez votre transfert en amont : votre chauffeur est prêt dès que vous atterrissez.",
+      "Beaucoup de chauffeurs organisent le trajet en amont de votre vol. À convenir avec lui, selon son planning.",
     feat2Title: "Prise en charge au terminal",
     feat2Text:
-      "Votre chauffeur vous rejoint directement à la sortie de l'avion, à l'intérieur du terminal.",
-    feat3Title: "Suivi de vol en temps réel",
+      "Le point de rendez-vous se fixe avec le chauffeur — le plus souvent au hall d'arrivée. Selon le chauffeur.",
+    feat3Title: "Suivi du numéro de vol",
     feat3Text:
-      "L'heure du rendez-vous s'ajuste automatiquement selon un retard ou une avance de votre vol.",
+      "Certains chauffeurs suivent votre vol et décalent l'heure du rendez-vous en cas de retard. À demander.",
     feat4Title: "Pancarte nominative",
     feat4Text:
-      "Un accueil personnalisé, votre nom à la main, pour une arrivée sans stress.",
+      "Un accueil au nom, proposé par une partie des chauffeurs référencés. Selon le chauffeur.",
     feat5Title: "Assistance bagages",
-    feat5Text: "Votre chauffeur prend en charge vos bagages jusqu'au véhicule.",
-    feat6Title: "Confirmation e-mail & SMS",
-    feat6Text:
-      "Recevez une confirmation immédiate et un rappel avant la prise en charge.",
-    estimateEyebrow: "Estimation instantanée",
-    estimateTitle: "Estimez votre transfert en un instant",
+    feat5Text:
+      "L'aide au chargement des bagages jusqu'au véhicule est d'usage. Selon le chauffeur et son véhicule.",
+    estimateEyebrow: "Recherche par trajet",
+    estimateTitle: "Qui dessert votre trajet ?",
     estimateSubtitle:
-      "Sélectionnez votre aéroport, votre destination et votre véhicule pour un tarif immédiat.",
+      "Choisissez votre aéroport, votre destination et la classe de véhicule : nous affichons les chauffeurs référencés qui desservent ce trajet, avec le tarif que chacun annonce.",
+    howEyebrow: "Comment ça marche",
+    howTitle: "Trois étapes, et aucune réservation en ligne",
+    howSubtitle:
+      "Nova Compagnie vous met en relation. Tout le reste se règle entre vous et le chauffeur.",
+    step1Title: "Cherchez votre trajet",
+    step1Text:
+      "Indiquez l'aéroport, la destination et la classe de véhicule. Vous voyez qui dessert ce trajet et à quel tarif annoncé.",
+    step2Title: "Contactez le chauffeur",
+    step2Text:
+      "Demandez à être mis en relation. Vous lui donnez votre numéro de vol, vos bagages, le point de rendez-vous.",
+    step3Title: "Convenez avec lui",
+    step3Text:
+      "Le prix définitif, les modalités et le paiement se fixent avec le chauffeur, qui exécute la course et facture son client.",
+    legalTitle: "Nova Compagnie est un annuaire",
+    legalText:
+      "Ce site référence des chauffeurs de transport avec chauffeur (VTC) indépendants. Il ne prend aucune réservation, n'organise aucun transport, ne fixe aucun tarif et n'encaisse aucune somme au titre des courses. Le contrat de transport est conclu, exécuté et facturé directement entre le client et le chauffeur, seul responsable de sa prestation. Les tarifs affichés sont ceux que chaque chauffeur déclare ; ils sont indicatifs et se confirment auprès de lui.",
     estFrom: "Départ",
     estTo: "Destination",
     estVehicle: "Type de véhicule",
-    estResult: "Estimation",
-    estWhen: "Date & heure de prise en charge",
-    estPastError: "Choisissez une date et une heure à venir.",
-    estNote: "Nova ne fixe aucun tarif : chaque chauffeur annonce le sien sur sa fiche.",
+    estResult: "Chauffeurs sur ce trajet",
+    estNote:
+      "Tarifs horaires déclarés par les chauffeurs. Nova n'en fixe aucun : le montant exact du trajet se convient avec le chauffeur.",
+    estNoRate: "Tarif non communiqué",
     estCta: "Voir ces chauffeurs",
+    estEmptyTry1: "Essayez une autre classe de véhicule ou une autre destination.",
+    estEmptyTry2:
+      "L'annuaire s'étoffe : de nouveaux chauffeurs sont référencés régulièrement.",
+    estEmptyAll: "Parcourir tout l'annuaire",
     vehBusiness: "Berline Business / Moto",
     vehVan: "Van · 7 places",
     vehPremium: "Première classe",
@@ -386,15 +407,15 @@ const fr = {
     zoneCdg: "Direction Aéroport CDG",
     zoneOrly: "Direction Aéroport Orly",
     zoneLbg: "Direction Aéroport Le Bourget",
-    estAvailableOne: "chauffeur habilité pour ce véhicule et cette destination",
-    estAvailableMany: "chauffeurs habilités pour ce véhicule et cette destination",
-    estNoneVehicleTitle: "Aucun chauffeur dans cette gamme",
+    estAvailableOne: "chauffeur dessert ce trajet",
+    estAvailableMany: "chauffeurs desservent ce trajet",
+    estNoneVehicleTitle: "Aucun chauffeur dans cette classe",
     estNoneVehicleText:
-      "aucun chauffeur de cette gamme ne dessert cette destination pour le moment. Choisissez une autre gamme, ou écrivez-nous.",
-    estNoneTitle: "Aucun chauffeur disponible pour cette destination",
+      "Aucun chauffeur de cette classe ne dessert ce trajet pour le moment — d autres classes le desservent peut-être.",
+    estNoneTitle: "Personne ne dessert encore ce trajet",
     estNoneText:
-      "Aucun chauffeur n'a activé cette destination actuellement. Veuillez contacter le support.",
-    estSupport: "Contacter le support",
+      "Aucun chauffeur référencé n a coché ce trajet. Ce n est pas une indisponibilité passagère : personne ne l a encore déclaré.",
+    estSupport: "Nous écrire",
     mapEyebrow: "Zones de prise en charge",
     mapTitle: "Nous vous accueillons dans les plus grands hubs",
     mapSubtitle:
@@ -773,48 +794,69 @@ const en: Dict = {
   },
   transfer: {
     eyebrow: "Airport Transfer",
-    title: "Your private chauffeur is waiting at the airport",
+    title: "Find a chauffeur for your airport journey",
     subtitle:
-      "Find the chauffeur who serves your route, agree your arrival with them, and be greeted at the terminal with a name sign. Flight tracking, luggage assistance and VIP service depend on the chauffeur.",
+      "Nova Compagnie lists independent VTC chauffeurs who serve the Paris airports. You compare their rates, you choose, then you arrange your arrival directly with the one you picked.",
     bookCta: "See the drivers",
-    estimateCta: "Estimate my ride",
+    estimateCta: "Find a chauffeur",
     heroImageAlt: "Private chauffeur greeting a client at the airport",
-    badge247: "Available 24/7",
-    badgePro: "Professional chauffeurs",
+    badgePro: "Independent chauffeurs",
     badgeSecure: "Credentials verified",
     badgeInstant: "Direct introduction",
     badgeFlexible: "Driver-set rates",
-    featuresEyebrow: "A tailor-made welcome",
-    featuresTitle: "Everything is handled, from landing to destination",
-    feat1Title: "Book before arrival",
+    badgeSecureDetail:
+      "Before any listing, we check on file: the professional VTC card and its operator-register number, the professional liability insurance certificate, the driving licence and the registration document of the declared vehicle. We verify that those documents exist — we do not carry out any transport.",
+    featuresEyebrow: "What the chauffeurs offer",
+    featuresTitle: "Services agreed with the chauffeur",
+    featuresSubtitle:
+      "These are common among the chauffeurs we list, without being guaranteed by Nova Compagnie: each works for themselves and decides what they offer. Ask them what is included before agreeing to the ride.",
+    feat1Title: "Journey agreed in advance",
     feat1Text:
-      "Plan your transfer in advance: your chauffeur is ready the moment you land.",
+      "Many chauffeurs organise the journey ahead of your flight. To be agreed with them, subject to their schedule.",
     feat2Title: "Terminal pickup",
     feat2Text:
-      "Your chauffeur meets you right as you leave the plane, inside the terminal.",
-    feat3Title: "Real-time flight tracking",
+      "The meeting point is set with the chauffeur — usually in the arrivals hall. Depends on the chauffeur.",
+    feat3Title: "Flight number tracking",
     feat3Text:
-      "The pickup time adjusts automatically to any delay or early arrival of your flight.",
+      "Some chauffeurs follow your flight and shift the meeting time if it is delayed. Worth asking.",
     feat4Title: "Name sign welcome",
     feat4Text:
-      "A personalised welcome, your name in hand, for a stress-free arrival.",
+      "A welcome with your name, offered by some of the listed chauffeurs. Depends on the chauffeur.",
     feat5Title: "Luggage assistance",
-    feat5Text: "Your chauffeur handles your luggage all the way to the vehicle.",
-    feat6Title: "Email & SMS confirmation",
-    feat6Text:
-      "Receive an instant confirmation and a reminder before pickup.",
-    estimateEyebrow: "Instant estimate",
-    estimateTitle: "Estimate your transfer in an instant",
+    feat5Text:
+      "Help loading your luggage into the vehicle is customary. Depends on the chauffeur and their vehicle.",
+    estimateEyebrow: "Search by route",
+    estimateTitle: "Who serves your route?",
     estimateSubtitle:
-      "Select your airport, destination and vehicle for an immediate rate.",
+      "Pick your airport, your destination and the vehicle class: we show the listed chauffeurs who serve that route, each with the rate they advertise.",
+    howEyebrow: "How it works",
+    howTitle: "Three steps, and no online booking",
+    howSubtitle:
+      "Nova Compagnie introduces you. Everything else is settled between you and the chauffeur.",
+    step1Title: "Search your route",
+    step1Text:
+      "Enter the airport, the destination and the vehicle class. You see who serves that route and at what advertised rate.",
+    step2Title: "Contact the chauffeur",
+    step2Text:
+      "Ask for an introduction. You give them your flight number, your luggage, the meeting point.",
+    step3Title: "Agree with them",
+    step3Text:
+      "The final price, the terms and the payment are settled with the chauffeur, who carries out the ride and invoices their client.",
+    legalTitle: "Nova Compagnie is a directory",
+    legalText:
+      "This site lists independent private-hire (VTC) chauffeurs. It takes no booking, organises no transport, sets no fare and collects no money for rides. The transport contract is entered into, performed and invoiced directly between the client and the chauffeur, who alone is responsible for their service. The rates shown are those each chauffeur declares; they are indicative and are to be confirmed with them.",
     estFrom: "Departure",
     estTo: "Destination",
     estVehicle: "Vehicle type",
-    estResult: "Estimate",
-    estWhen: "Pickup date & time",
-    estPastError: "Pick a date and time in the future.",
-    estNote: "Nova sets no fare: each driver advertises their own on their listing.",
+    estResult: "Chauffeurs on this route",
+    estNote:
+      "Hourly rates declared by the chauffeurs. Nova sets none: the exact fare for the journey is agreed with the chauffeur.",
+    estNoRate: "Rate not provided",
     estCta: "See these drivers",
+    estEmptyTry1: "Try another vehicle class or another destination.",
+    estEmptyTry2:
+      "The directory is growing: new chauffeurs are listed regularly.",
+    estEmptyAll: "Browse the whole directory",
     vehBusiness: "Business sedan / Motorbike",
     vehVan: "Van · 7 seats",
     vehPremium: "First class",
@@ -826,15 +868,15 @@ const en: Dict = {
     zoneCdg: "To CDG Airport",
     zoneOrly: "To Orly Airport",
     zoneLbg: "To Le Bourget Airport",
-    estAvailableOne: "chauffeur cleared for this vehicle and destination",
-    estAvailableMany: "chauffeurs cleared for this vehicle and destination",
+    estAvailableOne: "chauffeur serves this route",
+    estAvailableMany: "chauffeurs serve this route",
     estNoneVehicleTitle: "No chauffeur in this class",
     estNoneVehicleText:
-      "no chauffeur in this class serves this destination right now. Pick another class, or message us.",
-    estNoneTitle: "No chauffeur available for this destination",
+      "No chauffeur in this class serves this route right now — other classes may.",
+    estNoneTitle: "Nobody serves this route yet",
     estNoneText:
-      "No chauffeur has enabled this destination right now. Please contact support.",
-    estSupport: "Contact support",
+      "No listed chauffeur has ticked this route. This is not a temporary gap: nobody has declared it yet.",
+    estSupport: "Message us",
     mapEyebrow: "Pickup zones",
     mapTitle: "We welcome you at the biggest hubs",
     mapSubtitle:
