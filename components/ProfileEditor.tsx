@@ -36,8 +36,6 @@ import {
   PLATFORM_COMMISSION_RATE,
   boundsFor,
   clampRate,
-  hasFixedPricing,
-  isRateEditable,
   priceBreakdown,
   rateError,
   type PriceBreakdown,
@@ -186,14 +184,11 @@ export function ProfileEditor() {
         ? sanitizeSchedule(o.schedule)
         : DEFAULT_SCHEDULE
     );
-    // Une fiche neuve n'a pas de tarif : on propose le plancher de la gamme
-    // plutôt que zéro, qui ne serait jamais facturable.
-    setHourRate(
-      String(p?.price_per_hour ?? o.pricePerHour ?? boundsFor(category0, "hour").min)
-    );
-    setDayRate(
-      String(p?.price_per_day ?? o.pricePerDay ?? boundsFor(category0, "day").min)
-    );
+    // Une fiche neuve n'a pas de tarif, et le champ reste VIDE : proposer un
+    // chiffre serait un tarif conseillé par la plateforme, donc un prix. Le
+    // chauffeur saisit le sien, c'est la condition pour paraître à l'annuaire.
+    setHourRate(rateValue(p?.price_per_hour ?? o.pricePerHour));
+    setDayRate(rateValue(p?.price_per_day ?? o.pricePerDay));
     setCnapsVerified(p?.cnaps_verified === true);
     setCarMake(p?.car_make ?? o.car?.make ?? "");
     setCarModel(p?.car_model ?? o.car?.model ?? "");
@@ -206,13 +201,9 @@ export function ProfileEditor() {
     );
   }, [user, isDriver, profileLoaded, driverProfile, publicSlug]);
 
-  // Switching class switches band: snap the rates into the new one so a fixed
-  // class shows its imposed price immediately instead of a stale figure.
-  useEffect(() => {
-    if (!isDriver) return;
-    setHourRate((v) => String(clampRate(category, "hour", Number.parseFloat(v))));
-    setDayRate((v) => String(clampRate(category, "day", Number.parseFloat(v))));
-  }, [category, isDriver]);
+  // ⚠️ Changer de gamme ne touche plus aux tarifs. L'ancien effet les recalait
+  // dans la bande de la nouvelle classe : passer de Luxury à Business écrasait
+  // silencieusement le prix du chauffeur par celui de la plateforme.
 
   if (loading || !user) {
     return (
@@ -268,10 +259,11 @@ export function ProfileEditor() {
         bio: bio.trim(),
         available,
         avatar,
-        // Validated above; clamped again so storage can only ever hold a
-        // rate inside the band.
-        pricePerHour: clampRate(category, "hour", hourValue),
-        pricePerDay: clampRate(category, "day", dayValue),
+        // Validé plus haut ; re-borné pour que le stockage ne puisse contenir
+        // qu'un tarif lisible. ⚠️ `clampRate` ne remonte plus un 0 à un
+        // plancher : un champ vide reste « non communiqué ».
+        pricePerHour: clampRate("hour", hourValue),
+        pricePerDay: clampRate("day", dayValue),
         schedule: sanitizeSchedule(schedule),
         car: {
           make: carMake.trim(),
@@ -318,14 +310,13 @@ export function ProfileEditor() {
   const removePhoto = (i: number) =>
     setPhotos((p) => p.filter((_, idx) => idx !== i));
 
-  /* Rates: bounds follow the selected class, so switching class re-validates. */
-  const hourBounds = boundsFor(category, "hour");
-  const dayBounds = boundsFor(category, "day");
+  /* Rates: identical guard rails for everyone, independent of the class. */
+  const hourBounds = boundsFor("hour");
+  const dayBounds = boundsFor("day");
   const hourValue = Number.parseFloat(hourRate);
   const dayValue = Number.parseFloat(dayRate);
-  const fixedPricing = hasFixedPricing(category);
-  const hourError = rateError(category, "hour", hourValue);
-  const dayError = rateError(category, "day", dayValue);
+  const hourError = rateError("hour", hourValue);
+  const dayError = rateError("day", dayValue);
   const hourSplit = priceBreakdown(hourValue);
   const daySplit = priceBreakdown(dayValue);
 
@@ -534,21 +525,12 @@ export function ProfileEditor() {
 
               <Field label="Mes tarifs (prix client TTC)">
                 <p className="mb-3 text-[11px] leading-relaxed text-white/40">
-                  {fixedPricing ? (
-                    <>
-                      Les tarifs de la gamme{" "}
-                      <strong className="text-white/60">{category}</strong> sont
-                      fixés par la plateforme et identiques pour tous les
-                      chauffeurs. Ils ne sont pas modifiables.
-                    </>
-                  ) : (
-                    <>
-                      Vous fixez librement vos tarifs dans la fourchette de votre
-                      gamme <strong className="text-white/60">{category}</strong>{" "}
-                      : {hourBounds.min} – {hourBounds.max} € de l&apos;heure,{" "}
-                      {dayBounds.min} – {dayBounds.max} € la journée.
-                    </>
-                  )}
+                  <strong className="text-white/60">
+                    Vous fixez vos tarifs vous-même.
+                  </strong>{" "}
+                  Nova ne les impose pas et ne les compare pas à ceux des autres
+                  chauffeurs. Ils s&apos;affichent sur votre fiche tels que vous
+                  les saisissez.
                 </p>
 
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -559,7 +541,6 @@ export function ProfileEditor() {
                     min={hourBounds.min}
                     max={hourBounds.max}
                     error={hourError}
-                    readOnly={!isRateEditable(category, "hour")}
                     onChange={setHourRate}
                   />
                   <RateInput
@@ -569,7 +550,6 @@ export function ProfileEditor() {
                     min={dayBounds.min}
                     max={dayBounds.max}
                     error={dayError}
-                    readOnly={!isRateEditable(category, "day")}
                     onChange={setDayRate}
                   />
                 </div>
@@ -887,6 +867,11 @@ export function ProfileEditor() {
 }
 
 /** Rate field with its band as `min`/`max` and an inline error. */
+/** Un tarif stocké, en valeur de champ : 0 ou absent ⇒ champ vide. */
+function rateValue(stored: number | null | undefined): string {
+  return stored && stored > 0 ? String(stored) : "";
+}
+
 function RateInput({
   label,
   suffix,
@@ -894,7 +879,6 @@ function RateInput({
   min,
   max,
   error,
-  readOnly,
   onChange,
 }: {
   label: string;
@@ -903,8 +887,6 @@ function RateInput({
   min: number;
   max: number;
   error: string | null;
-  /** Platform-set rate: shown, never editable. */
-  readOnly?: boolean;
   onChange: (v: string) => void;
 }) {
   return (
@@ -912,17 +894,13 @@ function RateInput({
       <span className="mb-1.5 block text-xs text-white/40">{label}</span>
       <div className="relative">
         <input
-          className={`input pr-16 ${error ? "border-red-400/50" : ""} ${
-            readOnly ? "cursor-not-allowed text-white/60" : ""
-          }`}
+          className={`input pr-16 ${error ? "border-red-400/50" : ""}`}
           type="number"
           inputMode="numeric"
           min={min}
           max={max}
           step={5}
           value={value}
-          readOnly={readOnly}
-          aria-readonly={readOnly}
           aria-invalid={!!error}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -930,16 +908,10 @@ function RateInput({
           {suffix}
         </span>
       </div>
+      {/* Les bornes sont des garde-fous de saisie, pas une fourchette
+          conseillée : elles n'existent que pour arrêter un zéro de trop. */}
       <span className="mt-1 flex items-center gap-1 text-[11px] text-white/30">
-        {readOnly ? (
-          <>
-            <Lock className="h-2.5 w-2.5" /> Tarif plateforme, non modifiable
-          </>
-        ) : (
-          <>
-            {min} – {max} € TTC
-          </>
-        )}
+        {min} – {max} € TTC
       </span>
       {error && (
         <span className="mt-0.5 block text-[11px] text-red-300">{error}</span>

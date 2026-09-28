@@ -131,8 +131,8 @@ export async function POST(req: NextRequest) {
 
   // Les tarifs sont ramenés dans la bande de la gamme : c'est le dernier mot
   // du serveur, quoi qu'ait envoyé le formulaire.
-  const pricePerHour = clampRate(category, "hour", Number(body.pricePerHour));
-  const pricePerDay = clampRate(category, "day", Number(body.pricePerDay));
+  const pricePerHour = clampRate("hour", Number(body.pricePerHour));
+  const pricePerDay = clampRate("day", Number(body.pricePerDay));
 
   const photos = Array.isArray(body.carPhotos)
     ? (body.carPhotos as unknown[])

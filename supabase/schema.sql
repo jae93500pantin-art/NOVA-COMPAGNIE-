@@ -836,17 +836,35 @@ update public.pricing_rules
    set commission_rate = 0.150, service_fee_rate = 0.050, updated_at = now()
  where commission_rate <> 0.150 or service_fee_rate <> 0.050;
 
--- Valeurs semées depuis lib/pricing.ts. `on conflict do nothing` : rejouer le
--- bloc ne doit pas écraser un barème ajusté en production.
+-- ⚠️ CES BORNES NE SONT PLUS UN BARÈME : ce sont les garde-fous de saisie de
+-- `RATE_LIMITS` (lib/pricing.ts), identiques pour toutes les gammes.
+--
+-- Statut d'annuaire : la plateforme n'impose aucun prix, chaque chauffeur fixe
+-- le sien. Les anciennes valeurs figeaient Business/Moto/Van à 120 €/h et
+-- 1 000 €/j (bande de largeur nulle) et encadraient les gammes premium entre
+-- 150–250 € et 1 500–3 000 €. `tests/pricingParity.test.ts` échoue désormais si
+-- une gamme redevient un prix imposé (min = max).
 insert into public.pricing_rules
   (category, min_hour, max_hour, min_day, max_day)
 values
-  ('Business',    120, 120, 1000, 1000),
-  ('Moto',        120, 120, 1000, 1000),
-  ('Van',         120, 120, 1000, 1000),
-  ('Van Luxury',  150, 250, 1500, 3000),
-  ('Luxury',      150, 250, 1500, 3000)
+  ('Business',    1, 1000, 1, 10000),
+  ('Moto',        1, 1000, 1, 10000),
+  ('Van',         1, 1000, 1, 10000),
+  ('Van Luxury',  1, 1000, 1, 10000),
+  ('Luxury',      1, 1000, 1, 10000)
 on conflict (category) do nothing;
+
+-- ⚠️ `on conflict do nothing` laisse intactes les lignes semées sous l'ancien
+-- barème : sans cette réécriture, la base continuerait de refuser tout tarif
+-- hors 120 €/h pendant que le formulaire et le serveur les acceptent. Le même
+-- piège que pour les taux ci-dessus, et il ne se voit qu'au premier chauffeur
+-- qui saisit son prix.
+update public.pricing_rules
+   set min_hour = 1, max_hour = 1000,
+       min_day  = 1, max_day  = 10000,
+       updated_at = now()
+ where (min_hour, max_hour, min_day, max_day)
+       is distinct from (1::numeric, 1000::numeric, 1::numeric, 10000::numeric);
 
 -- ── Paiements ────────────────────────────────────────────────
 /**
@@ -952,14 +970,22 @@ begin
     end if;
     v_qty  := 1;
     v_unit := round(p_transfer_fare);
+  -- ⚠️ Le tarif du chauffeur n'est plus ramené dans une bande, et **surtout**
+  -- plus remplacé par `band.min_*` quand il manque : l'ancien `coalesce`
+  -- facturait le plancher de la plateforme au nom d'un chauffeur qui n'avait
+  -- rien annoncé. Un tarif absent est une erreur, pas une valeur par défaut.
   elsif p_unit = 'day' then
     v_qty  := least(30, greatest(1, coalesce(p_quantity, 1)));
-    v_unit := least(band.max_day,
-                    greatest(band.min_day, round(coalesce(p_price_per_day, band.min_day))));
+    if coalesce(p_price_per_day, 0) <= 0 then
+      raise exception 'Tarif journalier du chauffeur absent' using errcode = 'check_violation';
+    end if;
+    v_unit := least(band.max_day, round(p_price_per_day));
   elsif p_unit = 'hour' then
     v_qty  := least(24, greatest(1, coalesce(p_quantity, 1)));
-    v_unit := least(band.max_hour,
-                    greatest(band.min_hour, round(coalesce(p_price_per_hour, band.min_hour))));
+    if coalesce(p_price_per_hour, 0) <= 0 then
+      raise exception 'Tarif horaire du chauffeur absent' using errcode = 'check_violation';
+    end if;
+    v_unit := least(band.max_hour, round(p_price_per_hour));
   else
     raise exception 'Unite de facturation inconnue : %', p_unit
       using errcode = 'check_violation';

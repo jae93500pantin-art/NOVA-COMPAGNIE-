@@ -99,14 +99,14 @@ export function applyDriverOverrides(driver: Driver): Driver {
   return {
     ...driver,
     bio: o.bio ?? driver.bio,
-    // Clamped on read too: a rate stored before a band changed must never
-    // resurface as a live price outside it.
-    pricePerHour: clampRate(
-      category,
-      "hour",
+    // Re-borné à la lecture : un tarif écrit avant un changement de garde-fou
+    // ne doit pas s'afficher au-delà. ⚠️ `??` et non `||` : un tarif effacé
+    // (0) reste 0, c'est-à-dire « non communiqué ». Avec `||`, le tarif
+    // d'origine de la fiche resurgirait après que le chauffeur l'a retiré.
+    pricePerHour: clampRate("hour",
       o.pricePerHour ?? driver.pricePerHour
     ),
-    pricePerDay: clampRate(category, "day", o.pricePerDay ?? driver.pricePerDay),
+    pricePerDay: clampRate("day", o.pricePerDay ?? driver.pricePerDay),
     available: o.available ?? driver.available,
     avatar: o.avatar || driver.avatar,
     categories,

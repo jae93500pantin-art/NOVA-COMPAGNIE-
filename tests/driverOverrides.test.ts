@@ -48,26 +48,34 @@ describe("driverOverrides — édition du profil chauffeur", () => {
     expect(merged.car.model).toBe(base.car.model);
   });
 
-  it("accepte un tarif libre dans la bande d'une gamme premium", () => {
-    // La fixture premium est en gamme Luxury : 150–250 €/h.
-    const base = getDriver(PREMIUM)!;
-    saveDriverOverrides(PREMIUM, { pricePerHour: 220 });
-    expect(applyDriverOverrides(base).pricePerHour).toBe(220);
+  it("garde le tarif du chauffeur, quelle que soit sa gamme", () => {
+    // Statut d'annuaire : aucun tarif n'est imposé. Les deux fixtures sont de
+    // gammes différentes (Business et Luxury) et reçoivent le MÊME tarif — la
+    // gamme n'a plus voix au chapitre. L'ancienne version ramenait le premier
+    // à 120 €/h imposés et bornait le second à 250 €/h.
+    for (const slug of [BUSINESS, PREMIUM]) {
+      const base = getDriver(slug)!;
+      saveDriverOverrides(slug, { pricePerHour: 400, pricePerDay: 3500 });
+      const merged = applyDriverOverrides(base);
+      expect(merged.pricePerHour, slug).toBe(400);
+      expect(merged.pricePerDay, slug).toBe(3500);
+    }
   });
 
-  it("ignore un tarif stocké hors bande, même en gamme premium", () => {
+  it("laisse un tarif effacé à zéro, sans le remplacer", () => {
+    // ⚠️ 0 se lit « non communiqué », et surtout pas « au tarif plateforme » :
+    // l'ancienne version remontait un 0 à 120 €/h. Ni le plancher d'une bande,
+    // ni le tarif d'origine de la fiche — le chauffeur a retiré son prix, la
+    // fiche cesse simplement de paraître (`isListable`, lib/driverDirectory).
     const base = getDriver(PREMIUM)!;
-    saveDriverOverrides(PREMIUM, { pricePerHour: 900 });
-    expect(applyDriverOverrides(base).pricePerHour).toBe(250); // plafond
+    saveDriverOverrides(PREMIUM, { pricePerHour: 0 });
+    expect(applyDriverOverrides(base).pricePerHour).toBe(0);
   });
 
-  it("ramène une gamme à prix fixe sur son tarif imposé", () => {
-    // La fixture standard est en gamme Business : 120 €/h imposés.
-    const base = getDriver(BUSINESS)!;
-    saveDriverOverrides(BUSINESS, { pricePerHour: 500, pricePerDay: 5000 });
-    const merged = applyDriverOverrides(base);
-    expect(merged.pricePerHour).toBe(120);
-    expect(merged.pricePerDay).toBe(1000);
+  it("plafonne une valeur aberrante au garde-fou de saisie", () => {
+    const base = getDriver(PREMIUM)!;
+    saveDriverOverrides(PREMIUM, { pricePerHour: 99999 });
+    expect(applyDriverOverrides(base).pricePerHour).toBe(1000);
   });
 
   it("isole les overrides par chauffeur", () => {

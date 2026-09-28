@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   PLATFORM_COMMISSION_RATE,
-  PRICE_BANDS,
-  bandFor,
+  RATE_LIMITS,
   boundsFor,
   clampRate,
   CLIENT_SERVICE_FEE_RATE,
@@ -11,92 +10,56 @@ import {
   commissionOn,
   driverNetOn,
   priceBreakdown,
-  isRateInBand,
-  isRateEditable,
-  hasFixedPricing,
+  isRateAcceptable,
   rateError,
 } from "@/lib/pricing";
 import { FIXTURE_DRIVERS as drivers } from "./fixtures/drivers";
 
-describe("pricing — bandes tarifaires par gamme", () => {
-  it("impose un prix unique à Business, Moto et Van", () => {
-    for (const c of ["Business", "Moto", "Van"] as const) {
-      expect(boundsFor(c, "hour"), c).toEqual({ min: 120, max: 120 });
-      expect(boundsFor(c, "day"), c).toEqual({ min: 1000, max: 1000 });
-      expect(hasFixedPricing(c), c).toBe(true);
-      expect(isRateEditable(c, "hour"), c).toBe(false);
-      expect(isRateEditable(c, "day"), c).toBe(false);
+describe("pricing — aucun tarif imposé (statut d'annuaire)", () => {
+  it("applique les mêmes garde-fous à toutes les gammes", () => {
+    expect(boundsFor("hour")).toEqual(RATE_LIMITS.hour);
+    expect(boundsFor("day")).toEqual(RATE_LIMITS.day);
+  });
+
+  it("laisse passer un tarif libre, quel qu'il soit", () => {
+    // Les trois valeurs qu'un barème par gamme refusait : sous l'ancien
+    // plancher standard, entre les deux bandes, au-dessus du plafond premium.
+    for (const rate of [90, 135, 400]) {
+      expect(isRateAcceptable("hour", rate), `${rate} €/h`).toBe(true);
+      expect(clampRate("hour", rate), `${rate} €/h`).toBe(rate);
     }
   });
 
-  it("laisse les gammes premium libres dans leurs bornes", () => {
-    for (const c of ["Luxury", "Van Luxury"] as const) {
-      expect(hasFixedPricing(c), c).toBe(false);
-      expect(isRateEditable(c, "hour"), c).toBe(true);
-      expect(isRateEditable(c, "day"), c).toBe(true);
+  it("refuse une saisie absurde sans la remplacer par un prix", () => {
+    // ⚠️ 0, et non un plancher : inventer un tarif au nom d'un chauffeur qui
+    // n'a rien annoncé est exactement ce qu'un annuaire ne fait pas.
+    expect(clampRate("hour", NaN)).toBe(0);
+    expect(clampRate("hour", -50)).toBe(0);
+    expect(clampRate("hour", 0)).toBe(0);
+    expect(isRateAcceptable("hour", NaN)).toBe(false);
+    expect(isRateAcceptable("hour", 0)).toBe(false);
+  });
+
+  it("plafonne une valeur aberrante au garde-fou", () => {
+    expect(clampRate("hour", 99999)).toBe(RATE_LIMITS.hour.max);
+    expect(clampRate("day", 999999)).toBe(RATE_LIMITS.day.max);
+  });
+
+  it("exige un tarif dans le formulaire, sans en suggérer un", () => {
+    expect(rateError("hour", NaN)).toBe("Indiquez un tarif.");
+    expect(rateError("hour", 0)).toBe("Indiquez un tarif.");
+    expect(rateError("hour", 180)).toBeNull();
+    expect(rateError("day", 1500)).toBeNull();
+  });
+
+  it("ne dit plus jamais « imposé » ni « gamme »", () => {
+    // Le message d'erreur était le seul endroit où un prix plateforme se
+    // lisait en clair. S'il y revient, c'est que la bande est revenue.
+    for (const m of [rateError("hour", 99999), rateError("day", 999999)]) {
+      expect(m).not.toBeNull();
+      expect(m).not.toContain("imposé");
+      expect(m).not.toContain("gamme");
     }
-  });
-
-  it("ramène toute saisie d'une gamme fixe au prix imposé", () => {
-    expect(clampRate("Business", "hour", 500)).toBe(120);
-    expect(clampRate("Van", "hour", 10)).toBe(120);
-    expect(clampRate("Moto", "day", 9999)).toBe(1000);
-  });
-
-  it("dit « imposé » plutôt que « fourchette » sur une gamme fixe", () => {
-    expect(rateError("Business", "hour", 300)).toContain("imposé");
-    expect(rateError("Business", "hour", 300)).toContain("120 €");
-    expect(rateError("Business", "hour", 120)).toBeNull();
-  });
-
-  it("applique la bande premium à Luxury et Van Luxury", () => {
-    for (const c of ["Luxury", "Van Luxury"] as const) {
-      expect(boundsFor(c, "hour"), c).toEqual({ min: 150, max: 250 });
-      expect(boundsFor(c, "day"), c).toEqual({ min: 1500, max: 3000 });
-    }
-  });
-
-  it("retombe sur la bande standard pour une gamme inconnue", () => {
-    expect(bandFor(undefined)).toEqual(PRICE_BANDS.Business);
-  });
-
-  it("accepte les bornes, refuse ce qui dépasse", () => {
-    expect(isRateInBand("Luxury", "hour", 150)).toBe(true);
-    expect(isRateInBand("Luxury", "hour", 250)).toBe(true);
-    expect(isRateInBand("Luxury", "hour", 149)).toBe(false);
-    expect(isRateInBand("Luxury", "hour", 251)).toBe(false);
-    expect(isRateInBand("Business", "hour", 120)).toBe(true);
-    expect(isRateInBand("Business", "hour", 119)).toBe(false);
-    expect(isRateInBand("Business", "hour", 121)).toBe(false);
-  });
-
-  it("refuse une saisie non numérique", () => {
-    expect(isRateInBand("Business", "hour", NaN)).toBe(false);
-    expect(rateError("Business", "hour", NaN)).toBe("Indiquez un tarif.");
-    expect(rateError("Business", "hour", 0)).toBe("Indiquez un tarif.");
-  });
-
-  it("nomme la fourchette dans le message d'erreur", () => {
-    expect(rateError("Luxury", "hour", 300)).toContain("150 € à 250 €");
-    expect(rateError("Luxury", "day", 900)).toContain("1500 € à 3000 €");
-    expect(rateError("Luxury", "hour", 200)).toBeNull();
-  });
-});
-
-describe("pricing — clamp (dernier rempart côté serveur)", () => {
-  it("ramène une valeur hors bande dans la bande", () => {
-    expect(clampRate("Luxury", "hour", 900)).toBe(250);
-    expect(clampRate("Luxury", "hour", 10)).toBe(150);
-    expect(clampRate("Business", "day", 5)).toBe(1000);
-  });
-
-  it("laisse une valeur valide intacte", () => {
-    expect(clampRate("Luxury", "hour", 200)).toBe(200);
-  });
-
-  it("retombe sur le minimum pour une saisie absurde", () => {
-    expect(clampRate("Business", "hour", NaN)).toBe(120);
-    expect(clampRate("Business", "hour", -50)).toBe(120);
   });
 });
 
@@ -196,19 +159,19 @@ describe("pricing — décomposition depuis le total client", () => {
 });
 
 describe("pricing — cohérence des tarifs chauffeur", () => {
-  it("place chaque tarif dans la bande de sa gamme", () => {
+  it("accepte les tarifs des fixtures sans regarder leur gamme", () => {
     for (const d of drivers) {
-      const c = d.categories[0];
-      expect(isRateInBand(c, "hour", d.pricePerHour), `${d.id} horaire`).toBe(true);
-      expect(isRateInBand(c, "day", d.pricePerDay), `${d.id} journalier`).toBe(true);
+      expect(isRateAcceptable("hour", d.pricePerHour), `${d.id} horaire`).toBe(true);
+      expect(isRateAcceptable("day", d.pricePerDay), `${d.id} journalier`).toBe(true);
     }
   });
 
-  it("n'est donc jamais modifié par le clamp serveur", () => {
+  it("n'est jamais modifié par le clamp serveur", () => {
+    // Le tarif affiché est celui que le chauffeur a saisi, à l'euro près :
+    // c'est toute la promesse d'un annuaire.
     for (const d of drivers) {
-      const c = d.categories[0];
-      expect(clampRate(c, "hour", d.pricePerHour), d.id).toBe(d.pricePerHour);
-      expect(clampRate(c, "day", d.pricePerDay), d.id).toBe(d.pricePerDay);
+      expect(clampRate("hour", d.pricePerHour), d.id).toBe(d.pricePerHour);
+      expect(clampRate("day", d.pricePerDay), d.id).toBe(d.pricePerDay);
     }
   });
 });

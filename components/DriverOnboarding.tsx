@@ -13,7 +13,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { boundsFor, hasFixedPricing, rateError } from "@/lib/pricing";
+import { rateError } from "@/lib/pricing";
 import { isValidSiren } from "@/lib/bookingVoucher";
 import type { VehicleCategory } from "@/lib/types";
 import {
@@ -108,14 +108,10 @@ export function DriverOnboarding() {
     if (isDriver) void loadDocuments();
   }, [isDriver, loadDocuments]);
 
-  // Les tarifs suivent la gamme : une classe à prix imposé n'a rien à saisir,
-  // et ses deux champs affichent la valeur unique de sa bande.
-  useEffect(() => {
-    if (hasFixedPricing(category)) {
-      setHourRate(String(boundsFor(category, "hour").min));
-      setDayRate(String(boundsFor(category, "day").min));
-    }
-  }, [category]);
+  // Les tarifs ne suivent plus la gamme : le chauffeur fixe les siens, quelle
+  // que soit la classe de son véhicule. Les deux champs partent donc vides et
+  // rien ne les préremplit — une valeur suggérée par la plateforme serait un
+  // prix conseillé, c'est-à-dire un prix.
 
   if (loading) {
     return (
@@ -138,12 +134,8 @@ export function DriverOnboarding() {
     );
   }
 
-  const hourError = hasFixedPricing(category)
-    ? null
-    : rateError(category, "hour", Number.parseFloat(hourRate));
-  const dayError = hasFixedPricing(category)
-    ? null
-    : rateError(category, "day", Number.parseFloat(dayRate));
+  const hourError = rateError("hour", Number.parseFloat(hourRate));
+  const dayError = rateError("day", Number.parseFloat(dayRate));
 
   /** Enregistre les étapes 1 et 2 sur la fiche d'annuaire. */
   const saveProfile = async (nextStep: Step) => {
@@ -164,12 +156,12 @@ export function DriverOnboarding() {
           carPlate: plate.trim().toUpperCase(),
           carYear: year,
           carColor: color.trim(),
-          pricePerHour: Number.parseFloat(hourRate) || boundsFor(category, "hour").min,
-          // Le tarif saisi par le chauffeur, et non plus le minimum de la
-          // bande : un chauffeur premium s'inscrivait à 1500 €/jour imposés et
-          // devait repasser par son profil pour corriger un tarif qu'il n'avait
-          // jamais choisi. Le serveur le reclampe de toute façon.
-          pricePerDay: Number.parseFloat(dayRate) || boundsFor(category, "day").min,
+          // Le tarif du chauffeur, ou 0 s'il n'a encore rien saisi. ⚠️ Pas de
+          // repli sur une valeur de la plateforme : 0 se lit « non communiqué »,
+          // un nombre se lirait comme son prix. Un dossier interrompu se
+          // reprend, il ne repart pas avec un tarif qu'il n'a pas choisi.
+          pricePerHour: Number.parseFloat(hourRate) || 0,
+          pricePerDay: Number.parseFloat(dayRate) || 0,
           onboardingStep: nextStep,
         }),
       });
@@ -385,36 +377,28 @@ export function DriverOnboarding() {
               </Field>
               <Field
                 label="Tarif horaire (TTC)"
-                hint={
-                  hasFixedPricing(category)
-                    ? `Imposé par la plateforme : ${boundsFor(category, "hour").min} € / h.`
-                    : `Entre ${boundsFor(category, "hour").min} et ${boundsFor(category, "hour").max} € / h.`
-                }
+                hint="Vous fixez librement vos tarifs."
                 error={hourError}
               >
                 <input
                   value={hourRate}
                   onChange={(e) => setHourRate(e.target.value)}
-                  disabled={hasFixedPricing(category)}
                   inputMode="decimal"
-                  className="input disabled:opacity-60"
+                  className="input"
+                  placeholder="180"
                 />
               </Field>
               <Field
                 label="Tarif journalier (TTC)"
-                hint={
-                  hasFixedPricing(category)
-                    ? `Imposé par la plateforme : ${boundsFor(category, "day").min} € / jour.`
-                    : `Entre ${boundsFor(category, "day").min} et ${boundsFor(category, "day").max} € / jour.`
-                }
+                hint="Vous fixez librement vos tarifs."
                 error={dayError}
               >
                 <input
                   value={dayRate}
                   onChange={(e) => setDayRate(e.target.value)}
-                  disabled={hasFixedPricing(category)}
                   inputMode="decimal"
-                  className="input disabled:opacity-60"
+                  className="input"
+                  placeholder="1500"
                 />
               </Field>
             </div>

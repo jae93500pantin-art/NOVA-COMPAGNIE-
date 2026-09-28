@@ -18,11 +18,17 @@
  * frais qu'il ne supporte pas. La marge de la plateforme est leur **somme**
  * (`platformMargin`), jamais un troisième pourcentage.
  *
- * ⚠️ Un tarif affiché reste un **prix TTC**. Les bandes ci-dessous encadrent le
- * prix chauffeur, pas le prix client : c'est ce que le chauffeur saisit.
+ * ⚠️ Un tarif affiché reste un **prix TTC** : c'est ce que le chauffeur saisit.
+ *
+ * ## ⚠️ Chaque chauffeur fixe SES tarifs — la plateforme n'en impose aucun
+ *
+ * Statut d'annuaire : imposer un prix commun ferait de Nova celle qui vend la
+ * course. Il n'y a donc plus de bandes par gamme (les classes standard étaient
+ * figées à 120 €/h et 1 000 €/j, les premium encadrées entre 150–250 € et
+ * 1 500–3 000 €), plus de `PRICE_BANDS`, plus de champ en lecture seule.
+ * `RATE_LIMITS` ne dit pas ce qu'une course vaut : il refuse une saisie
+ * absurde, et rien de plus.
  */
-
-import type { VehicleCategory } from "./types";
 
 /** Commission prélevée **sur** le prix du chauffeur (déduite de son revenu). */
 export const PLATFORM_COMMISSION_RATE = 0.15;
@@ -40,112 +46,56 @@ export function round2(value: number): number {
 
 export type RateUnit = "hour" | "day";
 
-export interface PriceBand {
-  minHour: number;
-  maxHour: number;
-  minDay: number;
-  maxDay: number;
-}
-
 /**
- * Standard classes are **not negotiable**: 120 €/h and 1000 €/day for everyone.
- * A fixed price is modelled as a band of width zero rather than a separate
- * case, so validation, clamping and the server path need no special handling —
- * `clampRate` simply has nowhere else to land.
+ * Garde-fous de saisie, **identiques pour tout le monde**. Ce ne sont pas des
+ * tarifs conseillés : un annuaire n'a pas d'avis sur le prix d'une course. Ils
+ * n'existent que pour arrêter une faute de frappe (un zéro de trop) avant
+ * qu'elle ne s'affiche publiquement.
+ *
+ * ⚠️ Les plafonds recopient les `check` de `public.drivers`
+ * (`price_per_hour <= 1000`, `price_per_day <= 10000`). Les élargir ici sans
+ * toucher au SQL ferait passer la validation côté formulaire puis **échouer
+ * l'insertion** en base, ce qui se lit comme une panne, pas comme un refus.
  */
-const STANDARD: PriceBand = {
-  minHour: 120,
-  maxHour: 120,
-  minDay: 1000,
-  maxDay: 1000,
+export const RATE_LIMITS: Record<RateUnit, { min: number; max: number }> = {
+  hour: { min: 1, max: 1000 },
+  day: { min: 1, max: 10000 },
 };
 
-/** Premium classes — the driver prices their exact model within these bounds. */
-const PREMIUM: PriceBand = {
-  minHour: 150,
-  maxHour: 250,
-  minDay: 1500,
-  maxDay: 3000,
-};
-
-export const PRICE_BANDS: Record<VehicleCategory, PriceBand> = {
-  Business: STANDARD,
-  Moto: STANDARD,
-  Van: STANDARD,
-  "Van Luxury": PREMIUM,
-  Luxury: PREMIUM,
-};
-
-export function bandFor(category: VehicleCategory | undefined): PriceBand {
-  return (category && PRICE_BANDS[category]) || STANDARD;
+/** Bornes de saisie d'une unité. Ne dépend **plus** de la gamme du véhicule. */
+export function boundsFor(unit: RateUnit): { min: number; max: number } {
+  return RATE_LIMITS[unit];
 }
 
-/** Lower/upper bound for one unit of one class. */
-export function boundsFor(
-  category: VehicleCategory | undefined,
-  unit: RateUnit
-): { min: number; max: number } {
-  const b = bandFor(category);
-  return unit === "day"
-    ? { min: b.minDay, max: b.maxDay }
-    : { min: b.minHour, max: b.maxHour };
-}
-
-/**
- * Whether the driver may set this rate at all. False for the standard classes,
- * whose band has a single allowed value.
- */
-export function isRateEditable(
-  category: VehicleCategory | undefined,
-  unit: RateUnit
-): boolean {
-  const { min, max } = boundsFor(category, unit);
-  return max > min;
-}
-
-/** True when the class is priced by the platform, not by the driver. */
-export function hasFixedPricing(category: VehicleCategory | undefined): boolean {
-  return !isRateEditable(category, "hour") && !isRateEditable(category, "day");
-}
-
-export function isRateInBand(
-  category: VehicleCategory | undefined,
-  unit: RateUnit,
-  value: number
-): boolean {
+/** Le tarif saisi est-il exploitable ? (0 ou absent = non communiqué) */
+export function isRateAcceptable(unit: RateUnit, value: number): boolean {
   if (!Number.isFinite(value)) return false;
-  const { min, max } = boundsFor(category, unit);
+  const { min, max } = boundsFor(unit);
   return value >= min && value <= max;
 }
 
 /**
- * Force a rate into its band. Used server-side: a stored rate that predates a
- * band change (or was tampered with) must still bill something legitimate.
+ * Ramène un tarif dans les garde-fous, côté serveur.
+ *
+ * ⚠️ **Il n'invente jamais un prix.** Un tarif absent, nul ou illisible rend
+ * **0**, qui se lit « non communiqué » — pas le bas d'une bande. L'ancienne
+ * version remontait un 0 à 120 €/h : un chauffeur validé sans avoir rempli son
+ * dossier était donc publié à un tarif que personne n'avait choisi, et qu'un
+ * client pouvait réserver. Inventer un prix à la place d'un professionnel est
+ * exactement ce qu'un annuaire ne fait pas.
  */
-export function clampRate(
-  category: VehicleCategory | undefined,
-  unit: RateUnit,
-  value: number
-): number {
-  const { min, max } = boundsFor(category, unit);
-  if (!Number.isFinite(value)) return min;
-  return Math.min(max, Math.max(min, Math.round(value)));
+export function clampRate(unit: RateUnit, value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(boundsFor(unit).max, Math.round(value));
 }
 
 /** French error message for the profile form, or null when the rate is fine. */
-export function rateError(
-  category: VehicleCategory | undefined,
-  unit: RateUnit,
-  value: number
-): string | null {
+export function rateError(unit: RateUnit, value: number): string | null {
   if (!Number.isFinite(value) || value <= 0) return "Indiquez un tarif.";
-  const { min, max } = boundsFor(category, unit);
+  const { min, max } = boundsFor(unit);
   if (value < min || value > max) {
     const what = unit === "day" ? "journalier" : "horaire";
-    if (min === max) {
-      return `Tarif ${what} imposé pour cette gamme : ${min} € TTC.`;
-    }
-    return `Tarif ${what} autorisé pour cette gamme : ${min} € à ${max} € TTC.`;
+    return `Tarif ${what} attendu entre ${min} € et ${max} € TTC.`;
   }
   return null;
 }

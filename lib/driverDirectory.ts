@@ -120,9 +120,29 @@ export async function listDirectory(): Promise<Driver[]> {
       // Pas de profil, pas validé, ou pas de slug : invisible. Un chauffeur
       // sans slug n'a de toute façon aucune URL ni salle de réservations.
       if (!profile || profile.status !== "approved" || !row.slug) return null;
-      return toDriver(row, profile);
+      const driver = toDriver(row, profile);
+      return isListable(driver) ? driver : null;
     })
     .filter((d): d is Driver => d !== null);
+}
+
+/**
+ * Une fiche est-elle publiable ?
+ *
+ * ⚠️ **Un tarif est obligatoire pour paraître.** Depuis que la plateforme
+ * n'impose plus aucun prix, `clampRate` ne remonte plus un tarif absent à un
+ * plancher : il rend 0. Sans ce contrôle, un chauffeur validé avant d'avoir
+ * rempli son dossier apparaîtrait donc à « 0 € / h », et l'ancienne version le
+ * publiait à 120 €/h — un prix que personne n'avait choisi. Les deux sont
+ * indéfendables sur un annuaire, dont le seul rôle est de rapporter ce que le
+ * professionnel a annoncé.
+ *
+ * Traité comme un dossier incomplet, donc : invisible jusqu'à ce que le tarif
+ * soit saisi, exactement comme un profil non validé. La validation par un
+ * administrateur ne suffit pas à publier une fiche vide.
+ */
+function isListable(driver: Driver): boolean {
+  return driver.pricePerHour > 0 || driver.pricePerDay > 0;
 }
 
 /** Un chauffeur validé par son slug, ou `null`. */
@@ -145,7 +165,8 @@ export async function getDirectoryDriver(slug: string): Promise<Driver | null> {
 
   const p = profile as ProfileRow | null;
   if (!p || p.status !== "approved") return null;
-  return toDriver(row as unknown as DriverRow, p);
+  const driver = toDriver(row as unknown as DriverRow, p);
+  return isListable(driver) ? driver : null;
 }
 
 /** Les slugs publiables — pour `generateStaticParams` et les sitemaps. */
@@ -200,8 +221,8 @@ function toDriver(row: DriverRow, profile: ProfileRow): Driver {
     available: row.available ?? false,
     schedule: readSchedule(row.schedule),
     responseTime: row.response_time ?? "≈ 5 min",
-    pricePerHour: clampRate(category, "hour", num(row.price_per_hour, 0)),
-    pricePerDay: clampRate(category, "day", num(row.price_per_day, 0)),
+    pricePerHour: clampRate("hour", num(row.price_per_hour, 0)),
+    pricePerDay: clampRate("day", num(row.price_per_day, 0)),
     pricePerKm: num(row.price_per_km, 0),
     bio: row.bio ?? "",
     badges: row.badges ?? [],

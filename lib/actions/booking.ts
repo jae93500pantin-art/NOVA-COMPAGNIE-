@@ -165,8 +165,8 @@ export async function createBooking(
     let amount;
     try {
       amount = computeAmount(
-        clampRate(category, "hour", driver.pricePerHour),
-        clampRate(category, "day", driver.pricePerDay),
+        clampRate("hour", driver.pricePerHour),
+        clampRate("day", driver.pricePerDay),
         unit,
         Number(input.quantity ?? 1),
         transferFareForDriver(driver)

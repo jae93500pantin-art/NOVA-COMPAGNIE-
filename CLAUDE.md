@@ -189,7 +189,7 @@ lib/
   auth.tsx                    AuthProvider + useAuth() — global session (demo localStorage or Supabase). setDemoSession/clearDemoSession
   demoAccounts.ts             Demo login accounts (test/test client, driver/driver → jeremy-driver)
   contacts.ts                 Client's contacted drivers + roomForDriver(id)="dm-<id>" (client↔driver chat room)
-  driverOverrides.ts          Driver self-edits (demo): bio, available, **avatar** + **car** (make/model/year/colour, typed by the driver) + **carPhotos** (uploaded, compressed to data-URLs). `applyDriverOverrides` merges, `mergeCar` handles the car (a blank field falls back to the original — never a nameless car). Price is platform-fixed (not driver-editable). The public profile is SSG, so `Gallery`, `DriverAvatar` and `DriverVehicle` re-read the overrides client-side to reflect edits without a rebuild.
+  driverOverrides.ts          Driver self-edits (demo): bio, available, **avatar** + **car** (make/model/year/colour, typed by the driver) + **carPhotos** (uploaded, compressed to data-URLs). `applyDriverOverrides` merges, `mergeCar` handles the car (a blank field falls back to the original — never a nameless car). ⚠️ Le tarif est fixé par le CHAUFFEUR (voir § Payments) : un 0 y reste un 0 — « non communiqué » — et ne repart pas sur le tarif d'origine de la fiche. The public profile is SSG, so `Gallery`, `DriverAvatar` and `DriverVehicle` re-read the overrides client-side to reflect edits without a rebuild.
   bookingVoucher.ts           Bon de réservation : numérotation stable, mentions obligatoires (missingVoucherFields), validation SIREN/SIRET (Luhn), mise en forme. Pur, testé.
   pdf/bookingVoucher.tsx      Rendu PDF du bon (@react-pdf/renderer, server-only). Refuse d'émettre un bon incomplet.
   voucherSource.ts            server-only — réunit SIREN/carte VTC/plaque/téléphone depuis 3 tables (service role). Ne contrôle AUCUNE identité : l'appelant doit l'avoir fait.
@@ -661,16 +661,48 @@ et ces contrôles se désactivent plutôt que de bloquer la démonstration.
 
 ## Payments (Stripe — branch `stripe-test`)
 
-- **Driver rates + commission** in `lib/pricing.ts` (pure, unit-tested). Rates are
-  **client prices TTC**. Standard classes (Business/Moto/Van) are **platform-fixed
-  and not editable**: 120 €/h, 1000 €/day — modelled as a zero-width band
-  (min = max) so nothing downstream needs a special case. Premium classes
-  (Luxury/Van Luxury) are typed freely by the driver between 150–250 €/h and
-  1500–3000 €/day. `hasFixedPricing`/`isRateEditable` drive the read-only state,
-  `boundsFor`/`isRateInBand`/
-  `rateError` drive the form, `clampRate` is the server's last word (also applied
-  in `applyDriverOverrides`, so a rate stored before a band change can never go
-  live). Week rates have no field: the profile shows a WhatsApp CTA to support.
+### ⚠️ Chaque chauffeur fixe SES tarifs — statut d'annuaire
+
+**Règle absolue, posée par le propriétaire le 2026-09-28** : le site ne doit
+jamais imposer un prix commun aux chauffeurs. Imposer un tarif ferait de Nova
+celle qui vend la course, pas celle qui référence des professionnels.
+
+Ce qui a donc été **retiré** de `lib/pricing.ts`, et qu'il ne faut pas
+réintroduire : `PRICE_BANDS`, `bandFor`, `PriceBand`, `isRateEditable`,
+`hasFixedPricing`, `isRateInBand`. Les classes standard (Business/Moto/Van)
+étaient figées à **120 €/h et 1 000 €/j** (bande de largeur nulle, champ en
+lecture seule) et les premium encadrées entre 150–250 € et 1 500–3 000 €.
+
+- `RATE_LIMITS` / `boundsFor(unit)` — garde-fous de saisie **identiques pour
+  tous** (1–1 000 €/h, 1–10 000 €/j). Ce ne sont pas des tarifs conseillés :
+  ils n'arrêtent qu'un zéro de trop. ⚠️ Les plafonds recopient les `check` de
+  `public.drivers` ; les élargir ici seulement ferait passer le formulaire puis
+  **échouer l'insertion**, ce qui se lit comme une panne.
+- `isRateAcceptable(unit, value)` valide, `rateError(unit, value)` parle au
+  formulaire (« Indiquez un tarif. », jamais « imposé » ni « votre gamme »).
+- ⚠️ **`clampRate(unit, value)` n'invente jamais un prix** : un tarif absent,
+  nul ou illisible rend **0**, qui se lit « non communiqué ». L'ancienne version
+  remontait un 0 au plancher de la bande — un chauffeur validé sans avoir rempli
+  son dossier était donc publié à 120 €/h, un prix que personne n'avait choisi
+  et qu'un client pouvait réserver.
+- **Corollaire : un tarif est obligatoire pour paraître.** `isListable`
+  (`lib/driverDirectory.ts`) écarte une fiche sans tarif — de la liste **et** de
+  sa page, qui répond 404 — exactement comme un profil non validé. Sinon elle
+  s'afficherait à « 0 € ». La validation par un administrateur ne suffit pas à
+  publier une fiche vide.
+- ⚠️ **Changer de gamme ne touche plus aux tarifs** dans `ProfileEditor` :
+  l'effet qui les recalait dans la bande de la nouvelle classe écrasait
+  silencieusement le prix du chauffeur.
+- Côté SQL, `pricing_rules` porte les **mêmes** garde-fous pour les cinq gammes,
+  et `calculate_booking_price()` ne substitue plus `band.min_*` à un tarif
+  manquant : elle lève. `tests/pricingParity.test.ts` échoue si une gamme
+  redevient un prix unique (min = max) des deux côtés.
+- ⚠️ **Reste à traiter** : `lib/transfer.ts` impose encore un forfait par classe
+  (Berline 100 € / Van 150 € / Première 200 €), donc un prix plateforme. Voir la
+  § Airport transfer.
+
+Rates are **client prices TTC**. Week rates have no field: the profile shows a
+WhatsApp CTA to support.
 
 ### Le barème : deux taux, deux bases (⚠️ ne pas les additionner)
 
@@ -1132,8 +1164,9 @@ de la base.
   exactement ce que la validation sert à empêcher. Ne pas « simplifier » ça.
 - `Driver.id` porte le **slug**, pas l'uuid : c'est l'identifiant que les URL,
   les réservations, le chat et les avis manipulent déjà.
-- Les tarifs sont re-clampés **à la lecture** : un tarif écrit avant un
-  changement de barème ne doit ni s'afficher ni se facturer hors bande.
+- Les tarifs sont re-bornés **à la lecture** (garde-fous de saisie, pas un
+  barème), et `isListable` écarte une fiche **sans tarif** : la plateforme
+  n'impose aucun prix et n'en invente aucun. Voir § Payments.
 - Sans clé de service, l'annuaire est vide plutôt qu'en erreur.
 
 **Le parcours d'un chauffeur** : inscription (`role=driver`, `status=pending`)

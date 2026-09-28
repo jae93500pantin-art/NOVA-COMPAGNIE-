@@ -2,35 +2,44 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  PRICE_BANDS,
+  RATE_LIMITS,
   PLATFORM_COMMISSION_RATE,
   CLIENT_SERVICE_FEE_RATE,
-  type PriceBand,
 } from "@/lib/pricing";
-import type { VehicleCategory } from "@/lib/types";
 
 /**
- * Le barème existe à deux endroits : `PRICE_BANDS` (lib/pricing.ts), qui fait
- * foi pour le montant facturé, et la table `pricing_rules` semée par
+ * Les garde-fous de saisie et les taux existent à deux endroits :
+ * `lib/pricing.ts`, qui fait foi, et la table `pricing_rules` semée par
  * supabase/schema.sql, qui sert au calcul côté base.
  *
  * Une seule des deux copies peut être juste. Ce test la compare à l'autre et
  * échoue si l'une bouge sans l'autre — c'est exactement le genre d'écart qui
  * ne se voit qu'au moment de facturer le mauvais montant.
+ *
+ * ⚠️ Depuis le passage au **statut d'annuaire**, ces bornes ne sont plus un
+ * barème : la plateforme n'impose aucun prix. Le test le vérifie dans les deux
+ * sens — mêmes bornes qu'en TypeScript, et **aucune gamme à prix unique**.
  */
+
+interface SeededBand {
+  minHour: number;
+  maxHour: number;
+  minDay: number;
+  maxDay: number;
+}
 
 const SCHEMA = readFileSync(
   resolve(__dirname, "..", "supabase", "schema.sql"),
   "utf8"
 );
 
-/** Les lignes `('Business', 120, 120, 1000, 1000),` du bloc d'amorçage. */
-function seededBands(): Record<string, PriceBand> {
+/** Les lignes `('Business', 1, 1000, 1, 10000),` du bloc d'amorçage. */
+function seededBands(): Record<string, SeededBand> {
   const insert = SCHEMA.split("insert into public.pricing_rules")[1];
   expect(insert, "bloc d'amorçage pricing_rules introuvable").toBeTruthy();
   const values = insert.split("on conflict")[0];
 
-  const rows: Record<string, PriceBand> = {};
+  const rows: Record<string, SeededBand> = {};
   const re =
     /\(\s*'([^']+)'\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)/g;
   for (const m of values.matchAll(re)) {
@@ -47,25 +56,59 @@ function seededBands(): Record<string, PriceBand> {
 describe("barème SQL ↔ barème TypeScript", () => {
   const seeded = seededBands();
 
-  it("sème exactement les mêmes gammes", () => {
-    expect(Object.keys(seeded).sort()).toEqual(Object.keys(PRICE_BANDS).sort());
+  it("sème les cinq gammes", () => {
+    expect(Object.keys(seeded).sort()).toEqual([
+      "Business",
+      "Luxury",
+      "Moto",
+      "Van",
+      "Van Luxury",
+    ]);
   });
 
-  it.each(Object.keys(PRICE_BANDS) as VehicleCategory[])(
-    "%s a les mêmes bornes des deux côtés",
-    (category) => {
-      expect(seeded[category]).toEqual(PRICE_BANDS[category]);
+  it("donne à chaque gamme les garde-fous de RATE_LIMITS", () => {
+    for (const [category, band] of Object.entries(seeded)) {
+      expect(band, category).toEqual({
+        minHour: RATE_LIMITS.hour.min,
+        maxHour: RATE_LIMITS.hour.max,
+        minDay: RATE_LIMITS.day.min,
+        maxDay: RATE_LIMITS.day.max,
+      });
     }
-  );
+  });
 
-  it("garde les classes standard à bande nulle", () => {
-    // Un tarif imposé est modélisé comme min = max. Si le SQL laissait un
-    // intervalle là où le TS n'en laisse pas, un chauffeur pourrait fixer un
-    // prix que la plateforme refuse ailleurs.
-    (["Business", "Moto", "Van"] as VehicleCategory[]).forEach((c) => {
-      expect(seeded[c].minHour).toBe(seeded[c].maxHour);
-      expect(seeded[c].minDay).toBe(seeded[c].maxDay);
-    });
+  it("⚠️ n'impose un prix à AUCUNE gamme", () => {
+    // Statut d'annuaire : un prix imposé se modélisait par min = max. Ce test
+    // échoue si une gamme y revient côté SQL — la base accepterait alors un
+    // seul tarif là où le formulaire en accepte mille, et le refus tomberait à
+    // l'insertion, sous forme de panne.
+    for (const [category, band] of Object.entries(seeded)) {
+      expect(band.maxHour, `${category} horaire`).toBeGreaterThan(band.minHour);
+      expect(band.maxDay, `${category} journalier`).toBeGreaterThan(band.minDay);
+    }
+  });
+
+  it("réécrit les bornes des lignes déjà semées", () => {
+    // `on conflict do nothing` laisse intactes les lignes créées sous
+    // l'ancien barème : sans cet `update`, la base continuerait de refuser
+    // tout tarif hors 120 €/h pendant que le site les accepte.
+    const m = SCHEMA.match(
+      /update public\.pricing_rules\s+set min_hour = ([\d.]+), max_hour = ([\d.]+),\s+min_day\s+= ([\d.]+), max_day\s+= ([\d.]+)/
+    );
+    expect(m, "réécriture des bornes introuvable").toBeTruthy();
+    expect(Number(m![1])).toBe(RATE_LIMITS.hour.min);
+    expect(Number(m![2])).toBe(RATE_LIMITS.hour.max);
+    expect(Number(m![3])).toBe(RATE_LIMITS.day.min);
+    expect(Number(m![4])).toBe(RATE_LIMITS.day.max);
+  });
+
+  it("⚠️ ne substitue plus un tarif plateforme à un tarif manquant", () => {
+    // `coalesce(p_price_per_hour, band.min_hour)` facturait le plancher de la
+    // plateforme au nom d'un chauffeur qui n'avait rien annoncé.
+    expect(SCHEMA).not.toContain("coalesce(p_price_per_hour, band.min_hour)");
+    expect(SCHEMA).not.toContain("coalesce(p_price_per_day, band.min_day)");
+    expect(SCHEMA).toMatch(/Tarif horaire du chauffeur absent/);
+    expect(SCHEMA).toMatch(/Tarif journalier du chauffeur absent/);
   });
 
   it("applique le même taux de commission par défaut", () => {

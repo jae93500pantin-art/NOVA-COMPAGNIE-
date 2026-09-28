@@ -57,8 +57,8 @@ export async function POST(req: NextRequest) {
     // Driver-set rates are re-clamped to their class band before charging.
     const category = driver.categories[0];
     amount = computeAmount(
-      clampRate(category, "hour", driver.pricePerHour),
-      clampRate(category, "day", driver.pricePerDay),
+      clampRate("hour", driver.pricePerHour),
+      clampRate("day", driver.pricePerDay),
       unit,
       Number(body.hours ?? 1),
       transferFareForDriver(driver)

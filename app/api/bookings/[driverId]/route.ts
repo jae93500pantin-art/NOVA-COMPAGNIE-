@@ -197,8 +197,8 @@ export async function POST(
     // before anything is billed — never trusted as stored.
     const category = driver.categories[0];
     amount = computeAmount(
-      clampRate(category, "hour", driver.pricePerHour),
-      clampRate(category, "day", driver.pricePerDay),
+      clampRate("hour", driver.pricePerHour),
+      clampRate("day", driver.pricePerDay),
       unit,
       Number(body.hours ?? 1),
       transferFareForDriver(driver)
