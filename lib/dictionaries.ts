@@ -164,8 +164,9 @@ const fr = {
   },
   drivers: {
     eyebrow: "Notre sélection",
-    title: "Les chauffeurs de la maison",
-    subtitle: "Chaque chauffeur est sélectionné, vérifié",
+    title: "Chauffeurs partenaires",
+    subtitle:
+      "Chez NOVA, la sécurité et la sérénité de vos déplacements sont nos priorités. Chaque chauffeur partenaire est rigoureusement sélectionné, et ses habilitations administratives (carte VTC, assurance, agréments) sont vérifiées avant toute mise en relation.",
     loading: "Chargement…",
     filters: "Affiner",
     hide: "Masquer",
@@ -729,8 +730,9 @@ const en: Dict = {
   },
   drivers: {
     eyebrow: "Our selection",
-    title: "The chauffeurs of the house",
-    subtitle: "Every chauffeur is selected, vetted",
+    title: "Partner chauffeurs",
+    subtitle:
+      "At NOVA, the safety and serenity of your journeys come first. Every partner chauffeur is rigorously selected, and their administrative credentials (VTC licence, insurance, approvals) are verified before any introduction.",
     loading: "Loading…",
     filters: "Refine",
     hide: "Hide",

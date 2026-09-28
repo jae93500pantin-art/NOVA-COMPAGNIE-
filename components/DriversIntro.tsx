@@ -10,7 +10,12 @@ export function DriversIntro() {
       <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
         {t("drivers.title")}
       </h1>
-      <p className="mt-3 max-w-xl text-white/55">{t("drivers.subtitle")}</p>
+      {/* max-w-2xl + leading-relaxed : le sous-titre est devenu un vrai
+          paragraphe (engagement de vérification des habilitations), il tombait
+          sur cinq lignes serrées dans la largeur d'origine. */}
+      <p className="mt-3 max-w-2xl text-base leading-relaxed text-white/55">
+        {t("drivers.subtitle")}
+      </p>
     </div>
   );
 }
