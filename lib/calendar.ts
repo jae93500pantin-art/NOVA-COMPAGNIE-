@@ -105,3 +105,107 @@ export function nextWeekendISO(fromISO: string): string {
   const delta = 6 - jsDay;
   return addDays(fromISO, delta);
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Créneaux : date + heure                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Ces cinq aides vivaient dans `lib/bookings.ts`, retiré avec la réservation.
+ *
+ * ⚠️ Elles ne décrivent plus un créneau RÉSERVÉ mais un créneau **recherché** :
+ * la carte d'accueil demande « quand avez-vous besoin d'un chauffeur ? » et
+ * `DriversExplorer` s'en sert pour filtrer sur le planning déclaré. Aucune de
+ * ces fonctions n'engage quoi que ce soit — d'où le renommage de
+ * `isFutureBooking` en `isFutureSlot` et de `formatWhen` en `formatSlot`.
+ */
+
+const MONTHS_FR = [
+  "janvier", "février", "mars", "avril", "mai", "juin",
+  "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+];
+const MONTHS_EN = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^\d{2}:\d{2}$/;
+
+/** Today's date as a YYYY-MM-DD string (local). Used as the date input `min`. */
+export function todayISODate(now: () => number = Date.now): string {
+  const d = new Date(now());
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Combine une date (YYYY-MM-DD) et une heure optionnelle (HH:mm) :
+ * "YYYY-MM-DDTHH:mm", "YYYY-MM-DD", ou "" sans date.
+ */
+export function composeSlot(date: string, time: string): string {
+  if (!DATE_RE.test(date)) return "";
+  return TIME_RE.test(time) ? `${date}T${time}` : date;
+}
+
+/**
+ * Le créneau choisi est-il valide et pas dans le passé ?
+ * Une date sans heure vaut jusqu'à la fin de ce jour-là.
+ */
+export function isFutureSlot(
+  date: string,
+  time: string,
+  now: () => number = Date.now
+): boolean {
+  if (!DATE_RE.test(date)) return false;
+  const hasTime = TIME_RE.test(time);
+  const chosen = new Date(`${date}T${hasTime ? time : "23:59"}:00`);
+  if (Number.isNaN(chosen.getTime())) return false;
+  return chosen.getTime() >= now();
+}
+
+/**
+ * Report à la façon d'Uber : quand l'heure choisie est déjà passée
+ * **aujourd'hui**, on garde l'heure et on avance au lendemain plutôt que de
+ * refuser. Rend la date à utiliser et si un report a eu lieu, pour que
+ * l'interface le dise. Une date future, un jour passé ou une saisie incomplète
+ * ressortent intacts — `isFutureSlot` reste le filet pour ceux-là.
+ */
+export function rollPastTimeToNextDay(
+  date: string,
+  time: string,
+  now: () => number = Date.now
+): { date: string; rolled: boolean } {
+  if (!DATE_RE.test(date) || !TIME_RE.test(time)) return { date, rolled: false };
+  if (isFutureSlot(date, time, now)) return { date, rolled: false };
+  // Seul aujourd'hui se reporte : une date passée est une erreur délibérée.
+  if (date !== todayISODate(now)) return { date, rolled: false };
+  return { date: addDays(date, 1), rolled: true };
+}
+
+/**
+ * Libellé lisible d'un créneau, localisé. Accepte l'ISO ("YYYY-MM-DD" ou
+ * "YYYY-MM-DDTHH:mm"), le vide (→ « dès que possible »), ou tout texte libre
+ * (rendu tel quel).
+ */
+export function formatSlot(when: string, lang: "fr" | "en" = "fr"): string {
+  if (!when || !when.trim()) {
+    return lang === "fr" ? "Dès que possible" : "As soon as possible";
+  }
+  const m = when.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/);
+  if (!m) return when;
+  const [, y, mo, d, hh, mm] = m;
+  const months = lang === "fr" ? MONTHS_FR : MONTHS_EN;
+  const day = parseInt(d, 10);
+  const month = months[parseInt(mo, 10) - 1] ?? mo;
+  const datePart =
+    lang === "fr" ? `${day} ${month} ${y}` : `${month} ${day}, ${y}`;
+  if (hh && mm) {
+    return lang === "fr"
+      ? `${datePart} à ${hh}:${mm}`
+      : `${datePart} at ${hh}:${mm}`;
+  }
+  return datePart;
+}

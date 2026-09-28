@@ -3,32 +3,47 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Search, MapPin } from "lucide-react";
+import { Search, MapPin, Calendar } from "lucide-react";
 import { cities } from "@/lib/cities";
+import { todayISODate } from "@/lib/calendar";
 import { useI18n } from "@/lib/i18n";
+import { DatePicker } from "./DatePicker";
 
 /**
- * Carte de recherche de l'accueil : une ville, et on va voir l'annuaire.
+ * Carte de recherche de l'accueil : une ville, un créneau, et on va voir
+ * l'annuaire.
  *
- * ⚠️ **Plus de date ni d'heure, et aucun `sessionStorage`.** Choisir un
- * créneau EST le geste de réservation — statut d'annuaire : le site ne prend
- * pas de réservation. Les clés `jw_booking_date` / `_end` / `_time` /
- * `_pickup` / `_dropoff` préremplissaient le formulaire de réservation d'une
- * fiche ; elles n'ont plus de destinataire.
+ * ## ⚠️ Le créneau est un CRITÈRE DE RECHERCHE, pas une réservation
  *
- * Ce qui reste est donc une recherche, pas un panier : elle n'engage rien et
- * ne réserve rien. Le client choisit son chauffeur dans la liste et le
- * contacte lui-même.
+ * C'est toute la différence, et elle doit rester lisible dans le code comme à
+ * l'écran. Ce qu'il fait : filtrer l'annuaire sur le **planning hebdomadaire**
+ * que les chauffeurs déclarent (`isWithinSchedule`), pour ne pas afficher
+ * quelqu'un qui ne travaille pas le dimanche matin. Ce qu'il ne fait pas :
+ * bloquer un horaire, engager un chauffeur, créer quoi que ce soit.
+ *
+ * - Le créneau voyage par l'**URL** (`?date=&time=`), pas par `sessionStorage` :
+ *   il alimente un filtre partageable, plus un formulaire de réservation. Les
+ *   clés `jw_booking_*` ont disparu avec celui-ci.
+ * - Le libellé du bouton reste « Voir les chauffeurs ». ⚠️ Ne pas le retitrer
+ *   « Réserver » : ce serait promettre exactement ce que le site ne fait pas.
+ * - L'heure est **facultative** — une date seule filtre sur le jour entier.
  */
 export function SearchBar() {
   const router = useRouter();
   const { t } = useI18n();
+  const today = todayISODate();
   const [city, setCity] = useState("paris");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const params = new URLSearchParams();
     params.set("city", city);
+    // Rien de choisi = aucun filtre. Un paramètre vide dans l'URL se lirait
+    // comme « le 1ᵉʳ janvier de l'an zéro » côté annuaire.
+    if (date) params.set("date", date);
+    if (date && time) params.set("time", time);
     router.push(`/drivers?${params.toString()}`);
   };
 
@@ -52,6 +67,20 @@ export function SearchBar() {
             </option>
           ))}
         </select>
+      </Field>
+
+      <Field icon={<Calendar className="h-4 w-4 text-royal-400" />} label={t("search.date")}>
+        <DatePicker
+          date={date}
+          time={time}
+          min={today}
+          variant="search"
+          showTime
+          onChange={(d, tm) => {
+            setDate(d);
+            setTime(tm);
+          }}
+        />
       </Field>
 
       <button

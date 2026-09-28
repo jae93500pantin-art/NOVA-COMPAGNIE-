@@ -16,9 +16,12 @@ import {
   driverHasTransferVehicle,
   getVehicle,
 } from "@/lib/transfer";
+import { isWithinSchedule } from "@/lib/schedule";
+import { composeSlot, formatSlot } from "@/lib/calendar";
 import {
   applyDriverOverrides,
   DRIVER_OVERRIDES_EVENT,
+  scheduleOf,
 } from "@/lib/driverOverrides";
 import { whatsappUrl } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
@@ -41,7 +44,7 @@ const categories: (VehicleCategory | "Tous")[] = [
  */
 export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
   const params = useSearchParams();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [city, setCity] = useState(params.get("city") ?? "all");
   const [category, setCategory] = useState<string>(
     params.get("category") ?? "Tous"
@@ -55,6 +58,15 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
   const [vehicle, setVehicle] = useState(
     getVehicle(urlVehicle) ? urlVehicle : ""
   );
+  /**
+   * Creneau recherche, depuis la carte d'accueil (?date=&time=).
+   *
+   * ⚠️ C'est un FILTRE, pas une reservation : il ne retient que les chauffeurs
+   * dont le planning declare couvre ce moment. Rien n'est bloque ni engage.
+   * L'heure est facultative — une date seule ne demande que le jour ouvert.
+   */
+  const [slotDate, setSlotDate] = useState(params.get("date") ?? "");
+  const [slotTime, setSlotTime] = useState(params.get("time") ?? "");
   const [query, setQuery] = useState("");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   // ⚠️ Plus de filtre « note minimum » ni de tri par note : il n y a plus de
@@ -97,6 +109,12 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
       if (!driverServesTransferDestination(d, transfer)) return false;
       if (!driverHasTransferVehicle(d, vehicle)) return false;
       if (onlyAvailable && !d.available) return false;
+      // ⚠️ `scheduleOf` retombe sur DEFAULT_SCHEDULE (aucune contrainte) pour un
+      // chauffeur qui n'a rien declare : il reste donc visible sur tous les
+      // creneaux. C'est voulu — l'absence de planning n'est pas une
+      // indisponibilite, et exclure ces profils viderait l'annuaire.
+      if (slotDate && !isWithinSchedule(scheduleOf(d), slotDate, slotTime))
+        return false;
       if (query) {
         const q = query.toLowerCase();
         const hay =
@@ -106,11 +124,11 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
       return true;
     });
     list = [...list].sort((a, b) => {
-      // Hors ligne ne veut pas dire indisponible : toutes les courses Nova
-      // sont planifiées, et c'est le PLANNING qui décide d'une réservation à
-      // venir. On ne cache donc pas ces profils — on les fait passer après
-      // ceux qui peuvent répondre tout de suite. (Le filtre « Disponibles
-      // uniquement » reste là pour qui ne veut vraiment qu'eux.)
+      // Hors ligne ne veut pas dire injoignable : l'interrupteur ne parle que
+      // de maintenant, alors qu'on peut convenir d'une course pour plus tard.
+      // On ne cache donc pas ces profils — on les fait passer après ceux qui
+      // repondent tout de suite. (Le filtre « Disponibles uniquement » reste
+      // là pour qui ne veut vraiment qu'eux.)
       if (a.available !== b.available) return a.available ? -1 : 1;
       if (sort === "experience") return b.experienceYears - a.experienceYears;
       // Le tri porte sur le TARIF CHAUFFEUR affiche sur la carte. Trier sur le
@@ -121,7 +139,18 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
       return 0;
     });
     return list;
-  }, [pool, city, category, transfer, vehicle, query, onlyAvailable, sort]);
+  }, [
+    pool,
+    city,
+    category,
+    transfer,
+    vehicle,
+    query,
+    onlyAvailable,
+    slotDate,
+    slotTime,
+    sort,
+  ]);
 
   return (
     <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
@@ -207,6 +236,30 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
             })}
           </select>
         </div>
+
+        {/* Creneau recherche, seulement quand il vient de l'accueil. Meme regle
+            que pour la classe : un filtre invisible est un filtre que le
+            visiteur ne peut pas defaire. */}
+        {slotDate && (
+          <div>
+            <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
+              {t("drivers.slotFilter")}
+            </p>
+            <button
+              onClick={() => {
+                setSlotDate("");
+                setSlotTime("");
+              }}
+              className="flex w-full items-center justify-between rounded-xl border border-royal-400/50 bg-royal-500/20 px-3 py-2 text-sm text-white transition hover:bg-royal-500/30"
+            >
+              <span>{formatSlot(composeSlot(slotDate, slotTime), lang)}</span>
+              <X className="h-3.5 w-3.5 text-white/60" />
+            </button>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-white/35">
+              {t("drivers.slotNote")}
+            </p>
+          </div>
+        )}
 
         {/* Vehicle class, only when carried over from the transfer estimate —
             an invisible filter is a filter the visitor cannot undo. */}

@@ -137,7 +137,8 @@ components/                   All client components unless noted
   LanguageSwitcher            FR/EN dropdown (globe icon). Persists choice; default = browser language.
   Footer, SectionHeader, Reveal (anim wrapper)
   Hero                        Uber-inspired homepage hero: tagline ("Trouvez votre chauffeur" / "Find your driver") + Uber-style booking card on the left, Globe focal point on the right. Left scrim keeps text legible. Below: 3 FICTIONAL client testimonials (about the SITE/reliability, not drivers). No big title/subtitle, no stats row.
-  SearchBar                   Carte de recherche de l'accueil : Ville + CTA → /drivers. ⚠️ Plus de date, plus d'heure, plus aucun `sessionStorage` : choisir un créneau est le geste de réservation. C'est une recherche, pas un panier.
+  SearchBar                   Carte de recherche de l'accueil : Ville + Date et heure (`DatePicker`) + CTA → /drivers?city=&date=&time=. ⚠️ Le créneau est un CRITÈRE DE RECHERCHE, pas une réservation : il filtre sur le planning déclaré, il ne bloque rien. Il voyage par l'URL (filtre partageable), plus par `sessionStorage`. Le bouton reste « Voir les chauffeurs » — ne pas le retitrer « Réserver ».
+  DatePicker                  Sélecteur date + heure premium (popover glass par portail) : chips rapides (aujourd'hui / demain / ce week-end), calendrier lundi-first, chips d'heures, navigation clavier, bascule vers le haut quand l'écran manque, `prefers-reduced-motion`, i18n. Logique pure dans lib/calendar.ts. ⚠️ Ne rend jamais un créneau passé (`rollPastTimeToNextDay` reporte au lendemain, une heure passée sur une autre date est effacée) — les deux cas sont expliqués par une note. ⚠️ Son `mode="range"` n'a plus d'appelant depuis que la recherche porte sur un seul créneau.
   Globe                       Animated WebGL globe (cobe) — Google-Earth "blue marble" hero backdrop, slow auto-rotation. NOTE: pin cobe to 0.6.3; v2 has a WebGL regression that renders only markers (no sphere).
   InteractiveMap              Stylised fallback map (no token needed)
   MapboxMap                   Real Mapbox map (token required)
@@ -159,6 +160,7 @@ lib/
   identity.ts                 Pure helpers normalising provider metadata (Google given_name/family_name/name/picture → firstName/lastName/avatarUrl). Unit-tested.
   i18n.tsx                    I18nProvider + useI18n() — bilingual FR/EN. Default = browser lang, persisted in localStorage `lumecar_lang`. t("a.b") with FR fallback.
   dictionaries.ts             FR + EN translation dictionaries (typed; EN must match FR shape).
+  calendar.ts                 Aides de calendrier pures (monthGrid, shiftMonth, isBefore, addDays, nextWeekendISO) **et de créneau** (todayISODate, composeSlot, isFutureSlot, rollPastTimeToNextDay, formatSlot). ⚠️ Ces cinq dernières viennent de `lib/bookings.ts` : renommées depuis `isFutureBooking` / `formatWhen`, parce qu'elles décrivent un créneau RECHERCHÉ, pas réservé. Testées (35).
   motion.ts                   Shared Apple-grade motion tokens (ease [0.22,1,0.36,1], springSoft/Snappy, reveal, popover, stagger).
   schedule.ts                 Weekly availability planning (pure): DaySchedule/WeeklySchedule (7 entries, Monday-first), DEFAULT_SCHEDULE (= no constraint, so an unconfigured driver behaves as before), PRESET_WEEKDAYS (Mon–Fri 07:00–19:00), isWithinSchedule/isDayOpen/dayScheduleFor, sanitizeSchedule (repairs bad times and an end before its start). Unit-tested.
   transfer.ts                 Aéroports parisiens, zones desservies, classes de véhicule, et `transferDestinations` = trajets DIRECTIONNELS (`{id, from, to}`) : 3 Paris→aéroport, 3 aéroport→Paris, plus le fourre-tout historique `paris`. Les chauffeurs adhèrent par UN interrupteur global (`ProfileEditor`), donc une fiche porte tous les trajets ou aucun — `acceptsAirportTransfers` / `transferDestinationsForOptIn` / `ALL_TRANSFER_DESTINATION_IDS` font la conversion. Stocké en `text[]` pour que `transfer_destinations @> array['cdg']` et son index GIN répondent sans migration. ⚠️ AUCUN PRIX : plus de forfait par classe, plus de `estimateTransfer`, plus de `transferFareForDriver`, plus de `baseFare`. `transferVehicleForCategories` ne sert plus qu'à CLASSER un chauffeur.
@@ -215,7 +217,7 @@ Environ **12 000 lignes**, dont l'essentiel de la logique métier d'alors.
 | Messagerie de course | `lib/chat`, `chatBroker`, `chatMasking`, `chatQuickReplies`, `useBookingChat`, `BookingChat`, `/api/chat/[bookingId]` |
 | Avis certifiés | `lib/reviews`, `reviewBroker`, `/api/reviews/[driverId]`, `ReviewForm`, `Reviews`, `StarRating` |
 | Bon de réservation | `lib/bookingVoucher`, `lib/pdf/bookingVoucher`, `lib/voucherSource`, `/api/booking/[id]/pdf`, la dépendance `@react-pdf/renderer` |
-| Créneaux | `DatePicker`, les clés `sessionStorage` `jw_booking_*`, la date/heure de la carte d'accueil et de la page transfert |
+| Créneaux | les clés `sessionStorage` `jw_booking_*`, et la date/heure de la **page transfert**. ⚠️ `DatePicker` et la date/heure de la carte d'accueil ont été **remis** le 2026-09-28, comme CRITÈRE DE RECHERCHE — voir § Disponibilité |
 | Adresses | `AddressAutocomplete`, `lib/places`, `/api/places` — orphelins dès que les champs d'adresse ont disparu. Une route publique que rien n'appelle reste une surface d'attaque |
 | Persistance | `lib/persistence`, `lib/dbRows` (les tables `bookings` / `messages` / `reviews` n'ont plus d'écrivain) |
 
@@ -398,9 +400,17 @@ Pour le réactiver un jour : recréer un bouton appelant
   indicatif. ⚠️ Un planning « tous les jours 00:00–23:59 » **est** le défaut
   d'un chauffeur qui n'a rien renseigné : l'afficher comme une disponibilité
   déclarée serait une information inventée, d'où le test `hasRealSchedule`.
-- ⚠️ **Plus rien ne conditionne un créneau** : le planning ne gouverne plus une
-  réservation, puisqu'il n'y en a plus. `isWithinSchedule` reste dans le module
-  pur, sans appelant côté interface.
+- **Le planning est ce que filtre la recherche.** `DriversExplorer` lit
+  `?date=&time=` (posés par la carte d'accueil) et écarte, via
+  `isWithinSchedule(scheduleOf(d), date, time)`, les chauffeurs qui ne
+  travaillent pas à ce moment-là. C'est le seul usage « actif » du planning
+  depuis le retrait de la réservation — et il n'engage rien.
+  ⚠️ **`scheduleOf` retombe sur `DEFAULT_SCHEDULE` (aucune contrainte)** pour un
+  chauffeur qui n'a rien déclaré : il reste donc visible sur tous les créneaux.
+  C'est voulu — l'absence de planning n'est pas une indisponibilité, et exclure
+  ces profils viderait l'annuaire. La note sous le filtre le dit au visiteur.
+- ⚠️ Le créneau apparaît comme une **puce effaçable** dans les filtres : un
+  filtre venu de l'URL que le visiteur ne peut pas défaire est un piège.
 - ⚠️ **L'état « En course » a disparu.** Il se déduisait d'une course payée dont
   la fenêtre contenait l'instant présent — il n'y a plus de course. Ne pas le
   remplacer par un drapeau que le chauffeur doit basculer à la main : c'est

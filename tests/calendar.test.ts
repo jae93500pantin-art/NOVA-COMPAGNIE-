@@ -9,6 +9,11 @@ import {
   isBefore,
   addDays,
   nextWeekendISO,
+  todayISODate,
+  composeSlot,
+  isFutureSlot,
+  rollPastTimeToNextDay,
+  formatSlot,
 } from "@/lib/calendar";
 
 describe("calendar — toISO / parseISO", () => {
@@ -106,5 +111,116 @@ describe("calendar — nextWeekendISO", () => {
   it("renvoie le jour même si déjà le week-end", () => {
     expect(nextWeekendISO("2026-07-04")).toBe("2026-07-04"); // samedi
     expect(nextWeekendISO("2026-07-05")).toBe("2026-07-05"); // dimanche
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/*  Créneaux : date + heure                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** Horloge figée : mercredi 8 juillet 2026, 14:30 locales. */
+const NOW = () => new Date(2026, 6, 8, 14, 30, 0).getTime();
+
+describe("calendar — todayISODate", () => {
+  it("rend la date locale au format ISO court", () => {
+    expect(todayISODate(NOW)).toBe("2026-07-08");
+  });
+});
+
+describe("calendar — composeSlot", () => {
+  it("assemble date et heure", () => {
+    expect(composeSlot("2026-07-08", "14:00")).toBe("2026-07-08T14:00");
+  });
+
+  it("rend la date seule sans heure valide", () => {
+    expect(composeSlot("2026-07-08", "")).toBe("2026-07-08");
+    expect(composeSlot("2026-07-08", "nope")).toBe("2026-07-08");
+  });
+
+  it("rend vide sans date valide", () => {
+    expect(composeSlot("", "14:00")).toBe("");
+    expect(composeSlot("08/07/2026", "14:00")).toBe("");
+  });
+});
+
+describe("calendar — isFutureSlot", () => {
+  it("accepte un créneau à venir", () => {
+    expect(isFutureSlot("2026-07-08", "18:00", NOW)).toBe(true);
+    expect(isFutureSlot("2026-12-01", "08:00", NOW)).toBe(true);
+  });
+
+  it("refuse une heure déjà passée aujourd'hui", () => {
+    expect(isFutureSlot("2026-07-08", "09:00", NOW)).toBe(false);
+  });
+
+  it("accepte aujourd'hui SANS heure — le jour entier compte", () => {
+    // Une date sans heure vaut jusqu'à 23:59 : sinon chercher « aujourd'hui »
+    // deviendrait impossible passé midi.
+    expect(isFutureSlot("2026-07-08", "", NOW)).toBe(true);
+  });
+
+  it("refuse une date passée et une saisie illisible", () => {
+    expect(isFutureSlot("2026-07-07", "23:00", NOW)).toBe(false);
+    expect(isFutureSlot("", "14:00", NOW)).toBe(false);
+  });
+});
+
+describe("calendar — rollPastTimeToNextDay", () => {
+  it("reporte au lendemain une heure passée aujourd'hui", () => {
+    expect(rollPastTimeToNextDay("2026-07-08", "09:00", NOW)).toEqual({
+      date: "2026-07-09",
+      rolled: true,
+    });
+  });
+
+  it("ne touche pas une heure encore à venir", () => {
+    expect(rollPastTimeToNextDay("2026-07-08", "18:00", NOW)).toEqual({
+      date: "2026-07-08",
+      rolled: false,
+    });
+  });
+
+  it("⚠️ ne reporte PAS une date déjà passée", () => {
+    // Seul aujourd'hui roule. Une date passée est une erreur délibérée, que
+    // `isFutureSlot` refuse — la corriger en silence masquerait la faute.
+    expect(rollPastTimeToNextDay("2026-07-01", "09:00", NOW)).toEqual({
+      date: "2026-07-01",
+      rolled: false,
+    });
+  });
+
+  it("laisse intacte une saisie incomplète", () => {
+    expect(rollPastTimeToNextDay("2026-07-08", "", NOW)).toEqual({
+      date: "2026-07-08",
+      rolled: false,
+    });
+  });
+});
+
+describe("calendar — formatSlot", () => {
+  it("met en forme une date et une heure, dans les deux langues", () => {
+    expect(formatSlot("2026-07-08T14:00", "fr")).toBe("8 juillet 2026 à 14:00");
+    expect(formatSlot("2026-07-08T14:00", "en")).toBe("July 8, 2026 at 14:00");
+  });
+
+  it("met en forme une date seule", () => {
+    expect(formatSlot("2026-07-08", "fr")).toBe("8 juillet 2026");
+  });
+
+  it("rend « dès que possible » pour un créneau vide", () => {
+    expect(formatSlot("", "fr")).toBe("Dès que possible");
+    expect(formatSlot("   ", "en")).toBe("As soon as possible");
+  });
+
+  it("⚠️ ne construit jamais un Date — pas de décalage de fuseau", () => {
+    // La chaîne est découpée, jamais parsée : un créneau local passé par un
+    // `new Date()` serait rattaché au fuseau du serveur et s'afficherait
+    // décalé d'une heure.
+    expect(formatSlot("2026-01-01T00:30", "fr")).toBe("1 janvier 2026 à 00:30");
+    expect(formatSlot("2026-12-31T23:45", "fr")).toBe("31 décembre 2026 à 23:45");
+  });
+
+  it("rend tel quel un texte libre hérité", () => {
+    expect(formatSlot("demain matin", "fr")).toBe("demain matin");
   });
 });
