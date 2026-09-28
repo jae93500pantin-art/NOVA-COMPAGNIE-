@@ -16,6 +16,25 @@
 --    scripts/compose-schema.ps1 et appliqués par scripts/apply-schema.ps1.
 --    Ce fichier reste la source de vérité du CONTENU : toute modification se
 --    fait ici, puis on relance compose-schema.ps1.
+--
+-- ⚠️ STATUT D'ANNUAIRE (2026-09-28) — DES PANS ENTIERS DE CE FICHIER SONT
+--    OBSOLÈTES. Le site ne prend plus de réservation et n'encaisse plus les
+--    courses. Le code correspondant a été retiré du dépôt ; les objets SQL,
+--    eux, sont encore décrits ci-dessous. Sont concernés :
+--
+--      • `bookings`, `messages`, `reviews` (bloc 4) ;
+--      • `payments`, `pricing_rules` et `calculate_booking_price()` (bloc 5) ;
+--      • la messagerie de course : masquage, accusés, délai de grâce (bloc 9) ;
+--      • `refresh_driver_rating()` et les colonnes `drivers.rating` /
+--        `reviews_count` / `trips` ;
+--      • les enums `booking_status` et `payment_status`.
+--
+--    ⚠️ Ne pas les rejouer sur une base neuve en croyant installer le produit
+--    actuel : rien dans l'application ne les lit ni ne les écrit plus.
+--    Le retrait est écrit dans
+--    supabase/migrations/2026-09-28-annuaire-retire-reservation.sql,
+--    volontairement HORS du chemin de compose/apply — il contient des
+--    `drop table`, et cela se relit avant de se lancer.
 -- ─────────────────────────────────────────────────────────────
 
 -- Extensions

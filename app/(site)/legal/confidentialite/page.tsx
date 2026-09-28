@@ -14,7 +14,7 @@ export default function PrivacyPage() {
 
       <h2>1. Responsable du traitement</h2>
       <p>
-        Le responsable du traitement est Nova Compagnie (prototype de démonstration).
+        Le responsable du traitement est Nova Compagnie.
         Pour toute question relative à vos données, contactez notre délégué à la
         protection des données :{" "}
         <a href="mailto:contact@novacompagnie.com">contact@novacompagnie.com</a>.
@@ -44,8 +44,10 @@ export default function PrivacyPage() {
       <h2>3. Bases légales</h2>
       <ul>
         <li>
-          <strong>Exécution du contrat</strong> — gestion de votre compte et des
-          réservations.
+          <strong>Exécution du contrat</strong> — gestion de votre compte et, pour
+          un chauffeur, de son référencement dans l’annuaire. La plateforme ne
+          prenant aucune réservation, elle ne conserve aucun historique de
+          course.
         </li>
         <li>
           <strong>Consentement</strong> — cookies de mesure d’audience,
@@ -55,8 +57,8 @@ export default function PrivacyPage() {
           <strong>Intérêt légitime</strong> — sécurité, prévention de la fraude.
         </li>
         <li>
-          <strong>Obligation légale</strong> — conservation de certaines données
-          de facturation.
+          <strong>Obligation légale</strong> — conservation des pièces
+          justificatives d’un chauffeur référencé, le temps du référencement.
         </li>
       </ul>
 

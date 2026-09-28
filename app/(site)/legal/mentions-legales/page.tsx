@@ -24,10 +24,11 @@ export default function LegalNoticePage() {
 
       <h2>Nature de l’activité</h2>
       <p>
-        Nova Compagnie est une plateforme de <strong>mise en relation</strong>{" "}
-        entre des clients et des chauffeurs de transport avec chauffeur (VTC)
-        indépendants. Les prestations réservées et facturées sur ce site sont
-        exclusivement des prestations de transport de personnes.
+        Nova Compagnie est un <strong>annuaire</strong> de chauffeurs de
+        transport avec chauffeur (VTC) indépendants. Le site ne prend aucune
+        réservation, n’organise aucun transport et n’encaisse aucune somme au
+        titre des courses : la prestation, son prix et sa facturation relèvent du
+        chauffeur, seul contractant du client.
       </p>
       <p>
         Nova Compagnie <strong>n’exerce ni ne commercialise aucune activité de
