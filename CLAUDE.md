@@ -108,7 +108,7 @@ app/
     drivers/page.tsx          Listing + filters (Suspense → DriversExplorer)
     drivers/[id]/page.tsx     Driver profile (SSG via generateStaticParams): gallery, facts, reviews, booking
     transfert-aeroport/page.tsx  Airport-transfer / private-chauffeur landing: hero + trust badges, features, instant price estimate, pickup-zones map
-    vol-prive/page.tsx      Vol privé : page « bientôt disponible » + liste d'attente (clé i18n `jet.*`), liée depuis la Navbar. ⚠️ L'inscription est SIMULÉE — aucun backend ne recueille l'adresse, elle est perdue à la soumission.
+    vol-prive/page.tsx      Vol privé : page « bientôt disponible » + liste d'attente (clé i18n `jet.*`). ⚠️ **Plus aucun lien n'y mène** — retirée de la Navbar, elle ne répond qu'à l'URL directe. Le fichier et les clés `nav.privateJet` sont conservés (restaurer = une ligne dans `links`). ⚠️ L'inscription est SIMULÉE — aucun backend ne recueille l'adresse, elle est perdue à la soumission.
     contact/page.tsx          Contact page (SectionHeader + ContactForm): info panel + professional contact form
     compte/page.tsx           Personal dashboard (AccountDashboard) — client & driver views; redirects to login if no session
     legal/layout.tsx          Legal shell with sidebar nav
@@ -131,7 +131,7 @@ app/
     booking/[id]/pdf/route.ts     GET → bon de réservation préalable en PDF. Parties seules, courses payées, refuse (409) si une mention obligatoire manque.
 
 components/                   All client components unless noted
-  Navbar                      Front bar = logo (Nova Compagnie) + "Réservation" (→ /drivers) + "Transfert Aéroport" + "Vol privé" + "Contact" links + CitySwitcher + LanguageSwitcher + account dropdown/login. Account dropdown has a **WhatsApp contact** link (messaging feature removed).
+  Navbar                      Front bar = logo (Nova Compagnie) + "Annuaire" (→ /drivers, clé `nav.booking`) + "Transfert Aéroport" + "Contact" links + CitySwitcher + LanguageSwitcher + account dropdown/login. Account dropdown has a **WhatsApp contact** link (messaging feature removed).
   CitySwitcher                City dropdown (front bar, next to LanguageSwitcher) — cities from lib/cities.ts (Paris only for now); selecting routes to /drivers?city=<id>, persisted in localStorage `nova_city`.
   LanguageSwitcher            FR/EN dropdown (globe icon). Persists choice; default = browser language.
   Footer, SectionHeader, Reveal (anim wrapper)
@@ -808,12 +808,19 @@ personnes ont besoin du contraire.
   Sans ça, taper vite fait remonter les suggestions d'un préfixe précédent.
 - ⚠️ `onMouseDown` et non `onClick` sur une suggestion : le blur du champ
   fermerait la liste avant que le clic n'arrive.
-- **Ce que ça débloque** : `SearchBar` collecte enfin départ/arrivée **et
-  l'heure**, transmis par `sessionStorage` (`jw_booking_pickup` /
-  `jw_booking_dropoff`) à `BookingWidget`, qui les envoie sur la réservation.
-  Les courses ne partent donc plus avec les libellés par défaut de
-  `buildBooking` — c'est précisément ce qui empêchait le **bon de réservation**
-  d'être émis (voir § Bon de réservation).
+- **Où les adresses se saisissent** : dans `BookingWidget` uniquement, sur la
+  fiche du chauffeur, au moment de réserver. C'est ce qui permet au **bon de
+  réservation** d'être émis — sans elles, `buildBooking` retombe sur ses
+  libellés par défaut, que `missingVoucherFields` compte comme manquants (voir
+  § Bon de réservation).
+  ⚠️ **`SearchBar` ne les demande plus** (retirées de la carte d'accueil à la
+  demande du propriétaire). Elle n'écrit donc plus `jw_booking_pickup` /
+  `jw_booking_dropoff` mais les **efface** à la soumission : un onglet ouvert
+  avant ce changement en garde une valeur en `sessionStorage`, qui
+  préremplirait la course d'une adresse que le client n'a jamais tapée.
+  Plus rien ne les écrit désormais : la lecture que `BookingWidget` en fait est
+  un préremplissage devenu sans source, gardé pour le jour où un formulaire
+  amont les reposera.
 
 ## Une seule prestation : la course VTC (et la qualification CNAPS)
 

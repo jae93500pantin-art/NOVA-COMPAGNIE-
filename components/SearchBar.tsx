@@ -3,12 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Search, MapPin, Calendar, Navigation, Flag } from "lucide-react";
+import { Search, MapPin, Calendar } from "lucide-react";
 import { cities } from "@/lib/cities";
 import { todayISODate } from "@/lib/bookings";
 import { useI18n } from "@/lib/i18n";
 import { DatePicker } from "./DatePicker";
-import { AddressAutocomplete } from "./AddressAutocomplete";
 
 export function SearchBar() {
   const router = useRouter();
@@ -18,8 +17,6 @@ export function SearchBar() {
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [time, setTime] = useState("");
-  const [pickup, setPickup] = useState("");
-  const [dropoff, setDropoff] = useState("");
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,13 +31,12 @@ export function SearchBar() {
       // créneau laissé par le formulaire de transfert.
       if (time) sessionStorage.setItem("jw_booking_time", time);
       else sessionStorage.removeItem("jw_booking_time");
-      // Les adresses voyagent par sessionStorage comme la date : le widget de
-      // reservation les reprend, et la course part enfin avec un vrai trajet
-      // au lieu des libelles par defaut de buildBooking.
-      if (pickup.trim()) sessionStorage.setItem("jw_booking_pickup", pickup.trim());
-      else sessionStorage.removeItem("jw_booking_pickup");
-      if (dropoff.trim()) sessionStorage.setItem("jw_booking_dropoff", dropoff.trim());
-      else sessionStorage.removeItem("jw_booking_dropoff");
+      // Les adresses ne sont plus demandées ici : elles se saisissent sur la
+      // fiche du chauffeur, au moment de réserver (`BookingWidget`). On efface
+      // les clés au passage — un onglet ouvert avant ce changement en garde une
+      // valeur, qui préremplirait la course d'une adresse jamais tapée.
+      sessionStorage.removeItem("jw_booking_pickup");
+      sessionStorage.removeItem("jw_booking_dropoff");
     } catch {
       /* ignore */
     }
@@ -69,30 +65,6 @@ export function SearchBar() {
             </option>
           ))}
         </select>
-      </Field>
-
-      <Field
-        icon={<Navigation className="h-4 w-4 text-royal-400" />}
-        label={t("search.pickup")}
-      >
-        <AddressAutocomplete
-          value={pickup}
-          onChange={setPickup}
-          placeholder={t("search.pickupPlaceholder")}
-          ariaLabel={t("search.pickup")}
-        />
-      </Field>
-
-      <Field
-        icon={<Flag className="h-4 w-4 text-royal-400" />}
-        label={t("search.dropoff")}
-      >
-        <AddressAutocomplete
-          value={dropoff}
-          onChange={setDropoff}
-          placeholder={t("search.dropoffPlaceholder")}
-          ariaLabel={t("search.dropoff")}
-        />
       </Field>
 
       <Field icon={<Calendar className="h-4 w-4 text-royal-400" />} label={t("search.date")}>

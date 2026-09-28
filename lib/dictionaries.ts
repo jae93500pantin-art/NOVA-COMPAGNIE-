@@ -6,7 +6,7 @@ const fr = {
   nav: {
     drivers: "Chauffeurs",
     cities: "Villes",
-    booking: "Réservation",
+    booking: "Annuaire",
     transfer: "Transfert Aéroport",
     privateJet: "Vol privé",
     contact: "Contact",
@@ -40,7 +40,7 @@ const fr = {
   },
   hero: {
     eyebrow: "Chauffeurs privés d'exception",
-    tagline: "Votre chauffeur, à l'heure",
+    tagline: "Trouvez votre chauffeur",
     title1: "Allez où vous voulez,",
     title2: "en première classe.",
     subtitle:
@@ -585,7 +585,7 @@ const en: Dict = {
   nav: {
     drivers: "Drivers",
     cities: "Cities",
-    booking: "Booking",
+    booking: "Directory",
     transfer: "Airport Transfer",
     privateJet: "Private jet",
     contact: "Contact",
@@ -610,7 +610,7 @@ const en: Dict = {
   },
   hero: {
     eyebrow: "Exceptional private chauffeurs",
-    tagline: "Your chauffeur, on time",
+    tagline: "Find your driver",
     title1: "Go wherever you want,",
     title2: "in first class.",
     subtitle:

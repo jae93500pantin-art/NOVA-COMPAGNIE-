@@ -40,7 +40,6 @@ export function Navbar() {
   const links: { href: string; label: string; cta?: boolean }[] = [
     { href: "/drivers", label: t("nav.booking") },
     { href: "/transfert-aeroport", label: t("nav.transfer") },
-    { href: "/vol-prive", label: t("nav.privateJet") },
     { href: "/contact", label: t("nav.contact") },
   ];
 
