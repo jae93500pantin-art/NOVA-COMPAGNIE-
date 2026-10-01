@@ -34,6 +34,14 @@ export const SIGNED_URL_TTL_SECONDS = 300;
 
 export const DOCUMENTS_BUCKET = "driver-docs";
 
+/**
+ * Colonnes ajoutées par la migration du 2026-09-29. Séparées du reste pour
+ * pouvoir replier dessus : avant qu'elle ne soit jouée, elles n'existent pas.
+ */
+const REVIEW_COLUMNS = "checked_ok, expires_at, checked_at";
+const BASE_COLUMNS =
+  "id, kind, storage_path, mime_type, size_bytes, status, review_note, created_at";
+
 export interface AdminDocument {
   id: string;
   kind: DriverDocumentKind;
@@ -58,9 +66,9 @@ interface DocumentRow {
   size_bytes: number | null;
   status: string;
   review_note: string | null;
-  checked_ok: boolean | null;
-  expires_at: string | null;
-  checked_at: string | null;
+  checked_ok?: boolean | null;
+  expires_at?: string | null;
+  checked_at?: string | null;
   created_at: string;
 }
 
@@ -71,29 +79,47 @@ interface DocumentRow {
  * avec `url: null` et l'écran dit qu'elle est illisible. Perdre l'accès à tout
  * le dossier parce qu'un fichier a disparu du bucket serait pire que de le
  * signaler.
+ *
+ * ⚠️ **Replie sur les colonnes de base si la migration n'est pas jouée.**
+ * Sans ce repli, demander `checked_ok` à une table qui ne l'a pas renvoie une
+ * erreur 400, la liste revient vide, et l'écran laisse croire qu'un chauffeur
+ * n'a déposé aucune pièce — alors qu'elles sont là. Consulter les documents
+ * doit marcher avant la migration ; seul l'ENREGISTREMENT du contrôle en
+ * dépend. `schemaReady` dit lequel des deux cas on est.
  */
 export async function listDocumentsForReview(
   driverId: string
-): Promise<AdminDocument[]> {
+): Promise<{ documents: AdminDocument[]; schemaReady: boolean }> {
   const db = adminDb();
-  if (!db) return [];
+  if (!db) return { documents: [], schemaReady: false };
 
-  const { data, error } = await db
-    .from("driver_documents")
-    .select(
-      "id, kind, storage_path, mime_type, size_bytes, status, review_note, checked_ok, expires_at, checked_at, created_at"
-    )
-    .eq("driver_id", driverId)
-    .order("created_at", { ascending: true });
+  const query = (columns: string) =>
+    db
+      .from("driver_documents")
+      .select(columns)
+      .eq("driver_id", driverId)
+      .order("created_at", { ascending: true });
+
+  let schemaReady = true;
+  let { data, error } = await query(`${BASE_COLUMNS}, ${REVIEW_COLUMNS}`);
+
+  if (error) {
+    // 42703 = colonne inexistante : la migration n'est pas passée.
+    schemaReady = false;
+    console.warn(
+      `[admin-docs] colonnes de contrôle absentes (${error.message}) — lecture en mode consultation seule`
+    );
+    ({ data, error } = await query(BASE_COLUMNS));
+  }
 
   if (error || !data) {
     console.error(`[admin-docs] lecture impossible : ${error?.message}`);
-    return [];
+    return { documents: [], schemaReady };
   }
 
   const rows = data as unknown as DocumentRow[];
 
-  return Promise.all(
+  const documents = await Promise.all(
     rows.map(async (row) => {
       const { data: signed } = await db.storage
         .from(DOCUMENTS_BUCKET)
@@ -108,13 +134,15 @@ export async function listDocumentsForReview(
         status: row.status,
         reviewNote: row.review_note,
         checkedOk: row.checked_ok === true,
-        expiresAt: row.expires_at,
-        checkedAt: row.checked_at,
+        expiresAt: row.expires_at ?? null,
+        checkedAt: row.checked_at ?? null,
         createdAt: row.created_at,
         url: signed?.signedUrl ?? null,
       };
     })
   );
+
+  return { documents, schemaReady };
 }
 
 /**

@@ -61,6 +61,7 @@ export function DriverReview({
   driver,
   declared,
   documents,
+  schemaReady,
   linkTtlSeconds,
 }: {
   driver: {
@@ -81,6 +82,16 @@ export function DriverReview({
     vehicle: string;
   };
   documents: ReviewDocument[];
+  /**
+   * La migration du 2026-09-29 est-elle appliquée ?
+   *
+   * ⚠️ Faux ⇒ les pièces se **consultent** mais le contrôle ne peut pas
+   * s'enregistrer : les colonnes `checked_ok` / `expires_at` n'existent pas.
+   * L'écran le dit en haut et désactive les cases, au lieu de laisser cocher
+   * dans le vide — une case qui revient à zéro sans explication est pire qu'une
+   * case grisée.
+   */
+  schemaReady: boolean;
   linkTtlSeconds: number;
 }) {
   const router = useRouter();
@@ -234,6 +245,28 @@ export function DriverReview({
         </dl>
       </header>
 
+      {!schemaReady && (
+        <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-5">
+          <p className="flex items-center gap-2 text-sm font-semibold text-amber-200">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Migration de base de données non appliquée
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-amber-100/80">
+            Les pièces sont consultables ci-dessous, mais le contrôle ne peut
+            pas être enregistré : les colonnes <code>checked_ok</code> et{" "}
+            <code>expires_at</code> n&apos;existent pas encore. Lancez{" "}
+            <code>supabase/migrations/2026-09-29-verification-pieces.sql</code>{" "}
+            dans l&apos;éditeur SQL Supabase — <strong>en deux temps</strong> :
+            le bloc A seul, puis le bloc B.
+          </p>
+          <p className="mt-2 text-xs text-amber-100/60">
+            La validation reste bloquée d&apos;ici là, ce qui est le
+            comportement voulu : aucun chauffeur ne doit être validé sans
+            contrôle enregistré.
+          </p>
+        </div>
+      )}
+
       {/* Le contrôle humain, que le code ne peut pas faire à la place. */}
       <div className="rounded-2xl border border-royal-400/25 bg-royal-500/5 p-5">
         <p className="flex items-center gap-2 text-sm font-semibold text-royal-100">
@@ -273,6 +306,7 @@ export function DriverReview({
               required={meta.required}
               doc={doc}
               busy={busy === doc?.id}
+              editable={schemaReady}
               onCheck={(checked) => doc && saveCheck(doc, { checkedOk: checked })}
               onExpiry={(date) => doc && saveCheck(doc, { expiresAt: date })}
             />
@@ -318,7 +352,7 @@ export function DriverReview({
         <div className="flex flex-wrap gap-3">
           <button
             onClick={approve}
-            disabled={!approvable || busy !== null || driver.status === "approved"}
+            disabled={!approvable || !schemaReady || busy !== null || driver.status === "approved"}
             title={
               approvable ? undefined : "Toutes les pièces obligatoires doivent être contrôlées."
             }
@@ -414,6 +448,7 @@ function DocumentCard({
   required,
   doc,
   busy,
+  editable,
   onCheck,
   onExpiry,
 }: {
@@ -423,6 +458,8 @@ function DocumentCard({
   required: boolean;
   doc?: ReviewDocument;
   busy: boolean;
+  /** Faux tant que la migration n'est pas appliquée : on montre, on n'écrit pas. */
+  editable: boolean;
   onCheck: (checked: boolean) => void;
   onExpiry: (date: string | null) => void;
 }) {
@@ -456,7 +493,7 @@ function DocumentCard({
                 type="date"
                 value={doc.expiresAt ?? ""}
                 onChange={(e) => onExpiry(e.target.value || null)}
-                disabled={busy}
+                disabled={busy || !editable}
                 aria-label={`Date d'expiration — ${label}`}
                 className="input px-3 py-1.5 text-xs"
               />
@@ -471,7 +508,7 @@ function DocumentCard({
               <input
                 type="checkbox"
                 checked={doc.checkedOk}
-                disabled={busy}
+                disabled={busy || !editable}
                 onChange={(e) => onCheck(e.target.checked)}
                 className="h-4 w-4 accent-emerald-500"
               />

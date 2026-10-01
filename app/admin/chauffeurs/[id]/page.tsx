@@ -63,9 +63,19 @@ export default async function DriverReviewPage({
   const db = adminDb();
   if (!db) notFound();
 
+  /**
+   * ⚠️ Ce `select` ne demande QUE des colonnes d'origine.
+   *
+   * Il demandait aussi `rejection_reason`, ajoutée par la migration du
+   * 2026-09-29. Avant qu'elle ne soit jouée, PostgREST répondait 400, `data`
+   * valait `null`, et le `notFound()` plus bas transformait ça en **404** : la
+   * page disait « ce chauffeur n'existe pas » alors qu'il manquait une colonne.
+   * Un cul-de-sac de diagnostic, et la raison pour laquelle ce select reste
+   * minimal — le motif de refus est lu séparément, et son absence est tolérée.
+   */
   const { data } = await db
     .from("profiles")
-    .select("id, email, first_name, last_name, phone, role, status, driver_slug, rejection_reason, created_at")
+    .select("id, email, first_name, last_name, phone, role, status, driver_slug, created_at")
     .eq("id", params.id)
     .maybeSingle();
 
@@ -78,7 +88,6 @@ export default async function DriverReviewPage({
     role: string;
     status: string;
     driver_slug: string | null;
-    rejection_reason: string | null;
     created_at: string;
   } | null;
 
@@ -98,7 +107,21 @@ export default async function DriverReviewPage({
     .eq("is_primary", true)
     .maybeSingle();
 
-  const documents = await listDocumentsForReview(params.id);
+  const { documents, schemaReady } = await listDocumentsForReview(params.id);
+
+  // Motif du refus précédent : colonne de la migration, donc lue à part et
+  // tolérée absente. S'en passer coûte une information, pas la page.
+  let rejectionReason: string | null = null;
+  if (schemaReady) {
+    const { data: extra } = await db
+      .from("profiles")
+      .select("rejection_reason")
+      .eq("id", params.id)
+      .maybeSingle();
+    rejectionReason =
+      (extra as { rejection_reason: string | null } | null)?.rejection_reason ??
+      null;
+  }
 
   // La trace s'écrit au moment où les liens sont remis, donc où les pièces
   // deviennent consultables.
@@ -125,7 +148,7 @@ export default async function DriverReviewPage({
           phone: profile.phone ?? "",
           status: profile.status,
           slug: profile.driver_slug,
-          rejectionReason: profile.rejection_reason,
+          rejectionReason,
           createdAt: profile.created_at,
         }}
         declared={{
@@ -137,6 +160,7 @@ export default async function DriverReviewPage({
             : "",
         }}
         documents={documents}
+        schemaReady={schemaReady}
         linkTtlSeconds={SIGNED_URL_TTL_SECONDS}
       />
     </main>
