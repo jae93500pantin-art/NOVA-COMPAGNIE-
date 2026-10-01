@@ -75,11 +75,14 @@ alter table public.profiles
 -- ne connaissait que pending/approved/suspended. On l'élargit plutôt que de
 -- détourner 'suspended', qui désigne un compte fermé après coup — pas un
 -- dossier jamais accepté.
-do $$ begin
-  alter table public.profiles drop constraint if exists profiles_status_check;
-  alter table public.profiles add constraint profiles_status_check
-    check (status in ('pending', 'approved', 'suspended', 'rejected'));
-exception when others then null; end $$;
+-- ⚠️ PAS de `exception when others then null` ici, contrairement au reste du
+--    fichier. Avaler l'erreur laisserait l'ancienne contrainte en place, et le
+--    refus d'un dossier échouerait alors en PRODUCTION sur une violation de
+--    contrainte — une panne découverte au premier refus, loin de sa cause.
+--    Mieux vaut que ce bloc échoue ici, sous les yeux, dans l'éditeur SQL.
+alter table public.profiles drop constraint if exists profiles_status_check;
+alter table public.profiles add constraint profiles_status_check
+  check (status in ('pending', 'approved', 'suspended', 'rejected'));
 
 -- ── Redéposer une pièce annule son contrôle ──────────────────
 /**
