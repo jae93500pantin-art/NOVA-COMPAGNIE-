@@ -108,6 +108,31 @@ export default async function DriverProfile({ params }: { params: { id: string }
                   glisser la fiche vers l'offre d'une prestation que Nova
                   Compagnie n'a pas le droit de commercialiser (art. L612-2
                   du Code de la sécurité intérieure). Voir lib/cnaps.ts. */}
+              {/* ⚠️ Mention de contrôle, PAR CHAUFFEUR. Un dossier validé par
+                  dérogation n'y a pas droit : « référencé » et « pièces
+                  contrôlées » sont deux choses distinctes depuis le
+                  2026-10-02, et c'est la seconde qui engage la plateforme. */}
+              {driver.documentsVerified ? (
+                <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3.5">
+                  <span className="chip border-emerald-400/40 bg-emerald-400/10 text-emerald-200">
+                    <ShieldCheck className="h-3 w-3" /> Habilitations vérifiées
+                  </span>
+                  <p className="mt-2 text-[11px] leading-relaxed text-white/45">
+                    Permis, carte professionnelle VTC, inscription au registre
+                    des exploitants, Kbis et attestation d&apos;assurance
+                    contrôlés sur pièces par notre équipe. Nous constatons
+                    l&apos;existence de ces documents ; nous n&apos;exécutons
+                    aucun transport.
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-4 rounded-2xl border border-white/10 bg-white/[0.02] p-3.5 text-[11px] leading-relaxed text-white/40">
+                  Les pièces de ce chauffeur n&apos;ont pas toutes été
+                  contrôlées par notre équipe. Demandez-lui ses justificatifs
+                  avant de convenir d&apos;une course.
+                </p>
+              )}
+
               {hasVerifiedCnapsCard(driver) && (
                 <div className="mt-4 rounded-2xl border border-royal-400/20 bg-royal-500/[0.06] p-3.5">
                   <span className="chip border-royal-400/40 bg-royal-500/15 text-royal-200">

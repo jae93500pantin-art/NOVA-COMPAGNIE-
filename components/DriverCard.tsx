@@ -53,6 +53,20 @@ export function DriverCard({ driver, index = 0 }: { driver: Driver; index?: numb
               {driver.available ? t("drivers.available") : t("drivers.busy")}
             </span>
             <span className="flex items-center gap-1.5">
+              {/* ⚠️ La mention de contrôle est PAR CHAUFFEUR, pas par site.
+                  Depuis qu'un administrateur peut valider un dossier incomplet
+                  par dérogation, « référencé » et « pièces contrôlées » ne sont
+                  plus la même chose. `documentsVerified` est calculé à la
+                  lecture depuis les pièces réellement cochées — et vaut faux
+                  par défaut, y compris avant la migration : une mention
+                  accordée par défaut ne vaut rien, et c'est elle qui engage la
+                  plateforme. */}
+              {driver.documentsVerified && (
+                <span className="chip border-emerald-400/40 bg-emerald-400/10 text-emerald-200">
+                  <ShieldCheck className="h-3 w-3 shrink-0" />
+                  {t("drivers.docsVerified")}
+                </span>
+              )}
               {/* Qualification personnelle du chauffeur, à côté de la gamme
                   du véhicule. ⚠️ Elle ne désigne AUCUNE prestation de
                   sécurité : la plateforme n'en vend pas (voir lib/cnaps.ts).

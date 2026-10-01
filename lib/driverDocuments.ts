@@ -330,3 +330,47 @@ export function rejectionError(
   if (trimmed.length > 500) return "Motif trop long (500 caractères maximum).";
   return null;
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Validation par dérogation                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Toutes les pièces obligatoires ont-elles été réellement contrôlées ?
+ *
+ * ⚠️ C'est cette fonction, et elle seule, qui autorise le site à écrire
+ * « habilitations vérifiées » sur une fiche. Elle est volontairement distincte
+ * de la validation du compte : depuis qu'un administrateur peut valider **par
+ * dérogation** (voir `OVERRIDE_MIN_JUSTIFICATION`), « référencé » et
+ * « vérifié » ne sont plus la même chose.
+ *
+ * Confondre les deux, c'est afficher une mention de contrôle sur un
+ * professionnel dont personne n'a vu les pièces — exactement ce que la mention
+ * est censée exclure.
+ */
+export function allRequiredChecked(
+  docs: ReviewedDocument[],
+  now: () => number = Date.now
+): boolean {
+  return blockingDocuments(docs, now).length === 0;
+}
+
+/**
+ * Longueur minimale de la justification d'une dérogation.
+ *
+ * ⚠️ Une dérogation sans motif écrit ne vaut rien en cas de litige : c'est
+ * précisément la pièce qui explique pourquoi un dossier incomplet a été
+ * accepté. Vingt caractères, c'est le seuil en dessous duquel on écrit « ok »
+ * ou « vu avec lui » — ce qui ne répond à aucune question six mois plus tard.
+ */
+export const OVERRIDE_MIN_JUSTIFICATION = 20;
+
+/** Message d'erreur du formulaire de dérogation, ou `null` s'il est recevable. */
+export function overrideError(justification: string): string | null {
+  const trimmed = justification.trim();
+  if (trimmed.length < OVERRIDE_MIN_JUSTIFICATION) {
+    return `Justifiez la dérogation (${OVERRIDE_MIN_JUSTIFICATION} caractères minimum).`;
+  }
+  if (trimmed.length > 1000) return "Justification trop longue (1000 caractères maximum).";
+  return null;
+}

@@ -5,6 +5,7 @@ import { sendEmail, driverApprovedEmail } from "@/lib/email";
 import { logAdminAction } from "@/lib/adminDocuments";
 import {
   blockingDocuments,
+  overrideError,
   DOCUMENT_LABELS,
   type ReviewedDocument,
 } from "@/lib/driverDocuments";
@@ -74,8 +75,46 @@ export async function POST(
     expiresAt: d.expires_at,
   }));
 
+  /**
+   * ⚠️ DÉROGATION : l'administrateur peut valider un dossier incomplet.
+   *
+   * Demandé explicitement par le propriétaire le 2026-10-02. Deux garde-fous
+   * **non négociables** l'accompagnent, et les retirer viderait la dérogation
+   * de son sens :
+   *
+   * 1. **Une justification écrite est exigée** (20 caractères minimum). C'est
+   *    la seule pièce qui expliquera, six mois plus tard, pourquoi un dossier
+   *    incomplet a été accepté.
+   * 2. **La trace dit que c'est une dérogation**, avec la liste de ce qui
+   *    manquait. Journaliser une dérogation comme une validation ordinaire
+   *    reviendrait à l'effacer.
+   *
+   * ⚠️ Et surtout : ce chauffeur sera référencé mais **PAS marqué « pièces
+   * vérifiées »** sur sa fiche publique. Référencé et vérifié ne sont plus la
+   * même chose — c'est `allRequiredChecked` qui décide de la mention, pas le
+   * statut du compte.
+   */
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    // Pas de corps = validation ordinaire. Le chemin normal reste le plus
+    // simple à appeler ; la dérogation demande un effort explicite.
+  }
+  const wantsOverride = body.override === true;
+  const justification =
+    typeof body.justification === "string" ? body.justification.trim() : "";
+
   const blocking = blockingDocuments(docs);
-  if (blocking.length > 0) {
+
+  if (blocking.length > 0 && wantsOverride) {
+    const invalid = overrideError(justification);
+    if (invalid) {
+      return NextResponse.json({ error: invalid }, { status: 400 });
+    }
+  }
+
+  if (blocking.length > 0 && !wantsOverride) {
     const REASONS: Record<string, string> = {
       missing: "absente",
       unchecked: "non contrôlée",
@@ -142,21 +181,38 @@ export async function POST(
 
   // Trace de la décision : qui, quand, et sur quelles pièces. C'est la preuve
   // en cas de litige — elle s'écrit APRÈS le succès, jamais avant.
-  await logAdminAction(guard.userId, "driver_approved", {
-    driver_id: driverId,
-    slug,
-    documents: docs.map((d) => ({ kind: d.kind, expires_at: d.expiresAt })),
-    emailed,
-  });
+  const overridden = blocking.length > 0;
+  await logAdminAction(
+    guard.userId,
+    // ⚠️ Action distincte : chercher « driver_approved » dans le journal ne doit
+    // pas remonter les dérogations, sinon elles se perdent dans la masse.
+    overridden ? "driver_approved_override" : "driver_approved",
+    {
+      driver_id: driverId,
+      slug,
+      documents: docs.map((d) => ({ kind: d.kind, expires_at: d.expiresAt })),
+      emailed,
+      ...(overridden
+        ? {
+            justification,
+            bypassed: blocking.map((b) => ({ kind: b.kind, reason: b.reason })),
+          }
+        : {}),
+    }
+  );
 
   return NextResponse.json({
     success: true,
+    overridden,
     emailed,
     // Le slug est l'URL publique du chauffeur : le renvoyer permet à la console
     // d'y renvoyer directement, et de vérifier qu'il a bien été attribué.
     slug,
-    message: emailed
-      ? "Chauffeur validé et e-mail d'activation envoyé"
-      : "Chauffeur validé (e-mail non envoyé)",
+    message:
+      (overridden ? "Chauffeur validé PAR DÉROGATION" : "Chauffeur validé") +
+      (emailed ? " et e-mail d'activation envoyé" : " (e-mail non envoyé)") +
+      // On le redit dans la réponse : l'administrateur doit savoir, à
+      // l'instant où il valide, que la fiche ne portera pas la mention.
+      (overridden ? " — sa fiche ne portera pas « pièces vérifiées »." : ""),
   });
 }

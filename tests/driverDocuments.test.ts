@@ -17,6 +17,9 @@ import {
   REJECTION_REASONS,
   REJECTION_LABELS,
   EXPIRY_WARNING_DAYS,
+  allRequiredChecked,
+  overrideError,
+  OVERRIDE_MIN_JUSTIFICATION,
 } from "@/lib/driverDocuments";
 
 describe("documentPath", () => {
@@ -286,5 +289,48 @@ describe("refus d'un dossier", () => {
 
   it("refuse un motif démesuré", () => {
     expect(rejectionError("unreadable", "x".repeat(501))).toContain("trop long");
+  });
+});
+
+describe("validation par derogation", () => {
+  it("exige une justification ecrite", () => {
+    // ⚠️ Sans motif ecrit, une derogation ne vaut rien en cas de litige :
+    // c'est la seule piece qui explique pourquoi un dossier incomplet est
+    // passe. « ok » ou « vu avec lui » ne repond a aucune question six mois
+    // plus tard.
+    expect(overrideError("")).toContain("Justifiez");
+    expect(overrideError("ok")).toContain("Justifiez");
+    expect(overrideError("vu avec lui")).toContain("Justifiez");
+    expect(OVERRIDE_MIN_JUSTIFICATION).toBe(20);
+  });
+
+  it("accepte une justification circonstanciee", () => {
+    expect(
+      overrideError("Kbis recu par e-mail, depot technique a refaire lundi.")
+    ).toBeNull();
+  });
+
+  it("refuse une justification demesuree", () => {
+    expect(overrideError("x".repeat(1001))).toContain("trop longue");
+  });
+
+  it("⚠️ une derogation ne rend PAS le dossier verifie", () => {
+    // C'est la distinction qui protege la plateforme : referencer n'est pas
+    // certifier. `allRequiredChecked` reste faux, donc la fiche publique
+    // n'affiche pas la mention de controle, meme compte valide.
+    const incomplet = fullDossier().slice(1);
+    expect(allRequiredChecked(incomplet, NOW)).toBe(false);
+
+    const nonCoche = fullDossier();
+    nonCoche[0].checkedOk = false;
+    expect(allRequiredChecked(nonCoche, NOW)).toBe(false);
+
+    expect(allRequiredChecked(fullDossier(), NOW)).toBe(true);
+  });
+
+  it("⚠️ une piece perimee retire la mention, meme cochee", () => {
+    const docs = fullDossier();
+    docs[2].expiresAt = "2026-09-01";
+    expect(allRequiredChecked(docs, NOW)).toBe(false);
   });
 });

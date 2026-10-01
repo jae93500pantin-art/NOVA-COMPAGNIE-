@@ -4,7 +4,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isSupabaseAdminConfigured } from "@/lib/config";
 import { sanitizeSchedule, type WeeklySchedule } from "@/lib/schedule";
 import { clampRate } from "@/lib/pricing";
-import { hasExpiredRequired } from "@/lib/driverDocuments";
+import {
+  hasExpiredRequired,
+  allRequiredChecked,
+} from "@/lib/driverDocuments";
 import { sanitizeTransferDestinationIds } from "@/lib/transfer";
 import type { Driver, VehicleCategory } from "@/lib/types";
 
@@ -115,7 +118,7 @@ export async function listDirectory(): Promise<Driver[]> {
     ((profileRows ?? []) as ProfileRow[]).map((p) => [p.id, p])
   );
 
-  const expired = await expiredDriverIds(
+  const { expired, verified } = await documentState(
     client,
     drivers.map((d) => d.id)
   );
@@ -128,7 +131,7 @@ export async function listDirectory(): Promise<Driver[]> {
       if (!profile || profile.status !== "approved" || !row.slug) return null;
       // Pièce obligatoire périmée : la fiche se retire d'elle-même.
       if (expired.has(row.id)) return null;
-      const driver = toDriver(row, profile);
+      const driver = toDriver(row, profile, verified.has(row.id));
       return isListable(driver) ? driver : null;
     })
     .filter((d): d is Driver => d !== null);
@@ -176,10 +179,10 @@ export async function getDirectoryDriver(slug: string): Promise<Driver | null> {
 
   // Même règle que la liste : une pièce obligatoire périmée répond 404, elle
   // ne laisse pas la fiche accessible par son URL directe.
-  const expired = await expiredDriverIds(client, [p.id]);
+  const { expired, verified } = await documentState(client, [p.id]);
   if (expired.has(p.id)) return null;
 
-  const driver = toDriver(row as unknown as DriverRow, p);
+  const driver = toDriver(row as unknown as DriverRow, p, verified.has(p.id));
   return isListable(driver) ? driver : null;
 }
 
@@ -195,42 +198,81 @@ export async function getDirectoryDriver(slug: string): Promise<Driver | null> {
  * Une seule requête pour tout le lot, et seulement sur les pièces qui portent
  * une échéance — l'index partiel `driver_documents_expiry_idx` est fait pour.
  */
-async function expiredDriverIds(
+async function documentState(
   client: NonNullable<ReturnType<typeof db>>,
   ids: string[]
-): Promise<Set<string>> {
-  if (ids.length === 0) return new Set();
-  const { data, error } = await client
-    .from("driver_documents")
-    .select("driver_id, kind, expires_at")
-    .in("driver_id", ids)
-    .not("expires_at", "is", null);
+): Promise<{ expired: Set<string>; verified: Set<string> }> {
+  const empty = { expired: new Set<string>(), verified: new Set<string>() };
+  if (ids.length === 0) return empty;
+
+  // ⚠️ `checked_ok` n'existe qu'après la migration du 2026-09-29 : on tente,
+  // puis on replie. Sans le repli, l'erreur ferait croire qu'aucun chauffeur
+  // n'a d'échéance — donc qu'aucune fiche n'est à retirer.
+  type PieceRow = {
+    driver_id: string;
+    kind: string;
+    expires_at: string | null;
+    checked_ok?: boolean | null;
+  };
+  const read = async (columns: string) => {
+    const res = await client
+      .from("driver_documents")
+      .select(columns)
+      .in("driver_id", ids);
+    // Les deux variantes n'ont pas la même forme : on les ramène à la plus
+    // large, `checked_ok` restant simplement absent dans le repli.
+    return {
+      data: (res.data ?? null) as unknown as PieceRow[] | null,
+      error: res.error,
+    };
+  };
+
+  let verifiable = true;
+  let { data, error } = await read("driver_id, kind, expires_at, checked_ok");
 
   if (error) {
-    // ⚠️ En cas d'échec, on ne retire personne. Vider l'annuaire parce qu'une
-    // requête annexe a échoué serait une panne bien pire que le risque qu'elle
-    // couvre — et la colonne peut simplement ne pas encore exister (migration
-    // du 2026-09-29 non appliquée).
-    console.error(`[annuaire] échéances illisibles : ${error.message}`);
-    return new Set();
+    verifiable = false;
+    ({ data, error } = await read("driver_id, kind, expires_at"));
   }
 
-  const byDriver = new Map<string, { kind: string; expiresAt: string | null }[]>();
+  if (error) {
+    // ⚠️ En cas d'échec, on ne retire personne et on ne certifie personne.
+    // Vider l'annuaire parce qu'une requête annexe a échoué serait une panne
+    // bien pire que le risque qu'elle couvre ; et accorder la mention par
+    // défaut serait exactement le mensonge qu'on cherche à éviter.
+    console.error(`[annuaire] pièces illisibles : ${error.message}`);
+    return empty;
+  }
+
+  const byDriver = new Map<
+    string,
+    { kind: string; expiresAt: string | null; checkedOk: boolean }[]
+  >();
   for (const row of (data ?? []) as {
     driver_id: string;
     kind: string;
     expires_at: string | null;
+    checked_ok?: boolean | null;
   }[]) {
     const list = byDriver.get(row.driver_id) ?? [];
-    list.push({ kind: row.kind, expiresAt: row.expires_at });
+    list.push({
+      kind: row.kind,
+      expiresAt: row.expires_at,
+      checkedOk: row.checked_ok === true,
+    });
     byDriver.set(row.driver_id, list);
   }
 
-  const out = new Set<string>();
+  const expired = new Set<string>();
+  const verified = new Set<string>();
   for (const [id, docs] of byDriver) {
-    if (hasExpiredRequired(docs)) out.add(id);
+    if (hasExpiredRequired(docs)) expired.add(id);
+    // ⚠️ Sans les colonnes de contrôle, PERSONNE n'est marqué vérifié. Le
+    // défaut doit être « non vérifié » : une mention de contrôle accordée par
+    // défaut ne vaut rien, et c'est elle qui engage la plateforme.
+    if (verifiable && allRequiredChecked(docs)) verified.add(id);
   }
-  return out;
+  return { expired, verified };
 }
 
 /** Les slugs publiables — pour `generateStaticParams` et les sitemaps. */
@@ -250,7 +292,11 @@ export async function listDirectorySlugs(): Promise<string[]> {
  * tarif écrit avant un changement de barème ne doit jamais s'afficher, ni
  * surtout se facturer, hors bande.
  */
-function toDriver(row: DriverRow, profile: ProfileRow): Driver {
+function toDriver(
+  row: DriverRow,
+  profile: ProfileRow,
+  documentsVerified: boolean
+): Driver {
   const categories = (row.categories ?? []).filter((c): c is VehicleCategory =>
     CATEGORIES.includes(c as VehicleCategory)
   );
@@ -293,6 +339,7 @@ function toDriver(row: DriverRow, profile: ProfileRow): Driver {
     mapY: 50,
     lng: row.lng ?? undefined,
     lat: row.lat ?? undefined,
+    documentsVerified,
   };
 }
 

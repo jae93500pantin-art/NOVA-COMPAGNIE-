@@ -423,6 +423,42 @@ est exactement ce que cette fonctionnalité rend impossible. Ne pas le remettre
 - ⚠️ **Le contrôle est refait côté serveur** dans la route d'approbation, qui
   répond **409** avec la liste des pièces bloquantes. Un bouton grisé n'est pas
   une règle, c'est une politesse.
+
+### ⚠️ Validation par dérogation (2026-10-02)
+
+**Demandée explicitement par le propriétaire** : un administrateur doit pouvoir
+valider un chauffeur **même s'il manque des pièces**. Le verrou ci-dessus reste
+le chemin normal ; la dérogation est une sortie de route, et trois choses
+l'encadrent — les retirer la viderait de son sens.
+
+1. **Une justification écrite est exigée** (`OVERRIDE_MIN_JUSTIFICATION = 20`).
+   C'est la seule pièce qui expliquera, six mois plus tard, pourquoi un dossier
+   incomplet a été accepté. En dessous de vingt caractères, on écrit « ok » ou
+   « vu avec lui », ce qui ne répond à aucune question.
+2. **La trace est une action distincte** : `driver_approved_override`, avec la
+   justification et la liste de ce qui manquait. Journaliser une dérogation
+   comme une validation ordinaire reviendrait à l'effacer — chercher
+   `driver_approved` ne doit pas les noyer dans la masse.
+3. ⚠️ **« Référencé » et « pièces vérifiées » ne sont plus la même chose.**
+   C'est la contrepartie, et c'est elle qui protège la plateforme.
+
+### ⚠️ `Driver.documentsVerified` — la mention est PAR CHAUFFEUR
+
+- Calculée **à la lecture** par `allRequiredChecked`, jamais stockée : une
+  colonne figée mentirait dès qu'une pièce expire.
+- **Faux par défaut**, y compris quand les colonnes de contrôle n'existent pas
+  encore. Une mention de contrôle accordée par défaut ne vaut rien, et c'est
+  précisément elle qui engage la responsabilité.
+- Affichage : badge vert « Habilitations vérifiées » sur `DriverCard` et encart
+  détaillé sur `/drivers/[id]`. ⚠️ Quand elle est fausse, la fiche **dit** que
+  les pièces n'ont pas toutes été contrôlées et invite le client à demander les
+  justificatifs — le silence laisserait supposer le contrôle.
+- ⚠️ **La page transfert ne promet plus le contrôle pour tout le monde.** Son
+  texte renvoie à la mention portée par chaque fiche (« vérifiez sa présence
+  sur la fiche du chauffeur que vous retenez »), et le badge de confiance dit
+  « Pièces contrôlées sur dossier », pas « Habilitations vérifiées » —
+  promettre pour tous ce qui ne vaut que pour certains était la publicité
+  trompeuse à éviter.
 - ⚠️ **Redéposer une pièce annule son contrôle** (trigger
   `driver_documents_reset_review`) : sans lui, faire valider une assurance
   propre puis la remplacer laisserait un dossier « conforme » portant un autre

@@ -23,6 +23,7 @@ import {
   expiresSoon,
   isExpired,
   rejectionError,
+  overrideError,
   type DriverDocumentKind,
   type RejectionReason,
 } from "@/lib/driverDocuments";
@@ -100,6 +101,9 @@ export function DriverReview({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
+  /** Dérogation : valider un dossier incomplet, avec justification écrite. */
+  const [overriding, setOverriding] = useState(false);
+  const [justification, setJustification] = useState("");
   const [reason, setReason] = useState<RejectionReason | "">("");
   const [note, setNote] = useState("");
 
@@ -145,12 +149,23 @@ export function DriverReview({
     }
   };
 
-  const approve = async () => {
+  const approve = async (override = false) => {
+    if (override) {
+      const invalid = overrideError(justification);
+      if (invalid) {
+        setError(invalid);
+        return;
+      }
+    }
     setBusy("approve");
     setError(null);
     try {
       const res = await fetch(`/api/admin/drivers/${driver.id}/approve`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          override ? { override: true, justification } : {}
+        ),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -164,6 +179,7 @@ export function DriverReview({
         return;
       }
       setDone(data.message ?? "Chauffeur validé");
+      setOverriding(false);
       router.refresh();
     } catch {
       setError("Le serveur ne répond pas.");
@@ -351,7 +367,7 @@ export function DriverReview({
 
         <div className="flex flex-wrap gap-3">
           <button
-            onClick={approve}
+            onClick={() => approve(false)}
             disabled={!approvable || !schemaReady || busy !== null || driver.status === "approved"}
             title={
               approvable ? undefined : "Toutes les pièces obligatoires doivent être contrôlées."
@@ -373,7 +389,63 @@ export function DriverReview({
           >
             <X className="h-4 w-4" /> Refuser le dossier
           </button>
+
+          {/* ⚠️ DÉROGATION. Volontairement discrète, et proposée seulement
+              quand le dossier bloque : c'est une sortie de route, pas une
+              alternative de même rang. Elle exige une justification écrite et
+              la fiche publique ne portera PAS la mention de contrôle. */}
+          {blocking.length > 0 && driver.status !== "approved" && (
+            <button
+              onClick={() => setOverriding((o) => !o)}
+              disabled={busy !== null}
+              className="text-xs text-amber-200/70 underline decoration-dotted underline-offset-4 transition hover:text-amber-100 disabled:opacity-40"
+            >
+              Valider malgré les pièces manquantes…
+            </button>
+          )}
         </div>
+
+        {overriding && (
+          <div className="mt-5 space-y-3 rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-amber-200">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              Validation par dérogation
+            </p>
+            <ul className="space-y-1 text-xs leading-relaxed text-amber-100/80">
+              <li>
+                • Le chauffeur sera <strong>référencé</strong> et joignable par
+                les clients.
+              </li>
+              <li>
+                • Sa fiche <strong>ne portera pas</strong> la mention
+                « Habilitations vérifiées », et affichera au contraire que ses
+                pièces n&apos;ont pas toutes été contrôlées.
+              </li>
+              <li>
+                • La dérogation est <strong>journalisée</strong> avec votre
+                justification et la liste de ce qui manquait.
+              </li>
+            </ul>
+            <textarea
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              rows={3}
+              maxLength={1000}
+              placeholder="Pourquoi ce dossier est accepté malgré les pièces manquantes. Cette phrase est la seule qui expliquera votre décision dans six mois."
+              className="input w-full resize-none"
+            />
+            <button
+              onClick={() => approve(true)}
+              disabled={busy !== null}
+              className="btn-primary w-full text-sm disabled:opacity-40"
+            >
+              {busy === "approve" && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              Valider par dérogation
+            </button>
+          </div>
+        )}
 
         {rejecting && (
           <div className="mt-5 space-y-3 rounded-2xl border border-white/10 bg-white/[0.02] p-4">

@@ -195,6 +195,7 @@ const fr = {
       "Les fiches publiées ici sont celles de chauffeurs réels, dont les habilitations ont été vérifiées une par une. Le référencement parisien ouvre bientôt — écrivez-nous en attendant.",
     noneTitle: "Aucun chauffeur ne correspond",
     noneText: "Élargissez vos critères, ou écrivez-nous.",
+    docsVerified: "Habilitations vérifiées",
     slotFilter: "Créneau recherché",
     slotNote:
       "Filtre sur les disponibilités déclarées. Un chauffeur qui n'a pas renseigné son planning reste affiché — et l'horaire se convient avec lui.",
@@ -341,11 +342,11 @@ const fr = {
     estimateCta: "Trouver un chauffeur",
     heroImageAlt: "Chauffeur privé accueillant un client à l'aéroport",
     badgePro: "Chauffeurs indépendants",
-    badgeSecure: "Habilitations vérifiées",
+    badgeSecure: "Pièces contrôlées sur dossier",
     badgeInstant: "Mise en relation directe",
     badgeFlexible: "Tarifs annoncés par le chauffeur",
     badgeSecureDetail:
-      "Avant tout référencement, nous contrôlons sur pièces : la carte professionnelle VTC et son numéro d'inscription au registre des exploitants, l'attestation d'assurance responsabilité civile professionnelle, le permis de conduire et la carte grise du véhicule déclaré. Nous vérifions l'existence de ces pièces — nous n'exécutons aucun transport.",
+      "Nous contrôlons sur pièces la carte professionnelle VTC et son inscription au registre des exploitants, l'attestation d'assurance responsabilité civile professionnelle, le Kbis, le permis et la carte grise. Les fiches dont le contrôle est complet portent la mention « Habilitations vérifiées » — vérifiez sa présence sur la fiche du chauffeur que vous retenez. Nous constatons l'existence de ces documents ; nous n'exécutons aucun transport.",
     featuresEyebrow: "Ce que proposent les chauffeurs",
     featuresTitle: "Des prestations qui se conviennent avec le chauffeur",
     featuresSubtitle:
@@ -662,6 +663,7 @@ const en: Dict = {
       "Every listing here belongs to a real chauffeur whose credentials were checked one by one. Our Paris directory opens shortly — message us in the meantime.",
     noneTitle: "No chauffeur matches",
     noneText: "Widen your filters, or message us.",
+    docsVerified: "Credentials verified",
     slotFilter: "Time slot",
     slotNote:
       "Filters on declared availability. A chauffeur who has not set their weekly hours still shows up — and the exact time is agreed with them.",
@@ -803,11 +805,11 @@ const en: Dict = {
     estimateCta: "Find a chauffeur",
     heroImageAlt: "Private chauffeur greeting a client at the airport",
     badgePro: "Independent chauffeurs",
-    badgeSecure: "Credentials verified",
+    badgeSecure: "Documents checked on file",
     badgeInstant: "Direct introduction",
     badgeFlexible: "Driver-set rates",
     badgeSecureDetail:
-      "Before any listing, we check on file: the professional VTC card and its operator-register number, the professional liability insurance certificate, the driving licence and the registration document of the declared vehicle. We verify that those documents exist — we do not carry out any transport.",
+      "We check on file the professional VTC card and its entry in the operator register, the professional liability insurance certificate, the company registration, the driving licence and the vehicle registration document. Listings whose check is complete carry a « Credentials verified » mention — look for it on the listing of the chauffeur you pick. We confirm that those documents exist; we do not carry out any transport.",
     featuresEyebrow: "What the chauffeurs offer",
     featuresTitle: "Services agreed with the chauffeur",
     featuresSubtitle:

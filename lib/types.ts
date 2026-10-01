@@ -90,4 +90,18 @@ export interface Driver {
   /** Optional real-world coordinates (populated when backed by Supabase). */
   lng?: number;
   lat?: number;
+  /**
+   * Les pieces obligatoires ont-elles ete REELLEMENT controlees ?
+   *
+   * ⚠️ Distinct de « reference ». Un administrateur peut valider un dossier
+   * incomplet par dérogation (route approve, 2026-10-02) : la fiche paraît,
+   * mais elle ne porte **pas** la mention de contrôle. Calculé à la lecture par
+   * `allRequiredChecked`, jamais stocké — une colonne figée mentirait dès
+   * qu'une pièce expire.
+   *
+   * ⚠️ Faux par défaut, y compris quand les colonnes de contrôle n'existent
+   * pas encore : une mention accordée par défaut ne vaut rien, et c'est elle
+   * qui engage la plateforme.
+   */
+  documentsVerified?: boolean;
 }
