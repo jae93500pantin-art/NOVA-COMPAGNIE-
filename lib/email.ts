@@ -70,6 +70,23 @@ export async function sendEmail({ to, subject, html }: SendArgs): Promise<boolea
 /*  Templates                                                                 */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Échappe un texte destiné au corps HTML d'un e-mail.
+ *
+ * ⚠️ `layout` interpole ses valeurs telles quelles — c'est voulu, plusieurs
+ * modèles y passent des liens `<a>`. Tout ce qui vient d'une SAISIE doit donc
+ * être échappé au passage : le motif de refus est tapé par un administrateur,
+ * et un `<` non échappé casserait la mise en page au mieux, injecterait du
+ * balisage au pire.
+ */
+function escapeHtml(raw: string): string {
+  return raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function layout(heading: string, intro: string, rows: [string, string][], footer: string): string {
   const rowsHtml = rows
     .map(
@@ -114,6 +131,72 @@ export function driverApprovedEmail(d: {
         ["Espace chauffeur", `<a href="${d.loginUrl}" style="color:#c9a75f">Se connecter</a>`],
       ],
       "Besoin d'aide pour démarrer ? Répondez à cet e-mail ou contactez-nous sur WhatsApp."
+    ),
+  };
+}
+
+/**
+ * Refus d'un dossier chauffeur, avec son motif.
+ *
+ * ⚠️ Le motif est **obligatoire** dans le corps du message. Un refus sans
+ * explication renvoie le chauffeur déposer exactement la même pièce, et
+ * l'administrateur la refuse à nouveau : personne n'avance. L'e-mail dit donc
+ * ce qui bloque et rappelle que le dossier se reprend — un refus n'est pas une
+ * exclusion.
+ */
+export function driverRejectedEmail(d: {
+  firstName: string;
+  reasonLabel: string;
+  note: string;
+  resumeUrl: string;
+}): { subject: string; html: string } {
+  const rows: [string, string][] = [["Motif", d.reasonLabel]];
+  if (d.note.trim()) rows.push(["Précision", escapeHtml(d.note.trim())]);
+  rows.push([
+    "Reprendre mon dossier",
+    `<a href="${d.resumeUrl}" style="color:#c9a75f">Déposer à nouveau mes pièces</a>`,
+  ]);
+
+  return {
+    subject: "Votre dossier chauffeur demande une correction — Nova Compagnie",
+    html: layout(
+      `Bonjour ${d.firstName},`,
+      `Nous avons examiné votre dossier et il ne peut pas être validé en l'état. Rien n'est perdu : corrigez le point ci-dessous et redéposez vos pièces, nous les examinerons à nouveau.`,
+      rows,
+      "Une question sur ce motif ? Répondez à cet e-mail ou écrivez-nous sur WhatsApp."
+    ),
+  };
+}
+
+/**
+ * Rappel d'échéance, 30 jours avant l'expiration d'une pièce.
+ *
+ * ⚠️ Envoyé au chauffeur ET visible de l'administrateur, parce qu'une pièce
+ * expirée retire la fiche de l'annuaire : le chauffeur doit pouvoir l'éviter,
+ * pas le découvrir.
+ */
+export function documentExpiringEmail(d: {
+  firstName: string;
+  documentLabel: string;
+  expiresAt: string;
+  daysLeft: number;
+  resumeUrl: string;
+}): { subject: string; html: string } {
+  return {
+    subject: `${d.documentLabel} : expire dans ${d.daysLeft} jours — Nova Compagnie`,
+    html: layout(
+      `Bonjour ${d.firstName},`,
+      `Une pièce de votre dossier arrive à échéance. Passé cette date, votre fiche est retirée de l'annuaire automatiquement — le temps que vous déposiez la nouvelle version.`,
+      [
+        ["Pièce", d.documentLabel],
+        ["Échéance", d.expiresAt],
+        ["Jours restants", String(d.daysLeft)],
+        [
+          "Mettre à jour",
+          `<a href="${d.resumeUrl}" style="color:#c9a75f">Déposer la nouvelle pièce</a>`,
+        ],
+      ],
+      "Vous recevez ce rappel une seule fois par pièce."
     ),
   };
 }

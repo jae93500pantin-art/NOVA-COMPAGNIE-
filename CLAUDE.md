@@ -76,8 +76,13 @@ l'API Management, qui s'exécute sans `auth.uid()`. Effet immédiat :
 
 **Le back-office a sa propre porte : `/admin/login`.** Écran dédié (hors du
 groupe `(site)` : ni navbar ni footer), atteint par un bouton discret dans la
-barre légale du footer. Il poste sur la même route `/api/auth/login` que la
-connexion publique — il n'y a qu'un système d'authentification — mais refuse un
+barre légale du footer **et par un lien « Accès administration » sous le
+formulaire de connexion** (`AuthForm`, mode connexion seulement — le proposer à
+qui crée un compte n'aurait aucun sens). ⚠️ C'est un **lien**, jamais un onglet
+dans ce formulaire : fusionner les deux écrans ferait disparaître la fermeture
+de session décrite juste après, et personne ne s'en apercevrait avant qu'un
+admin ne se retrouve connecté côté client. Il poste sur la même route
+`/api/auth/login` que la connexion publique — il n'y a qu'un système d'authentification — mais refuse un
 compte sans le rôle `admin` **et referme la session ouverte à l'instant** :
 franchir cette porte ne doit pas connecter au site par effet de bord. Le
 middleware envoie `/admin/*` anonyme vers `/admin/login` (jamais vers la
@@ -366,6 +371,116 @@ Ce qui reste en place, volontairement :
 
 Pour le réactiver un jour : recréer un bouton appelant
 `supabase.auth.signInWithOAuth({ provider })`, le callback fait déjà le reste.
+
+
+## ⚠️ Vérification des pièces avant validation d'un chauffeur
+
+**La page publique affiche « habilitations vérifiées ».** Jusqu'au 2026-09-29
+c'était faux : `/admin` offrait un bouton « Valider » sans qu'aucun écran ne
+permette de **regarder** le permis, la carte VTC ou l'assurance. Un badge de
+vérification qu'on ne peut pas honorer est une publicité trompeuse, et en cas
+d'incident avec un faux chauffeur, c'est la plateforme qui répond.
+
+### Le chemin, et le seul
+
+`/admin` → **« Vérifier le dossier »** → `/admin/chauffeurs/[id]` → cocher chaque
+pièce → **Valider** ou **Refuser**.
+
+⚠️ **`ApproveDriverButton` a été supprimé.** Valider en un clic depuis la liste
+est exactement ce que cette fonctionnalité rend impossible. Ne pas le remettre
+« pour aller plus vite ».
+
+### URL signées (`lib/adminDocuments.ts`, `server-only`)
+
+- Le bucket `driver-docs` est **privé**. Une URL publique reste accessible à
+  quiconque l'obtient — journal serveur, partage d'écran, en-tête `Referer`.
+  Une URL **signée** est un lien temporaire qui cesse de fonctionner.
+- **`SIGNED_URL_TTL_SECONDS = 300`** (5 min), fabriquées **à l'ouverture de la
+  fiche**, côté serveur. Recharger la page les renouvelle : après cinq minutes
+  les images ne s'affichent plus, et c'est le comportement attendu — l'écran le
+  dit.
+- ⚠️ Ce module ne contrôle **aucune identité** : l'appelant doit avoir appelé
+  `requireAdmin()` avant, comme `voucherSource` avant lui. L'exposer sans garde
+  publierait les pièces d'identité de tous les chauffeurs.
+- ⚠️ Un échec de signature rend `url: null` et la pièce s'affiche « illisible » :
+  perdre l'accès au dossier entier parce qu'un fichier a disparu du bucket
+  serait pire que de le signaler.
+
+### Le verrou de validation
+
+- **Six pièces obligatoires** : permis, carte VTC, **inscription au registre
+  VTC**, **Kbis/SIRENE**, assurance, carte grise. ⚠️ La carte atteste du
+  **chauffeur**, le registre atteste de l'**exploitant** — un chauffeur peut
+  détenir une carte valide alors que son entreprise n'est plus inscrite. Ne pas
+  fusionner ces deux pièces.
+- **`checked_ok` n'est pas `status`.** `status` décrit le cycle du fichier ;
+  `checked_ok` est la case « Conforme » qu'un humain coche **après avoir
+  regardé**. C'est elle que `blockingDocuments` consulte. Sans cette
+  distinction, déposer un fichier vide suffirait à passer.
+- `blockingDocuments` / `canApproveDossier` (purs, testés) rendent **trois**
+  motifs de blocage — absente, non contrôlée, périmée — pour que l'écran dise
+  *laquelle* et *pourquoi*, pas seulement « non ».
+- ⚠️ **Le contrôle est refait côté serveur** dans la route d'approbation, qui
+  répond **409** avec la liste des pièces bloquantes. Un bouton grisé n'est pas
+  une règle, c'est une politesse.
+- ⚠️ **Redéposer une pièce annule son contrôle** (trigger
+  `driver_documents_reset_review`) : sans lui, faire valider une assurance
+  propre puis la remplacer laisserait un dossier « conforme » portant un autre
+  document.
+
+### Échéances
+
+- `expires_at` par pièce, saisi par l'administrateur. `daysUntilExpiry` compare
+  deux **minuits locaux** : comparer une date nue à un instant ferait basculer
+  l'échéance d'un jour selon l'heure qu'il est. Le **jour de l'échéance compte
+  encore**.
+- **Retrait automatique** : `expiredDriverIds` (`lib/driverDirectory.ts`) écarte
+  de l'annuaire — liste **et** page directe — toute fiche dont une pièce
+  obligatoire est périmée. ⚠️ C'est un retrait, pas un refus : le chauffeur
+  redépose et reparaît. ⚠️ Si la requête d'échéances échoue, **on ne retire
+  personne** — vider l'annuaire sur un incident de base serait pire que le
+  risque couvert, et la colonne peut simplement ne pas exister encore.
+- **Rappel à 30 jours** : `POST /api/admin/documents/expiring`, idempotent via
+  `expiry_notified_at`. ⚠️ Le `GET` **ne notifie pas** : une consultation qui
+  envoie des e-mails est un piège, ouvrir la page deux fois ne doit pas écrire
+  deux fois aux chauffeurs. ⚠️ La trace s'écrit **même si l'envoi échoue**,
+  sinon une adresse invalide ferait retenter le même rappel indéfiniment.
+
+### Refus
+
+`POST /api/admin/drivers/[id]/reject` — cinq motifs fermés, « Autre » exige une
+précision (sans texte, le chauffeur redépose la même pièce). Le compte passe en
+`rejected`, l'e-mail porte le motif, **le dossier n'est pas supprimé** : le
+chauffeur corrige et redépose. ⚠️ Un chauffeur **déjà validé** ne se refuse pas
+par cette route — sa fiche est publique et des clients l'ont peut-être contacté,
+c'est une suspension, une autre décision.
+
+### Traçabilité (`audit_log`)
+
+`driver_documents_viewed` (à l'ouverture de la fiche — le moment où les pièces
+deviennent consultables), `driver_document_checked`, `driver_approved` (avec les
+pièces et leurs échéances), `driver_rejected`, `documents_expiry_notified`.
+⚠️ `user_id` porte l'**administrateur** qui agit, le chauffeur étant dans
+`detail.driver_id` : la question à laquelle ce journal doit répondre est « qui a
+validé, et sur quelles pièces ».
+
+### Tests
+
+`tests/driverDocuments.test.ts` (33) pour les règles pures.
+`tests/adminSecurity.test.ts` (16) ⚠️ **lit le code source** des routes
+d'administration : la propriété à garantir n'est pas le résultat d'une fonction,
+c'est qu'aucune route — y compris une route neuve — n'oublie `requireAdmin()`
+avant `adminDb()`. Un test unitaire sur la garde ne l'attraperait pas.
+`scripts/check-admin-security.mjs` fait le pendant en conditions réelles.
+
+### ⚠️ Migration non appliquée
+
+`supabase/migrations/2026-09-29-verification-pieces.sql`, **en deux temps**
+(bloc A = valeurs d'enum, à valider seul ; puis bloc B). Hors du chemin de
+`apply-schema.ps1`. **Tant qu'elle n'est pas passée, l'écran de vérification ne
+fonctionne pas** : `checked_ok` et `expires_at` n'existent pas. Le jeton
+`SUPABASE_ACCESS_TOKEN` répondant 401, elle doit être lancée depuis l'éditeur
+SQL du dashboard.
 
 ## Contact (WhatsApp)
 

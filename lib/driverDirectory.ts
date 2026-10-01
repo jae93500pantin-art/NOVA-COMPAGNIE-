@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isSupabaseAdminConfigured } from "@/lib/config";
 import { sanitizeSchedule, type WeeklySchedule } from "@/lib/schedule";
 import { clampRate } from "@/lib/pricing";
+import { hasExpiredRequired } from "@/lib/driverDocuments";
 import { sanitizeTransferDestinationIds } from "@/lib/transfer";
 import type { Driver, VehicleCategory } from "@/lib/types";
 
@@ -114,12 +115,19 @@ export async function listDirectory(): Promise<Driver[]> {
     ((profileRows ?? []) as ProfileRow[]).map((p) => [p.id, p])
   );
 
+  const expired = await expiredDriverIds(
+    client,
+    drivers.map((d) => d.id)
+  );
+
   return drivers
     .map((row) => {
       const profile = profiles.get(row.id);
       // Pas de profil, pas validé, ou pas de slug : invisible. Un chauffeur
       // sans slug n'a de toute façon aucune URL ni salle de réservations.
       if (!profile || profile.status !== "approved" || !row.slug) return null;
+      // Pièce obligatoire périmée : la fiche se retire d'elle-même.
+      if (expired.has(row.id)) return null;
       const driver = toDriver(row, profile);
       return isListable(driver) ? driver : null;
     })
@@ -165,8 +173,64 @@ export async function getDirectoryDriver(slug: string): Promise<Driver | null> {
 
   const p = profile as ProfileRow | null;
   if (!p || p.status !== "approved") return null;
+
+  // Même règle que la liste : une pièce obligatoire périmée répond 404, elle
+  // ne laisse pas la fiche accessible par son URL directe.
+  const expired = await expiredDriverIds(client, [p.id]);
+  if (expired.has(p.id)) return null;
+
   const driver = toDriver(row as unknown as DriverRow, p);
   return isListable(driver) ? driver : null;
+}
+
+/**
+ * Les chauffeurs dont une pièce OBLIGATOIRE a expiré.
+ *
+ * ⚠️ **Retrait automatique, pas refus.** Un chauffeur dont l'assurance a expiré
+ * hier n'est pas un fraudeur : il est hors des conditions. Sa fiche disparaît
+ * de l'annuaire, il redépose, elle revient. Laisser paraître une fiche dont
+ * l'assurance a expiré, en revanche, c'est afficher « habilitations vérifiées »
+ * sur un professionnel qui ne l'est plus.
+ *
+ * Une seule requête pour tout le lot, et seulement sur les pièces qui portent
+ * une échéance — l'index partiel `driver_documents_expiry_idx` est fait pour.
+ */
+async function expiredDriverIds(
+  client: NonNullable<ReturnType<typeof db>>,
+  ids: string[]
+): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const { data, error } = await client
+    .from("driver_documents")
+    .select("driver_id, kind, expires_at")
+    .in("driver_id", ids)
+    .not("expires_at", "is", null);
+
+  if (error) {
+    // ⚠️ En cas d'échec, on ne retire personne. Vider l'annuaire parce qu'une
+    // requête annexe a échoué serait une panne bien pire que le risque qu'elle
+    // couvre — et la colonne peut simplement ne pas encore exister (migration
+    // du 2026-09-29 non appliquée).
+    console.error(`[annuaire] échéances illisibles : ${error.message}`);
+    return new Set();
+  }
+
+  const byDriver = new Map<string, { kind: string; expiresAt: string | null }[]>();
+  for (const row of (data ?? []) as {
+    driver_id: string;
+    kind: string;
+    expires_at: string | null;
+  }[]) {
+    const list = byDriver.get(row.driver_id) ?? [];
+    list.push({ kind: row.kind, expiresAt: row.expires_at });
+    byDriver.set(row.driver_id, list);
+  }
+
+  const out = new Set<string>();
+  for (const [id, docs] of byDriver) {
+    if (hasExpiredRequired(docs)) out.add(id);
+  }
+  return out;
 }
 
 /** Les slugs publiables — pour `generateStaticParams` et les sitemaps. */

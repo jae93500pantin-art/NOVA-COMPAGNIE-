@@ -1,28 +1,25 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, adminDb } from "@/lib/admin";
+import { adminRefusal } from "@/lib/adminHttp";
 import { sendEmail, driverApprovedEmail } from "@/lib/email";
+import { logAdminAction } from "@/lib/adminDocuments";
+import {
+  blockingDocuments,
+  DOCUMENT_LABELS,
+  type ReviewedDocument,
+} from "@/lib/driverDocuments";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /** Maps the guard's refusal states onto HTTP responses. */
-const GUARD_ERRORS: Record<string, { status: number; error: string }> = {
-  unconfigured: { status: 503, error: "Back-office indisponible : Supabase n'est pas configuré" },
-  "no-service-role": {
-    status: 503,
-    error: "Back-office indisponible : SUPABASE_SERVICE_ROLE_KEY manquante",
-  },
-  anonymous: { status: 401, error: "Non autorisé : session manquante" },
-  forbidden: { status: 403, error: "Accès refusé : privilèges administrateur requis" },
-};
-
 export async function POST(
   request: Request,
   { params }: { params: { driverId: string } }
 ) {
   const guard = await requireAdmin();
   if (guard.state !== "ok") {
-    const { status, error } = GUARD_ERRORS[guard.state];
+    const { status, error } = adminRefusal(guard.state);
     return NextResponse.json({ error }, { status });
   }
 
@@ -49,6 +46,53 @@ export async function POST(
   }
   if (driver.status === "approved") {
     return NextResponse.json({ success: true, message: "Chauffeur déjà validé" });
+  }
+
+  /**
+   * ⚠️ LE CONTRÔLE DES PIÈCES CONDITIONNE LA VALIDATION.
+   *
+   * C'est le cœur de cette route. La page publique affiche « habilitations
+   * vérifiées » : si ce bouton pouvait valider un dossier que personne n'a
+   * regardé, la mention serait une publicité trompeuse, et un incident avec un
+   * faux chauffeur engagerait la plateforme.
+   *
+   * Trois motifs de blocage, et l'écran doit pouvoir dire lequel : pièce
+   * absente, pièce déposée mais non contrôlée, pièce périmée. Le contrôle est
+   * refait ICI et pas seulement dans l'interface — un bouton grisé n'est pas
+   * une règle, c'est une politesse.
+   */
+  const { data: docRows } = await db
+    .from("driver_documents")
+    .select("kind, checked_ok, expires_at")
+    .eq("driver_id", driverId);
+
+  const docs: ReviewedDocument[] = (
+    (docRows ?? []) as { kind: string; checked_ok: boolean | null; expires_at: string | null }[]
+  ).map((d) => ({
+    kind: d.kind,
+    checkedOk: d.checked_ok === true,
+    expiresAt: d.expires_at,
+  }));
+
+  const blocking = blockingDocuments(docs);
+  if (blocking.length > 0) {
+    const REASONS: Record<string, string> = {
+      missing: "absente",
+      unchecked: "non contrôlée",
+      expired: "expirée",
+    };
+    return NextResponse.json(
+      {
+        error: "Dossier incomplet : validation refusée",
+        blocking: blocking.map((b) => ({
+          kind: b.kind,
+          label: DOCUMENT_LABELS[b.kind].label,
+          reason: b.reason,
+          text: `${DOCUMENT_LABELS[b.kind].label} — ${REASONS[b.reason]}`,
+        })),
+      },
+      { status: 409 }
+    );
   }
 
   // 2. Status update (service role — RLS scopes profile writes to their owner).
@@ -95,6 +139,15 @@ export async function POST(
     loginUrl: `${origin}/auth/login`,
   });
   const emailed = driver.email ? await sendEmail({ to: driver.email, subject, html }) : false;
+
+  // Trace de la décision : qui, quand, et sur quelles pièces. C'est la preuve
+  // en cas de litige — elle s'écrit APRÈS le succès, jamais avant.
+  await logAdminAction(guard.userId, "driver_approved", {
+    driver_id: driverId,
+    slug,
+    documents: docs.map((d) => ({ kind: d.kind, expires_at: d.expiresAt })),
+    emailed,
+  });
 
   return NextResponse.json({
     success: true,

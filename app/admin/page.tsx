@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ShieldAlert, Users, CalendarClock, Activity, ExternalLink } from "lucide-react";
+// ⚠️ `ApproveDriverButton` n'est plus utilisé ici : la validation exige
+// désormais d'avoir ouvert les pièces (voir /admin/chauffeurs/[id]).
 import { requireAdmin, adminDb } from "@/lib/admin";
 import { isEmailConfigured } from "@/lib/config";
 import { formatAmount } from "@/lib/utils";
-import { ApproveDriverButton } from "@/components/admin/ApproveDriverButton";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Administration — Nova Compagnie", robots: { index: false } };
@@ -211,7 +212,17 @@ export default async function AdminDashboardPage() {
                         {new Date(d.created_at).toLocaleDateString("fr-FR")}
                       </td>
                       <td className="py-4 text-right">
-                        <ApproveDriverButton driverId={d.id} />
+                        {/* ⚠️ Plus de validation en un clic depuis la liste.
+                            Valider sans avoir ouvert les pièces est exactement
+                            ce que la page publique promet de ne pas faire : le
+                            seul chemin passe par l'écran de vérification. */}
+                        <Link
+                          href={`/admin/chauffeurs/${d.id}`}
+                          className="btn-primary text-xs"
+                        >
+                          Vérifier le dossier
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Link>
                       </td>
                     </tr>
                   ))}

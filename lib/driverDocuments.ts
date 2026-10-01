@@ -9,6 +9,8 @@
 export const DOCUMENT_KINDS = [
   "licence",
   "vtc_card",
+  "vtc_register",
+  "kbis",
   "insurance",
   "registration",
   "identity",
@@ -39,6 +41,23 @@ export const DOCUMENT_LABELS: Record<
   vtc_card: {
     label: "Carte professionnelle VTC",
     hint: "Délivrée par la préfecture. Sans elle, l'exercice est illégal.",
+    required: true,
+  },
+  /**
+   * ⚠️ La carte et le registre ne disent pas la même chose, et c'est pour ça
+   * que les deux sont exigés : la carte atteste du **chauffeur**, le registre
+   * atteste de l'**exploitant**. Un chauffeur peut détenir une carte valide
+   * alors que son entreprise n'est pas (ou plus) inscrite au registre — et
+   * l'exploitation est alors irrégulière. Ne pas fusionner ces deux pièces.
+   */
+  vtc_register: {
+    label: "Inscription au registre VTC",
+    hint: "Récépissé d'inscription au registre des exploitants VTC (ministère des Transports).",
+    required: true,
+  },
+  kbis: {
+    label: "Kbis ou avis SIRENE",
+    hint: "Rattache le SIREN déclaré à une entreprise réellement immatriculée. De moins de 3 mois.",
     required: true,
   },
   insurance: {
@@ -144,4 +163,170 @@ export function missingRequired(
 /** Les pièces présentées dans le formulaire : toutes, obligatoires ou non. */
 export function documentsToCollect(): DriverDocumentKind[] {
   return [...DOCUMENT_KINDS];
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Contrôle par un administrateur                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Une pièce telle qu'elle est contrôlée. Volontairement minimal : ces règles
+ * tournent côté serveur ET dans l'écran d'admin, et n'ont besoin de rien de
+ * plus pour trancher.
+ */
+export interface ReviewedDocument {
+  kind: string;
+  /** L'administrateur a coché « Conforme » APRÈS avoir regardé le fichier. */
+  checkedOk?: boolean;
+  /** Échéance saisie par l'administrateur, "YYYY-MM-DD". */
+  expiresAt?: string | null;
+}
+
+/** Délai d'alerte avant l'échéance d'une pièce. */
+export const EXPIRY_WARNING_DAYS = 30;
+
+/** Jours restants avant échéance, ou `null` si la pièce n'en a pas. */
+export function daysUntilExpiry(
+  doc: ReviewedDocument,
+  now: () => number = Date.now
+): number | null {
+  if (!doc.expiresAt || !/^\d{4}-\d{2}-\d{2}$/.test(doc.expiresAt)) return null;
+  // ⚠️ Minuit LOCAL des deux côtés : comparer une date nue à un instant ferait
+  // basculer l'échéance un jour trop tôt ou trop tard selon l'heure qu'il est.
+  const [y, m, d] = doc.expiresAt.split("-").map(Number);
+  const end = new Date(y, m - 1, d).getTime();
+  const today = new Date(now());
+  const start = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  ).getTime();
+  return Math.round((end - start) / 86_400_000);
+}
+
+/** La pièce est-elle périmée ? Le jour de l'échéance compte encore. */
+export function isExpired(
+  doc: ReviewedDocument,
+  now: () => number = Date.now
+): boolean {
+  const left = daysUntilExpiry(doc, now);
+  return left !== null && left < 0;
+}
+
+/** Échéance proche, mais pas encore atteinte — le cas qu'on veut signaler. */
+export function expiresSoon(
+  doc: ReviewedDocument,
+  now: () => number = Date.now,
+  within: number = EXPIRY_WARNING_DAYS
+): boolean {
+  const left = daysUntilExpiry(doc, now);
+  return left !== null && left >= 0 && left <= within;
+}
+
+/**
+ * Le dossier peut-il être validé ?
+ *
+ * ⚠️ Trois conditions, et il faut les trois. Déposer un fichier ne prouve rien :
+ * c'est le CONTRÔLE qui fait la validation, d'où `checkedOk`. Et une pièce
+ * périmée au moment de l'examen ne vaut pas mieux qu'une pièce absente.
+ *
+ * Rend la liste des pièces qui bloquent — l'écran doit pouvoir dire *laquelle*,
+ * pas seulement « non ».
+ */
+export function blockingDocuments(
+  docs: ReviewedDocument[],
+  now: () => number = Date.now
+): { kind: DriverDocumentKind; reason: "missing" | "unchecked" | "expired" }[] {
+  const byKind = new Map(docs.map((d) => [d.kind, d]));
+  const out: {
+    kind: DriverDocumentKind;
+    reason: "missing" | "unchecked" | "expired";
+  }[] = [];
+  for (const kind of DOCUMENT_KINDS) {
+    if (!DOCUMENT_LABELS[kind].required) continue;
+    const doc = byKind.get(kind);
+    if (!doc) out.push({ kind, reason: "missing" });
+    else if (isExpired(doc, now)) out.push({ kind, reason: "expired" });
+    else if (!doc.checkedOk) out.push({ kind, reason: "unchecked" });
+  }
+  return out;
+}
+
+/** Raccourci : le bouton « Valider » est-il ouvert ? */
+export function canApproveDossier(
+  docs: ReviewedDocument[],
+  now: () => number = Date.now
+): boolean {
+  return blockingDocuments(docs, now).length === 0;
+}
+
+/**
+ * Une pièce OBLIGATOIRE est-elle périmée ?
+ *
+ * ⚠️ Sert à retirer automatiquement une fiche de l'annuaire, pas à la refuser :
+ * un chauffeur dont l'assurance a expiré hier n'est pas un fraudeur, il est
+ * hors des conditions. Il redépose, et il reparaît.
+ */
+export function hasExpiredRequired(
+  docs: ReviewedDocument[],
+  now: () => number = Date.now
+): boolean {
+  return docs.some(
+    (d) =>
+      DOCUMENT_LABELS[d.kind as DriverDocumentKind]?.required &&
+      isExpired(d, now)
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Refus d'un dossier                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Motifs de refus. Jeu **fermé** : un motif libre pour tout finirait en « non »
+ * sans explication, et le chauffeur ne saurait pas quoi redéposer. `other`
+ * existe, mais exige alors une précision (voir `rejectionError`).
+ */
+export const REJECTION_REASONS = [
+  "unreadable",
+  "expired",
+  "name_mismatch",
+  "missing",
+  "other",
+] as const;
+
+export type RejectionReason = (typeof REJECTION_REASONS)[number];
+
+export const REJECTION_LABELS: Record<RejectionReason, string> = {
+  unreadable: "Document illisible",
+  expired: "Document expiré",
+  name_mismatch: "Nom différent de celui déclaré",
+  missing: "Pièce manquante",
+  other: "Autre motif",
+};
+
+export function isRejectionReason(v: unknown): v is RejectionReason {
+  return (
+    typeof v === "string" && (REJECTION_REASONS as readonly string[]).includes(v)
+  );
+}
+
+/**
+ * Message d'erreur du formulaire de refus, ou `null` s'il est recevable.
+ *
+ * ⚠️ « Autre motif » sans texte est refusé : c'est le seul cas où le chauffeur
+ * n'aurait aucun moyen de savoir quoi corriger, et il reviendrait déposer la
+ * même chose.
+ */
+export function rejectionError(
+  reason: unknown,
+  note: string
+): string | null {
+  if (!isRejectionReason(reason)) return "Choisissez un motif.";
+  const trimmed = note.trim();
+  if (reason === "other" && trimmed.length < 10) {
+    return "Précisez le motif (10 caractères minimum).";
+  }
+  if (trimmed.length > 500) return "Motif trop long (500 caractères maximum).";
+  return null;
 }

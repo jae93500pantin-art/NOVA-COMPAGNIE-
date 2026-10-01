@@ -16,6 +16,7 @@ import {
   ArrowRight,
   Loader2,
   AlertCircle,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isSupabaseConfigured } from "@/lib/config";
@@ -439,6 +440,32 @@ export function AuthForm({
             : t("auth.submitLogin")}
         </button>
       </form>
+
+      {/**
+       * ⚠️ Un LIEN vers la porte admin, jamais un onglet dans ce formulaire.
+       *
+       * Les deux écrans postent sur la même route `/api/auth/login` — il n'y a
+       * qu'un système d'authentification — mais `/admin/login` refuse un compte
+       * sans le rôle `admin` ET REFERME la session ouverte à l'instant :
+       * franchir cette porte ne doit pas connecter au site par effet de bord.
+       * Fusionner les deux formulaires ferait disparaître ce comportement, et
+       * personne ne s'en apercevrait avant qu'un admin ne se retrouve connecté
+       * côté client.
+       *
+       * Affiché seulement en mode connexion : proposer l'administration à qui
+       * crée un compte n'a aucun sens.
+       */}
+      {!isRegister && (
+        <p className="mt-6 border-t border-white/5 pt-5 text-center text-xs text-white/35">
+          <Link
+            href="/admin/login"
+            className="inline-flex items-center gap-1.5 transition hover:text-white/70"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            {t("auth.adminDoor")}
+          </Link>
+        </p>
+      )}
 
       <p className="mt-6 text-center text-sm text-white/50">
         {isRegister ? t("auth.alreadyAccount") : t("auth.noAccount")}{" "}
