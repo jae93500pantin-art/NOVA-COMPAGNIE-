@@ -18,10 +18,23 @@ export function AuthModal({
   open,
   onClose,
   initialMode = "login",
+  reason,
 }: {
   open: boolean;
   onClose: () => void;
   initialMode?: Mode;
+  /**
+   * Pourquoi la fenêtre s'est ouverte, quand ce n'est pas le visiteur qui l'a
+   * demandée.
+   *
+   * ⚠️ Sans cette phrase, un formulaire de connexion qui surgit après un clic
+   * sur « Laisser un avis » se lit comme un mur : le visiteur ne sait pas s'il
+   * doit un compte pour écrire ou si le site l'a déconnecté. ⚠️ Et comme la
+   * fenêtre **ne navigue pas** (elle se referme sur la page en cours), il
+   * retrouve son action là où il l'avait laissée — aucune redirection à
+   * reconstituer.
+   */
+  reason?: string;
 }) {
   const { t } = useI18n();
   const reduce = useReducedMotion();
@@ -135,6 +148,12 @@ export function AuthModal({
             <p className="mt-1.5 pr-12 text-sm text-white/55">
               {isRegister ? t("auth.subtitleRegister") : t("auth.subtitleLogin")}
             </p>
+
+            {reason && (
+              <p className="mt-3 rounded-2xl border border-royal-400/25 bg-royal-500/[0.07] px-3.5 py-2.5 text-[13px] leading-relaxed text-royal-100">
+                {reason}
+              </p>
+            )}
 
             <div className="mt-5 max-h-[65dvh] overflow-y-auto pr-0.5 sm:max-h-[70vh]">
               <Suspense fallback={null}>

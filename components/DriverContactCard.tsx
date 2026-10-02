@@ -41,7 +41,11 @@ export function DriverContactCard({ driver }: { driver: Driver }) {
     !week.every((d) => d.open && d.start === "00:00" && d.end === "23:59");
 
   return (
-    <div className="sticky top-28 space-y-4">
+    // ⚠️ Plus de `sticky top-28` ici. La colonne porte désormais DEUX blocs
+    // (contact puis demande de devis) : un bloc collant suivi d'un frère
+    // conserve sa place dans le flux tout en se décalant visuellement, donc il
+    // finissait par recouvrir le formulaire au défilement.
+    <div className="space-y-4">
       <div className="rounded-3xl glass-strong p-6 shadow-card">
         <p className="text-[11px] uppercase tracking-wider text-white/40">
           Tarifs annoncés par le chauffeur

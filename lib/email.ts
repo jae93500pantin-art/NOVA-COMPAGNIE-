@@ -201,3 +201,51 @@ export function documentExpiringEmail(d: {
     ),
   };
 }
+
+/**
+ * Une demande de devis déposée depuis une fiche chauffeur.
+ *
+ * ⚠️ **Tout ce qui vient du visiteur est échappé.** C'est le seul modèle
+ * alimenté par un formulaire **public** : les autres partent de données
+ * internes ou d'un texte tapé par un administrateur. Un `<` non échappé
+ * casserait la mise en page, et un fragment de balisage s'injecterait dans un
+ * e-mail que notre équipe ouvre.
+ *
+ * ⚠️ Aucun montant n'y figure, et il ne faut pas en ajouter : le devis est
+ * chiffré par le chauffeur (statut d'annuaire, règle 3).
+ */
+export function quoteRequestEmail(d: {
+  driverName: string;
+  driverSlug: string;
+  name: string;
+  email: string;
+  phone: string;
+  trip: string;
+  details?: string;
+}): { subject: string; html: string } {
+  const rows: [string, string][] = [
+    ["Chauffeur demandé", escapeHtml(d.driverName)],
+    ["Client", escapeHtml(d.name)],
+    // `mailto:` et `tel:` pour que le support réponde en un clic — c'est la
+    // seule interpolation volontairement non échappée, et elle enveloppe une
+    // valeur déjà échappée.
+    ["E-mail", `<a href="mailto:${escapeHtml(d.email)}" style="color:#c9a75f">${escapeHtml(d.email)}</a>`],
+    ["Téléphone", escapeHtml(d.phone)],
+    ["Trajet", escapeHtml(d.trip)],
+  ];
+  if (d.details) rows.push(["Précisions", escapeHtml(d.details)]);
+  rows.push([
+    "Fiche",
+    `<a href="https://www.novacompagnie.com/drivers/${encodeURIComponent(d.driverSlug)}" style="color:#c9a75f">Ouvrir</a>`,
+  ]);
+
+  return {
+    subject: `Demande de devis — ${d.driverName}`,
+    html: layout(
+      "Nouvelle demande de devis",
+      `Un visiteur souhaite être mis en relation avec <strong style="color:#fff">${escapeHtml(d.driverName)}</strong>. Transmettez-lui la demande : le devis et la facturation relèvent du chauffeur.`,
+      rows,
+      "Demande enregistrée dans la table quote_requests. Nova Compagnie ne chiffre ni ne facture la prestation."
+    ),
+  };
+}

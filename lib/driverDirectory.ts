@@ -156,6 +156,36 @@ function isListable(driver: Driver): boolean {
   return driver.pricePerHour > 0 || driver.pricePerDay > 0;
 }
 
+/**
+ * L'identifiant **de compte** d'un chauffeur publiable, depuis son slug.
+ *
+ * ⚠️ Pourquoi cette fonction existe : `Driver.id` porte le **slug**, parce que
+ * c'est lui que les URL manipulent — mais `reviews.driver_id` et
+ * `quote_requests.driver_id` référencent `drivers (id)`, c'est-à-dire l'**uuid
+ * du compte**. Sans traduction, une route qui enregistre un avis écrirait le
+ * slug dans une colonne uuid et échouerait à l'insertion.
+ *
+ * ⚠️ Elle applique **les mêmes filtres que la fiche publique** (validé, non
+ * périmé, tarif annoncé) : accepter un avis ou une demande de devis sur un
+ * chauffeur qui répond 404 créerait des lignes rattachées à une fiche
+ * invisible, que personne ne lira jamais.
+ */
+export async function getDirectoryDriverAccountId(
+  slug: string
+): Promise<string | null> {
+  const driver = await getDirectoryDriver(slug);
+  if (!driver) return null;
+
+  const client = db();
+  if (!client) return null;
+  const { data } = await client
+    .from("drivers")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
 /** Un chauffeur validé par son slug, ou `null`. */
 export async function getDirectoryDriver(slug: string): Promise<Driver | null> {
   const client = db();

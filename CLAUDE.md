@@ -221,7 +221,7 @@ Environ **12 000 lignes**, dont l'essentiel de la logique métier d'alors.
 | Paiement | `/api/checkout`, `PaymentDialog`, `lib/stripe`, `lib/paymentIntents`, `lib/payments`, la dépendance `stripe`, les autorisations Stripe de la CSP |
 | Barème | commission 15 %, frais client 5 %, `priceBreakdown` et ses six montants, le décompte « revenu net » du profil chauffeur, `pricing_rules` |
 | Messagerie de course | `lib/chat`, `chatBroker`, `chatMasking`, `chatQuickReplies`, `useBookingChat`, `BookingChat`, `/api/chat/[bookingId]` |
-| Avis certifiés | `lib/reviews`, `reviewBroker`, `/api/reviews/[driverId]`, `ReviewForm`, `Reviews`, `StarRating` |
+| Avis certifiés | `reviewBroker`, `ReviewForm`, `Reviews`, `StarRating`. ⚠️ `lib/reviews` et `/api/reviews/[driverId]` ont été **réécrits** le 2026-10-02 pour des avis NON vérifiés de titulaires de compte (§ Avis de compte) — la preuve par la course, elle, ne revient pas |
 | Bon de réservation | `lib/bookingVoucher`, `lib/pdf/bookingVoucher`, `lib/voucherSource`, `/api/booking/[id]/pdf`, la dépendance `@react-pdf/renderer` |
 | Créneaux | les clés `sessionStorage` `jw_booking_*`, et la date/heure de la **page transfert**. ⚠️ `DatePicker` et la date/heure de la carte d'accueil ont été **remis** le 2026-09-28, comme CRITÈRE DE RECHERCHE — voir § Disponibilité |
 | Adresses | `AddressAutocomplete`, `lib/places`, `/api/places` — orphelins dès que les champs d'adresse ont disparu. Une route publique que rien n'appelle reste une surface d'attaque |
@@ -229,14 +229,17 @@ Environ **12 000 lignes**, dont l'essentiel de la logique métier d'alors.
 
 ### Les conséquences qu'il faut assumer, pas contourner
 
-- **Plus d'étoiles nulle part.** Un avis n'était certifié que par la course
-  terminée qui l'avait produit ; sans réservation, plus rien ne le certifie. Un
-  avis libre sur un site marchand accessible, c'est le faux avis que ce dépôt a
-  déjà nettoyé une fois (§ Mock data). ⚠️ `drivers.rating` vaut **5.0 par
-  défaut** en base : l'afficher publiait « 5,0 ★ · 0 avis » sur chaque fiche
-  neuve, une note inventée sur un professionnel réel. `rating`,
-  `reviewsCount` et `trips` ont donc quitté le type `Driver`, et le filtre
-  « note minimum » comme le tri par note ont quitté `DriversExplorer`.
+- **Plus d'avis CERTIFIÉS.** Un avis n'était certifié que par la course
+  terminée qui l'avait produit ; sans réservation, plus rien ne le certifie.
+  ⚠️ **Des avis sont revenus le 2026-10-02**, mais explicitement **non
+  vérifiés** et réservés aux titulaires d'un compte — voir § Avis de compte.
+  Le mot « certifié » reste interdit sur un avis.
+  ⚠️ `drivers.rating` vaut **5.0 par défaut** en base : l'afficher publiait
+  « 5,0 ★ · 0 avis » sur chaque fiche neuve, une note inventée sur un
+  professionnel réel. `rating`, `reviewsCount` et `trips` ont donc quitté le
+  type `Driver`, et le filtre « note minimum » comme le tri par note ont quitté
+  `DriversExplorer` — **ne pas les y remettre en lisant ces colonnes** : la
+  moyenne se calcule sur les avis réellement présents (`ratingSummary`).
 - **Un tarif est obligatoire pour paraître** (`isListable`, § Tarifs).
 - **L'espace personnel est presque vide, et c'est exact** : la plateforme ne
   garde pas trace de prestations qu'elle n'organise pas. ⚠️ Ne pas le remplir de
@@ -558,6 +561,111 @@ avant `adminDb()`. Un test unitaire sur la garde ne l'attraperait pas.
 fonctionne pas** : `checked_ok` et `expires_at` n'existent pas. Le jeton
 `SUPABASE_ACCESS_TOKEN` répondant 401, elle doit être lancée depuis l'éditeur
 SQL du dashboard.
+
+## Libre accès, compte optionnel (2026-10-02)
+
+**L'annuaire se consulte et se sollicite sans compte. Le compte ne sert qu'aux
+avis.** Décision du propriétaire.
+
+- `/drivers` et `/drivers/[id]` **n'ont jamais été protégés** : le middleware ne
+  garde que `/compte` et `/admin`. ⚠️ La route ne s'appelle pas
+  `/chauffeur/[slug]` — c'est `/drivers/[id]`, où `id` **est** le slug
+  (`Driver.id` porte le slug, pas l'uuid).
+- `drivers_select` est déjà `using (true)`, tarifs compris (ce sont des colonnes
+  de la même table). ⚠️ **Ce n'est pas ce qui rend l'annuaire public côté
+  site** : le statut de validation vit dans `profiles`, réservé à son
+  propriétaire par la RLS, donc `lib/driverDirectory.ts` lit avec le service
+  role et filtre sur `status = 'approved'`. Basculer le site sur la clé anon
+  « pour simplifier » publierait les dossiers **en attente de validation**.
+
+### Demande de devis (`QuoteRequestForm` → `POST /api/quotes`)
+
+Formulaire **public**, sur la fiche chauffeur : nom, e-mail, téléphone, trajet,
+précisions. Règles pures dans `lib/quoteRequest.ts` (testé, 14).
+
+- ⚠️ **Ce n'est pas une réservation, et le vocabulaire en dépend** :
+  « Demander un devis » jamais « Réserver » ; **aucun créneau** à choisir (une
+  date imposée ici se lirait comme un créneau retenu) ; **aucun montant** ni
+  avant ni après l'envoi ; la confirmation annonce une *mise en relation*, pas
+  une course confirmée.
+- ⚠️ **Aucune colonne de prix dans `quote_requests`**, et il ne faut pas en
+  ajouter : un devis chiffré par Nova serait un prix imposé au chauffeur
+  (règle 3) et ferait de la plateforme le vendeur de la prestation. Le chauffeur
+  chiffre et facture ; `tests/quoteRequest.test.ts` échoue si un champ de prix
+  apparaît.
+- ⚠️ **La demande est PERSISTÉE avant l'e-mail.** `sendEmail` répond `false`
+  tant que le domaine n'est pas vérifié chez Resend : si la demande ne vivait
+  que dans cet e-mail, elle serait perdue en silence — le défaut exact de
+  `ContactForm`, dont l'envoi est simulé. L'écriture en base fait foi, l'e-mail
+  n'est qu'une notification, et son échec ne fait pas échouer la demande.
+- ⚠️ **Sans service role, la route REFUSE en 503** au lieu de simuler un
+  succès : afficher « demande envoyée » sans rien enregistrer fait attendre un
+  rappel qui ne viendra jamais, après avoir collecté nom, e-mail et téléphone
+  pour rien. Le message renvoie vers WhatsApp, qui marche sans aucune clé.
+- La notification part vers `CONTACT_EMAIL`, **pas vers le chauffeur** : ses
+  coordonnées ne sont pas publiées (`profiles` en lecture propriétaire), et un
+  envoi vers une adresse tierce est de toute façon refusé par Resend.
+- Cadence : **5/min et 20/h par IP**. Une route ouverte qui écrit en base et
+  déclenche un e-mail est exactement ce qu'un robot cherche ; une seule fenêtre
+  laisse passer le remplissage lent.
+
+### Avis de compte (`DriverReviews` → `/api/reviews/[driverId]`)
+
+Règles pures dans `lib/reviews.ts` (testé, 22). Lecture **publique**, écriture
+réservée au rôle `client`.
+
+- ⚠️ **CES AVIS NE SONT PAS VÉRIFIÉS, ET LE SITE DOIT LE DIRE.** Nova
+  n'organise pas les courses : elle ne peut pas savoir qu'une prestation a eu
+  lieu. `REVIEW_DISCLOSURE` est affichée **au-dessus de la liste**, pas repliée
+  en bas de page — publier des avis de consommateurs oblige à indiquer s'ils
+  sont vérifiés et comment (art. L111-7-2 du Code de la consommation, directive
+  Omnibus) ; **ne rien dire est l'infraction**. Deux tests verrouillent le
+  libellé : il doit contenir « ne sont pas vérifiés » et ne jamais contenir
+  « certifié ».
+- ⚠️ **Le compte n'est pas une vérification.** Il ne prouve rien ; il rend
+  l'auteur traçable et empêche le dépôt en masse. Ne pas le présenter autrement.
+- **L'auteur vient de la session**, jamais du corps de la requête : un
+  `authorId` envoyé par le navigateur permettrait de signer l'avis de n'importe
+  qui, y compris « Support Nova ». Le rôle est lu dans **`profiles`**
+  (`getServerUser`), jamais dans `user_metadata`.
+- **Un avis par auteur et par chauffeur.** Vérifié par la route **et** par
+  l'index unique `reviews_one_per_author_driver` : la lecture laisse une fenêtre
+  avant l'insertion, que deux soumissions simultanées franchiraient. Le code
+  Postgres `23505` est traduit en refus métier (409), pas en panne.
+- **Chauffeur et admin refusés** (403) : un chauffeur n'évalue pas un confrère
+  ni lui-même, et un avis signé par la plateforme sur un professionnel qu'elle
+  référence n'est pas un avis client.
+- `ratingSummary` rend `average: null` — **et pas 0** — quand il n'y a aucun
+  avis : 0 s'afficherait comme la plus mauvaise note possible. La moyenne se
+  calcule **sur les avis listés**, jamais depuis `drivers.rating`.
+- `reviewSignature` : prénom + initiale du nom, jamais le nom complet (signature
+  publique et indexable), et « Client Nova » pour un compte supprimé — retirer
+  l'avis réécrirait la moyenne du chauffeur à chaque suppression de compte.
+- **Écriture en service role, policies d'insertion RETIRÉES.**
+  `reviews_insert_after_completed_ride` exigeait une course terminée : elle
+  bloquait 100 % des insertions depuis le retrait de la réservation.
+  `reviews_insert` autorisait, elle, tout porteur de jeton à écrire sans
+  contrôle de rôle ni de cadence. ⚠️ Ne pas les remplacer par une policy
+  permissive : ce serait une **seconde porte** sur PostgREST contournant la
+  route.
+- `AuthModal` prend un `reason` : un formulaire de connexion qui surgit sans
+  explication se lit comme un mur. ⚠️ Il **ne navigue pas** — il se referme sur
+  la fiche —, donc la « redirection après connexion » n'a pas lieu d'être : le
+  visiteur n'a jamais quitté la page.
+- ⚠️ `DriverReviews` est un composant **client** : la fiche est pré-générée
+  (`generateStaticParams`), donc figer les avis dans le HTML afficherait l'état
+  du dernier build.
+
+### ⚠️ Migration à lancer
+
+`supabase/migrations/2026-10-02-avis-libre-acces-devis.sql`, **en un bloc**,
+après celle du 2026-09-29. Elle crée `quote_requests`, pose l'index unique des
+avis et retire les policies d'écriture. **Tant qu'elle n'est pas passée**, les
+avis fonctionnent (les colonnes existaient déjà) mais la demande de devis
+répond 500 avec un message propre — pas un crash.
+⚠️ `quote_requests` a la RLS **activée sans aucune policy** : c'est la
+protection. Seul le service role passe. Ne pas ajouter de policy d'insertion
+publique — la table porte nom, e-mail et téléphone de particuliers.
 
 ## Contact (WhatsApp)
 

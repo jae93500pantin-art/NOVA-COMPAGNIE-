@@ -18,6 +18,8 @@ import { Gallery } from "@/components/Gallery";
 import { DriverContactCard } from "@/components/DriverContactCard";
 import { DriverAvatar } from "@/components/DriverAvatar";
 import { DriverVehicle } from "@/components/DriverVehicle";
+import { DriverReviews } from "@/components/DriverReviews";
+import { QuoteRequestForm } from "@/components/QuoteRequestForm";
 
 /**
  * Les fiches sont pré-générées pour les chauffeurs déjà validés, et les
@@ -202,11 +204,24 @@ export default async function DriverProfile({ params }: { params: { id: string }
             <p className="mt-3 leading-relaxed text-white/65">{driver.bio}</p>
           </section>
 
+          {/* Avis — lecture LIBRE, écriture avec un compte client.
+              ⚠️ Composant client : la page est pré-générée (`generateStaticParams`),
+              donc les avis sont lus côté navigateur. Les figer dans le HTML
+              statique afficherait l'état du dernier build, et un avis publié
+              n'apparaîtrait qu'à la reconstruction suivante. */}
+          <DriverReviews
+            driverSlug={driver.id}
+            driverName={driver.firstName}
+          />
         </div>
 
-        {/* Colonne de droite — contact, pas reservation */}
-        <div>
+        {/* Colonne de droite — contact et demande de devis, pas reservation */}
+        <div className="space-y-4">
           <DriverContactCard driver={driver} />
+          <QuoteRequestForm
+            driverSlug={driver.id}
+            driverName={driver.firstName}
+          />
         </div>
       </div>
     </div>
