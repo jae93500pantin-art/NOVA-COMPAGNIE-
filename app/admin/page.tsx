@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ShieldAlert, Users, CalendarClock, Activity, ExternalLink } from "lucide-react";
+import { DeleteDriverButton } from "@/components/admin/DeleteDriverButton";
 // ⚠️ `ApproveDriverButton` n'est plus utilisé ici : la validation exige
 // désormais d'avoir ouvert les pièces (voir /admin/chauffeurs/[id]).
 import { requireAdmin, adminDb } from "@/lib/admin";
@@ -101,29 +102,29 @@ export default async function AdminDashboardPage() {
     .eq("status", "pending")
     .order("created_at", { ascending: true });
 
-  // ── 20 dernières réservations ────────────────────────────────
-  const { data: bookings, count: totalBookings } = await db
-    .from("bookings")
-    .select("id, client_id, driver_id, start_at, hours, total, status, created_at", {
-      count: "exact",
-    })
-    .order("created_at", { ascending: false })
-    .limit(20);
+  // ── Chauffeurs validés ───────────────────────────────────────
+  /**
+   * ⚠️ Remplace la section « Dernières réservations », devenue vide de sens :
+   * la table  n a plus ni ecrivain ni lecteur depuis le passage au
+   * statut d annuaire. Afficher un compteur a zero et une explication sur un
+   * broker supprime n aidait plus personne.
+   */
+  const { data: approvedDrivers } = await db
+    .from("profiles")
+    .select("id, first_name, last_name, email, phone, driver_slug, approved_at")
+    .eq("role", "driver")
+    .eq("status", "approved")
+    .order("approved_at", { ascending: false });
 
-  // Les noms viennent d'une seconde requête plutôt que d'un embed PostgREST :
-  // bookings.driver_id pointe sur `drivers`, pas directement sur `profiles`.
-  const ids = Array.from(
-    new Set((bookings ?? []).flatMap((b) => [b.client_id, b.driver_id]).filter(Boolean))
-  );
-  const { data: people } = ids.length
-    ? await db.from("profiles").select("id, first_name, last_name").in("id", ids)
-    : { data: [] as { id: string; first_name: string; last_name: string }[] };
-
-  const nameOf = (id: string) => {
-    const p = people?.find((x) => x.id === id);
-    const full = `${p?.first_name ?? ""} ${p?.last_name ?? ""}`.trim();
-    return full || "—";
-  };
+  const approved = (approvedDrivers ?? []) as {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+    driver_slug: string | null;
+    approved_at: string | null;
+  }[];
 
   const pending = pendingDrivers ?? [];
 
@@ -148,8 +149,8 @@ export default async function AdminDashboardPage() {
         <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Kpi
             icon={CalendarClock}
-            label="Total réservations"
-            value={String(totalBookings ?? 0)}
+            label="Chauffeurs référencés"
+            value={String(approved.length)}
           />
           <Kpi
             icon={Users}
@@ -197,7 +198,7 @@ export default async function AdminDashboardPage() {
                     <th className="pb-3 font-semibold">E-mail</th>
                     <th className="pb-3 font-semibold">Téléphone</th>
                     <th className="pb-3 font-semibold">Inscrit le</th>
-                    <th className="pb-3 text-right font-semibold">Action</th>
+                    <th className="pb-3 text-right font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
@@ -211,18 +212,29 @@ export default async function AdminDashboardPage() {
                       <td className="py-4 text-sm text-white/45">
                         {new Date(d.created_at).toLocaleDateString("fr-FR")}
                       </td>
-                      <td className="py-4 text-right">
+                      <td className="py-4">
                         {/* ⚠️ Plus de validation en un clic depuis la liste.
                             Valider sans avoir ouvert les pièces est exactement
                             ce que la page publique promet de ne pas faire : le
                             seul chemin passe par l'écran de vérification. */}
-                        <Link
-                          href={`/admin/chauffeurs/${d.id}`}
-                          className="btn-primary text-xs"
-                        >
-                          Vérifier le dossier
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </Link>
+                        <div className="flex items-center justify-end gap-2">
+                          <Link
+                            href={`/admin/chauffeurs/${d.id}`}
+                            className="btn-primary text-xs"
+                          >
+                            Vérifier le dossier
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </Link>
+                          {/* Un dossier qui n aboutira jamais — inscription
+                              abandonnee, doublon, saisie de test — se retire
+                              d ici, sinon la liste des « en attente » devient
+                              illisible et plus personne ne la regarde. */}
+                          <DeleteDriverButton
+                            driverId={d.id}
+                            name={`${d.first_name ?? ""} ${d.last_name ?? ""}`.trim()}
+                            email={d.email ?? ""}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -232,66 +244,86 @@ export default async function AdminDashboardPage() {
           )}
         </section>
 
-        {/* ── Réservations ────────────────────────────────────── */}
+        {/* ── Chauffeurs validés ──────────────────────────────── */}
         <section className="glass rounded-2xl p-6">
-          <h2 className="text-lg font-semibold text-white">Dernières réservations</h2>
+          <h2 className="text-lg font-semibold text-white">
+            Chauffeurs référencés
+          </h2>
+          <p className="mt-1 text-xs text-white/40">
+            Dossiers validés, visibles dans l&apos;annuaire public.
+          </p>
 
-          {!bookings || bookings.length === 0 ? (
-            <div className="mt-5 space-y-2">
-              <p className="text-sm italic text-white/40">Aucune réservation enregistrée.</p>
-              <p className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-xs leading-relaxed text-white/45">
-                ⚠️ Attendu en l&apos;état : les réservations vivent aujourd&apos;hui dans le broker
-                en mémoire (<code>lib/bookingBroker.ts</code>) et ne sont jamais écrites dans la
-                table <code>bookings</code>. Cette section restera vide tant que la persistance
-                Supabase des courses n&apos;aura pas été branchée.
-              </p>
-            </div>
+          {approved.length === 0 ? (
+            <p className="mt-5 text-sm italic text-white/40">
+              Aucun chauffeur référencé pour le moment.
+            </p>
           ) : (
             <div className="mt-5 overflow-x-auto">
-              <table className="w-full min-w-[720px] border-collapse text-left">
+              <table className="w-full min-w-[760px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/35">
-                    <th className="pb-3 font-semibold">ID / Date</th>
-                    <th className="pb-3 font-semibold">Trajet</th>
-                    <th className="pb-3 font-semibold">Statut</th>
-                    <th className="pb-3 text-right font-semibold">Montant</th>
+                    <th className="pb-3 font-semibold">Chauffeur</th>
+                    <th className="pb-3 font-semibold">E-mail</th>
+                    <th className="pb-3 font-semibold">Fiche publique</th>
+                    <th className="pb-3 font-semibold">Validé le</th>
+                    <th className="pb-3 text-right font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {bookings.map((b) => (
-                    <tr key={b.id} className="transition hover:bg-white/[0.03]">
-                      <td className="py-4 font-mono text-xs text-white/50">
-                        {String(b.id).slice(0, 8)}…
-                        <div className="mt-0.5 text-[11px] text-white/30">
-                          {new Date(b.created_at).toLocaleDateString("fr-FR")}
-                        </div>
-                      </td>
-                      <td className="py-4 text-sm">
-                        <div className="max-w-xs truncate font-medium text-white">
-                          {nameOf(b.client_id)} → {nameOf(b.driver_id)}
-                        </div>
-                        <div className="text-xs text-white/45">
-                          {new Date(b.start_at).toLocaleString("fr-FR", {
-                            dateStyle: "short",
-                            timeStyle: "short",
-                          })}{" "}
-                          · {b.hours} h
-                        </div>
-                      </td>
-                      <td className="py-4">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase ${
-                            STATUS_TONE[b.status] ?? "bg-white/10 text-white/60"
-                          }`}
-                        >
-                          {b.status}
-                        </span>
-                      </td>
-                      <td className="py-4 text-right text-sm font-semibold text-white">
-                        {b.total ? `${formatAmount(Number(b.total))} €` : "Sur devis"}
-                      </td>
-                    </tr>
-                  ))}
+                  {approved.map((d) => {
+                    const name =
+                      `${d.first_name ?? ""} ${d.last_name ?? ""}`.trim() || "—";
+                    return (
+                      <tr key={d.id} className="transition hover:bg-white/[0.03]">
+                        <td className="py-4 text-sm font-medium text-white">
+                          {name}
+                        </td>
+                        <td className="py-4 text-sm text-white/60">
+                          {d.email ?? "—"}
+                        </td>
+                        <td className="py-4 text-sm">
+                          {d.driver_slug ? (
+                            <a
+                              href={`/drivers/${d.driver_slug}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-royal-300 hover:underline"
+                            >
+                              /{d.driver_slug}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : (
+                            /* ⚠️ Validé sans slug : état incohérent que
+                               `approve_driver` est censé rendre impossible
+                               (les deux écritures sont dans une transaction).
+                               S'il apparaît, rejouer la validation la répare. */
+                            <span className="text-amber-300/80">slug manquant</span>
+                          )}
+                        </td>
+                        <td className="py-4 text-sm text-white/45">
+                          {d.approved_at
+                            ? new Date(d.approved_at).toLocaleDateString("fr-FR")
+                            : "—"}
+                        </td>
+                        <td className="py-4">
+                          <div className="flex items-center justify-end gap-2">
+                            <Link
+                              href={`/admin/chauffeurs/${d.id}`}
+                              className="btn-ghost text-xs"
+                            >
+                              Voir le dossier
+                            </Link>
+                            <DeleteDriverButton
+                              driverId={d.id}
+                              name={name}
+                              email={d.email ?? ""}
+                              approved
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

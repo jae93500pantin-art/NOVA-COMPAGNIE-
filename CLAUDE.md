@@ -491,11 +491,52 @@ chauffeur corrige et redépose. ⚠️ Un chauffeur **déjà validé** ne se ref
 par cette route — sa fiche est publique et des clients l'ont peut-être contacté,
 c'est une suspension, une autre décision.
 
+### La console : deux listes, et la suppression
+
+- **« Chauffeurs en attente »** (`status = 'pending'`) → « Vérifier le dossier ».
+  Un dossier validé ou refusé quitte la liste tout seul, son statut ayant changé.
+- **« Chauffeurs référencés »** (`status = 'approved'`) : nom, e-mail, lien vers
+  la fiche publique, date de validation. ⚠️ Elle **remplace** l'ancienne section
+  « Dernières réservations », vide de sens depuis le statut d'annuaire — la table
+  `bookings` n'a plus ni écrivain ni lecteur. Un compteur à zéro accompagné d'une
+  explication sur un broker supprimé n'aidait plus personne.
+- Un « slug manquant » sur une fiche validée signale un état que `approve_driver`
+  est censé rendre impossible (les deux écritures sont dans une transaction) :
+  rejouer la validation le répare.
+
+### ⚠️ `DELETE /api/admin/drivers/[id]` — les fichiers ne cascadent PAS
+
+C'est la raison d'être de cette route, et le piège qu'elle ferme. Supprimer le
+compte `auth.users` efface en cascade `profiles`, `drivers`, `vehicles` et
+`driver_documents` — **mais pas les fichiers du bucket**. Sans la boucle de
+suppression, les permis de conduire et les pièces d'identité d'un chauffeur
+supprimé resteraient indéfiniment dans le stockage, sans plus aucune ligne pour
+les désigner : une conservation de données personnelles que plus rien ne
+justifie, et que personne ne retrouverait pour la nettoyer.
+
+- ⚠️ **Les fichiers partent AVANT le compte.** L'ordre inverse perdrait la liste
+  des chemins à supprimer avec la cascade.
+- ⚠️ **Un échec de suppression des fichiers interrompt tout** (502) et conserve
+  le dossier. Mieux vaut un dossier encore présent, qu'on peut supprimer à
+  nouveau, qu'un fichier d'identité que personne ne sait plus localiser.
+- ⚠️ **La trace s'écrit avant** la suppression : après, `profiles` n'existe plus
+  et la clé étrangère d'`audit_log` passerait à null.
+- **Deux comptes inviolables** : un `admin`, et soi-même. Supprimer le seul
+  compte administrateur fermerait le back-office à clé de l'intérieur — la
+  promotion ne peut venir que d'un script hors application.
+- Interface : `DeleteDriverButton`, **deux clics**, et la confirmation répète le
+  **nom et l'e-mail**. Un clic unique sur une ligne de tableau se donne par
+  erreur ; répéter la personne concernée est la seule façon de s'apercevoir
+  qu'on s'est trompé de ligne avant que ce ne soit irréversible.
+- Vérifié en conditions réelles : compte de test + pièce déposée → séquence de
+  la route → bucket **vide**, `profiles` et `driver_documents` vides.
+
 ### Traçabilité (`audit_log`)
 
 `driver_documents_viewed` (à l'ouverture de la fiche — le moment où les pièces
 deviennent consultables), `driver_document_checked`, `driver_approved` (avec les
-pièces et leurs échéances), `driver_rejected`, `documents_expiry_notified`.
+pièces et leurs échéances), `driver_rejected`, `driver_approved_override`, `driver_deleted` (avec le nombre
+de pièces retirées du stockage), `documents_expiry_notified`.
 ⚠️ `user_id` porte l'**administrateur** qui agit, le chauffeur étant dans
 `detail.driver_id` : la question à laquelle ce journal doit répondre est « qui a
 validé, et sur quelles pièces ».

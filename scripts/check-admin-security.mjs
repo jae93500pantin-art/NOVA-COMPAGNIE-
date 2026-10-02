@@ -40,6 +40,9 @@ const anonymous = [
   ["PATCH", "/api/admin/drivers/00000000-0000-0000-0000-000000000000/documents"],
   ["POST", "/api/admin/drivers/00000000-0000-0000-0000-000000000000/reject"],
   ["POST", "/api/admin/drivers/00000000-0000-0000-0000-000000000000/approve"],
+  // ⚠️ La route destructive en premier dans les priorites : un DELETE ouvert
+  // effacerait des comptes et des pieces d identite.
+  ["DELETE", "/api/admin/drivers/00000000-0000-0000-0000-000000000000"],
 ];
 for (const [method, path] of anonymous) {
   try {
