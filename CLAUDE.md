@@ -581,17 +581,23 @@ SQL du dashboard.
   table was reintroduced later for the course chat.)
 - ⚠️ **Les coordonnées vivent dans `lib/contact.ts`, et nulle part ailleurs.**
   `CONTACT_EMAIL` (**ContactFrance@novacompagnie.com**), `CONTACT_PHONE_DIGITS`
-  (format `wa.me` : international, sans `+`, sans espace, sans le `0`),
-  `CONTACT_PHONE_DISPLAY` (**07 44 78 34 57**, tel qu'on l'écrit en France) et
-  `CONTACT_PHONE_HREF` (`tel:` en **international** — un `tel:0744…` composé
-  depuis l'étranger n'aboutit pas).
+  (format `wa.me` : international, sans `+`, sans espace, sans le `0`) et
+  `CONTACT_PHONE_DISPLAY` (**07 44 78 34 57**, tel qu'on l'écrit en France).
   `lib/whatsapp.ts` en **dérive** son numéro : la ligne WhatsApp et le numéro
   affiché ne peuvent donc pas diverger.
+- ⚠️ **Aucun lien `tel:`, nulle part — et pas de canal « Téléphone ».** Ce
+  numéro est une ligne **WhatsApp**, pas un standard : un lien d'appel
+  lancerait une sonnerie que personne ne décroche, et le visiteur en
+  conclurait que la société ne répond pas alors qu'il lui suffisait d'écrire.
+  Le numéro ne s'affiche donc **jamais seul** : toujours précédé de
+  « WhatsApp » et lié par `whatsappUrl()`. ⚠️ La clé i18n
+  `contact.infoPhoneLabel` existe en FR et EN mais **n'a aucun utilisateur** :
+  s'en servir ferait réapparaître le canal téléphonique.
   L'adresse était recopiée en clair dans trois fichiers et le numéro dans deux
   autres ; une coordonnée recopiée finit par n'être changée qu'à moitié, et sur
   `/legal/confidentialite` ce n'est pas un détail d'affichage — c'est le canal
   d'exercice des droits RGPD.
-- Points d'affichage : `ContactForm` (e-mail · téléphone · WhatsApp),
+- Points d'affichage : `ContactForm` (e-mail · WhatsApp · disponibilité),
   **le pied de page de chaque page**, `/legal/mentions-legales`,
   `/legal/confidentialite` et le pied des e-mails transactionnels
   (`lib/email.ts`).

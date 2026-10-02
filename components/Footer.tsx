@@ -1,13 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { Sparkles, Instagram, Youtube, ShieldCheck, Mail, Phone } from "lucide-react";
-import { useI18n } from "@/lib/i18n";
 import {
-  CONTACT_EMAIL,
-  CONTACT_PHONE_DISPLAY,
-  CONTACT_PHONE_HREF,
-} from "@/lib/contact";
+  Sparkles,
+  Instagram,
+  Youtube,
+  ShieldCheck,
+  Mail,
+  MessageCircle,
+} from "lucide-react";
+import { useI18n } from "@/lib/i18n";
+import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY } from "@/lib/contact";
+import { whatsappUrl } from "@/lib/whatsapp";
 
 function TikTokIcon({ className }: { className?: string }) {
   return (
@@ -75,12 +79,17 @@ export function Footer() {
                 <Mail className="h-3.5 w-3.5 shrink-0" />
                 <span className="break-all">{CONTACT_EMAIL}</span>
               </a>
+              {/* ⚠️ WhatsApp, pas un lien d'appel : le numéro est une ligne
+                  de messagerie, et un `tel:` renverrait vers une sonnerie
+                  que personne ne décroche. */}
               <a
-                href={CONTACT_PHONE_HREF}
+                href={whatsappUrl()}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex items-center gap-2 text-sm text-white/50 transition hover:text-white"
               >
-                <Phone className="h-3.5 w-3.5 shrink-0" />
-                {CONTACT_PHONE_DISPLAY}
+                <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+                WhatsApp {CONTACT_PHONE_DISPLAY}
               </a>
             </div>
             <div className="mt-5 flex gap-3">

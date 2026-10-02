@@ -1,8 +1,5 @@
-import {
-  CONTACT_EMAIL,
-  CONTACT_PHONE_DISPLAY,
-  CONTACT_PHONE_HREF,
-} from "@/lib/contact";
+import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY } from "@/lib/contact";
+import { whatsappUrl } from "@/lib/whatsapp";
 
 export const metadata = { title: "Mentions légales — Nova Compagnie" };
 
@@ -26,8 +23,10 @@ export default function LegalNoticePage() {
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
         </li>
         <li>
-          Téléphone :{" "}
-          <a href={CONTACT_PHONE_HREF}>{CONTACT_PHONE_DISPLAY}</a>
+          WhatsApp :{" "}
+          <a href={whatsappUrl()} target="_blank" rel="noopener noreferrer">
+            {CONTACT_PHONE_DISPLAY}
+          </a>
         </li>
         <li>Directeur de la publication : l’équipe Nova Compagnie</li>
       </ul>

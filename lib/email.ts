@@ -108,7 +108,7 @@ function layout(heading: string, intro: string, rows: [string, string][], footer
         <p style="margin:0;font-size:12px;color:#6a6a70">${footer}</p>
       </div>
       <div style="padding:16px 28px;border-top:1px solid #26262b;text-align:center">
-        <p style="margin:0;font-size:11px;color:#5a5a60">Nova Compagnie · www.novacompagnie.com · ${CONTACT_EMAIL} · ${CONTACT_PHONE_DISPLAY}</p>
+        <p style="margin:0;font-size:11px;color:#5a5a60">Nova Compagnie · www.novacompagnie.com · ${CONTACT_EMAIL} · WhatsApp ${CONTACT_PHONE_DISPLAY}</p>
       </div>
     </div>
   </div>`;

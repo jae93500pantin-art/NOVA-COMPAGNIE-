@@ -31,9 +31,13 @@ export const CONTACT_PHONE_DIGITS = "33744783457";
 export const CONTACT_PHONE_DISPLAY = "07 44 78 34 57";
 
 /**
- * Le lien d'appel.
+ * ⚠️ **Il n'y a volontairement PAS de lien `tel:`.**
  *
- * ⚠️ En international, pas en national : un `tel:0744…` composé depuis
- * l'étranger ou depuis un carnet d'adresses étranger n'aboutit pas.
+ * Ce numéro est une ligne **WhatsApp**, pas un standard téléphonique. Un lien
+ * d'appel lancerait une sonnerie que personne ne décroche : le visiteur en
+ * conclut que la société ne répond pas, alors qu'il lui suffisait d'écrire.
+ * Un canal affiché doit être un canal qui répond.
+ *
+ * Le numéro ne s'affiche donc jamais seul : il est toujours précédé de
+ * « WhatsApp » et lié par `whatsappUrl()` (`lib/whatsapp.ts`).
  */
-export const CONTACT_PHONE_HREF = `tel:+${CONTACT_PHONE_DIGITS}`;

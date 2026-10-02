@@ -14,11 +14,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { WHATSAPP_NUMBER, WHATSAPP_DISPLAY } from "@/lib/whatsapp";
-import {
-  CONTACT_EMAIL,
-  CONTACT_PHONE_DISPLAY,
-  CONTACT_PHONE_HREF,
-} from "@/lib/contact";
+import { CONTACT_EMAIL } from "@/lib/contact";
 
 const REQUEST_TYPES = [
   "typeReservation",
@@ -86,15 +82,9 @@ export function ContactForm() {
       href: `mailto:${CONTACT_EMAIL}`,
       accent: "default" as const,
     },
-    {
-      icon: Phone,
-      label: t("contact.infoPhoneLabel"),
-      value: CONTACT_PHONE_DISPLAY,
-      // ⚠️ `tel:` au format international (voir lib/contact.ts) : le numéro
-      // s'affiche en national, il se compose en international.
-      href: CONTACT_PHONE_HREF,
-      accent: "default" as const,
-    },
+    // ⚠️ Pas de canal « Téléphone ». Le numéro est une ligne WhatsApp, et
+    // l'afficher comme un numéro à appeler enverrait des clients vers une
+    // sonnerie que personne ne décroche. Un seul canal, celui qui répond.
     {
       icon: MessageCircle,
       label: t("contact.infoWhatsappLabel"),
