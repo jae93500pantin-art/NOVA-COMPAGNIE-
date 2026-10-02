@@ -1,3 +1,9 @@
+import {
+  CONTACT_EMAIL,
+  CONTACT_PHONE_DISPLAY,
+  CONTACT_PHONE_HREF,
+} from "@/lib/contact";
+
 export const metadata = { title: "Mentions légales — Nova Compagnie" };
 
 export default function LegalNoticePage() {
@@ -17,7 +23,11 @@ export default function LegalNoticePage() {
         <li>Siège social : 12 rue de l’Élégance, 75008 Paris, France</li>
         <li>
           Contact :{" "}
-          <a href="mailto:contact@novacompagnie.com">contact@novacompagnie.com</a>
+          <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+        </li>
+        <li>
+          Téléphone :{" "}
+          <a href={CONTACT_PHONE_HREF}>{CONTACT_PHONE_DISPLAY}</a>
         </li>
         <li>Directeur de la publication : l’équipe Nova Compagnie</li>
       </ul>

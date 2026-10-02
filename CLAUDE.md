@@ -579,7 +579,26 @@ SQL du dashboard.
   `lib/realtime.ts`, `lib/conversations.ts`, `lib/contacts.ts` + its test, and the
   `conversations` table in `supabase/schema.sql`. (A booking-scoped `messages`
   table was reintroduced later for the course chat.)
-- Update `WHATSAPP_NUMBER` in `lib/whatsapp.ts` to change the number everywhere.
+- ⚠️ **Les coordonnées vivent dans `lib/contact.ts`, et nulle part ailleurs.**
+  `CONTACT_EMAIL` (**ContactFrance@novacompagnie.com**), `CONTACT_PHONE_DIGITS`
+  (format `wa.me` : international, sans `+`, sans espace, sans le `0`),
+  `CONTACT_PHONE_DISPLAY` (**07 44 78 34 57**, tel qu'on l'écrit en France) et
+  `CONTACT_PHONE_HREF` (`tel:` en **international** — un `tel:0744…` composé
+  depuis l'étranger n'aboutit pas).
+  `lib/whatsapp.ts` en **dérive** son numéro : la ligne WhatsApp et le numéro
+  affiché ne peuvent donc pas diverger.
+  L'adresse était recopiée en clair dans trois fichiers et le numéro dans deux
+  autres ; une coordonnée recopiée finit par n'être changée qu'à moitié, et sur
+  `/legal/confidentialite` ce n'est pas un détail d'affichage — c'est le canal
+  d'exercice des droits RGPD.
+- Points d'affichage : `ContactForm` (e-mail · téléphone · WhatsApp),
+  **le pied de page de chaque page**, `/legal/mentions-legales`,
+  `/legal/confidentialite` et le pied des e-mails transactionnels
+  (`lib/email.ts`).
+- ⚠️ `EMAIL_FROM` est l'**expéditeur**, pas une coordonnée de contact : il vit
+  dans `.env.local` et exige un domaine vérifié chez Resend. Il a été aligné
+  sur la même adresse (il portait `reservations@`, qui ne veut plus rien dire
+  depuis le statut d'annuaire), mais le changer n'a aucun effet sur les pages.
 
 ## Disponibilité d'un chauffeur : planning + interrupteur
 

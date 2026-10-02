@@ -14,6 +14,11 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { WHATSAPP_NUMBER, WHATSAPP_DISPLAY } from "@/lib/whatsapp";
+import {
+  CONTACT_EMAIL,
+  CONTACT_PHONE_DISPLAY,
+  CONTACT_PHONE_HREF,
+} from "@/lib/contact";
 
 const REQUEST_TYPES = [
   "typeReservation",
@@ -24,7 +29,6 @@ const REQUEST_TYPES = [
 ] as const;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const CONTACT_EMAIL = "contact@novacompagnie.com";
 
 export function ContactForm() {
   const { t } = useI18n();
@@ -80,6 +84,15 @@ export function ContactForm() {
       label: t("contact.infoEmailLabel"),
       value: CONTACT_EMAIL,
       href: `mailto:${CONTACT_EMAIL}`,
+      accent: "default" as const,
+    },
+    {
+      icon: Phone,
+      label: t("contact.infoPhoneLabel"),
+      value: CONTACT_PHONE_DISPLAY,
+      // ⚠️ `tel:` au format international (voir lib/contact.ts) : le numéro
+      // s'affiche en national, il se compose en international.
+      href: CONTACT_PHONE_HREF,
       accent: "default" as const,
     },
     {

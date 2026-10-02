@@ -1,3 +1,5 @@
+import { CONTACT_EMAIL } from "@/lib/contact";
+
 export const metadata = { title: "Politique de confidentialité — Nova Compagnie" };
 
 export default function PrivacyPage() {
@@ -17,7 +19,7 @@ export default function PrivacyPage() {
         Le responsable du traitement est Nova Compagnie.
         Pour toute question relative à vos données, contactez notre délégué à la
         protection des données :{" "}
-        <a href="mailto:contact@novacompagnie.com">contact@novacompagnie.com</a>.
+        <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
       </p>
 
       <h2>2. Données que nous collectons</h2>

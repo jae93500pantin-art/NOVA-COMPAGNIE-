@@ -1,6 +1,7 @@
 import "server-only";
 
 import { serverEnv, isEmailConfigured } from "./config";
+import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY } from "./contact";
 
 /**
  * Transactional email via the Resend REST API (no SDK dependency).
@@ -107,7 +108,7 @@ function layout(heading: string, intro: string, rows: [string, string][], footer
         <p style="margin:0;font-size:12px;color:#6a6a70">${footer}</p>
       </div>
       <div style="padding:16px 28px;border-top:1px solid #26262b;text-align:center">
-        <p style="margin:0;font-size:11px;color:#5a5a60">Nova Compagnie · www.novacompagnie.com · Contact WhatsApp : +33 7 44 78 49 91</p>
+        <p style="margin:0;font-size:11px;color:#5a5a60">Nova Compagnie · www.novacompagnie.com · ${CONTACT_EMAIL} · ${CONTACT_PHONE_DISPLAY}</p>
       </div>
     </div>
   </div>`;

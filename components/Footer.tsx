@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Sparkles, Instagram, Youtube, ShieldCheck } from "lucide-react";
+import { Sparkles, Instagram, Youtube, ShieldCheck, Mail, Phone } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import {
+  CONTACT_EMAIL,
+  CONTACT_PHONE_DISPLAY,
+  CONTACT_PHONE_HREF,
+} from "@/lib/contact";
 
 function TikTokIcon({ className }: { className?: string }) {
   return (
@@ -59,6 +64,25 @@ export function Footer() {
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/50">
               {t("footer.tagline")}
             </p>
+
+            {/* Les coordonnées sur chaque page, pas seulement sur /contact :
+                c'est le canal unique du support comme des demandes RGPD. */}
+            <div className="mt-5 space-y-2">
+              <a
+                href={`mailto:${CONTACT_EMAIL}`}
+                className="flex items-center gap-2 text-sm text-white/50 transition hover:text-white"
+              >
+                <Mail className="h-3.5 w-3.5 shrink-0" />
+                <span className="break-all">{CONTACT_EMAIL}</span>
+              </a>
+              <a
+                href={CONTACT_PHONE_HREF}
+                className="flex items-center gap-2 text-sm text-white/50 transition hover:text-white"
+              >
+                <Phone className="h-3.5 w-3.5 shrink-0" />
+                {CONTACT_PHONE_DISPLAY}
+              </a>
+            </div>
             <div className="mt-5 flex gap-3">
               {[
                 { Icon: Instagram, href: "https://instagram.com", label: "Instagram" },
