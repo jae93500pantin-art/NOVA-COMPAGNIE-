@@ -3,10 +3,12 @@ import {
   COMMENT_MAX,
   COMMENT_MIN,
   REVIEW_DISCLOSURE,
+  canModifyReview,
   ratingSummary,
   reviewAuthorError,
   reviewContentError,
   reviewSignature,
+  wasEdited,
   type Review,
 } from "@/lib/reviews";
 
@@ -174,5 +176,67 @@ describe("la mention obligatoire", () => {
     // libellé : Nova n'organise pas les courses, donc rien n'est certifiable.
     expect(REVIEW_DISCLOSURE).not.toMatch(/certifi/i);
     expect(REVIEW_DISCLOSURE).not.toMatch(/avis vérifiés/i);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/*  Modification et suppression de son propre avis                            */
+/* -------------------------------------------------------------------------- */
+
+describe("canModifyReview", () => {
+  it("l'auteur, et personne d'autre", () => {
+    expect(canModifyReview({ authorId: "a1" }, "a1")).toBe(true);
+    expect(canModifyReview({ authorId: "a1" }, "a2")).toBe(false);
+  });
+
+  it("refuse quand l'auteur a disparu", () => {
+    // ⚠️ Un compte supprimé met `author_id` à null. Rendre `true` ici
+    // donnerait le droit d'écriture sur ces avis à n'importe qui.
+    expect(canModifyReview({ authorId: null }, "a1")).toBe(false);
+  });
+
+  it("refuse un visiteur sans session", () => {
+    expect(canModifyReview({ authorId: "a1" }, null)).toBe(false);
+    expect(canModifyReview({ authorId: "a1" }, undefined)).toBe(false);
+    expect(canModifyReview({ authorId: "a1" }, "")).toBe(false);
+  });
+
+  it("ne confond pas deux absences", () => {
+    // Le piège : null === null serait vrai, et tout avis orphelin deviendrait
+    // modifiable par un visiteur anonyme.
+    expect(canModifyReview({ authorId: null }, null)).toBe(false);
+  });
+});
+
+describe("wasEdited", () => {
+  it("un avis neuf n'est pas « modifié »", () => {
+    // ⚠️ `updated_at` vaut `created_at` à l'insertion, et deux `now()` dans la
+    // même transaction diffèrent de quelques microsecondes : sans tolérance,
+    // tout avis s'afficherait modifié.
+    expect(
+      wasEdited({
+        createdAt: "2026-10-02T10:00:00.000Z",
+        updatedAt: "2026-10-02T10:00:00.120Z",
+      })
+    ).toBe(false);
+  });
+
+  it("reconnaît une modification réelle", () => {
+    expect(
+      wasEdited({
+        createdAt: "2026-10-02T10:00:00.000Z",
+        updatedAt: "2026-10-03T09:00:00.000Z",
+      })
+    ).toBe(true);
+  });
+
+  it("une date absente ou illisible ne vaut pas « modifié »", () => {
+    expect(wasEdited({ createdAt: "2026-10-02T10:00:00.000Z" })).toBe(false);
+    expect(
+      wasEdited({ createdAt: "2026-10-02T10:00:00.000Z", updatedAt: null })
+    ).toBe(false);
+    expect(
+      wasEdited({ createdAt: "pas une date", updatedAt: "2026-10-03T09:00:00Z" })
+    ).toBe(false);
   });
 });

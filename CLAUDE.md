@@ -648,6 +648,27 @@ réservée au rôle `client`.
   contrôle de rôle ni de cadence. ⚠️ Ne pas les remplacer par une policy
   permissive : ce serait une **seconde porte** sur PostgREST contournant la
   route.
+- **Modifier et supprimer son avis** : `PATCH` / `DELETE` sur la même route.
+  ⚠️ **Pas de policy RLS d'`update` ni de `delete`**, bien que ce soit une
+  fonctionnalité du site : une policy `using (auth.uid() = author_id)` paraît
+  équivalente et laisserait un auteur réécrire son `rating` par PostgREST
+  **sans aucune validation** (commentaire d'un caractère, note fractionnaire,
+  aucune cadence) et toucher `author_name` ou `created_at` — Postgres ne sait
+  pas restreindre un UPDATE à certaines colonnes dans une policy.
+  L'avis est retrouvé **par son auteur**, jamais par un id envoyé par le
+  navigateur ; l'avis d'autrui répond **404 comme un slug inconnu** (dire « pas
+  le vôtre » révélerait qu'un avis existe). Suppression **réelle**, pas un
+  drapeau « masqué » : un avis conservé mais invisible reste une donnée
+  personnelle dont le retrait vient d'être demandé.
+  `wasEdited()` affiche « modifié » — sans quoi un auteur peut retourner son
+  texte sans que rien ne l'indique.
+- ⚠️ **Deux codes d'erreur pour une colonne absente**, vérifié sur ce projet :
+  `42703` quand elle est nommée dans le `select`, **`PGRST204`** quand elle est
+  dans le **corps** d'un insert/update (cache de schéma PostgREST). Ne tester
+  que `42703` laissait passer exactement le cas de l'écriture, et `PATCH`
+  répondait 500. `isMissingColumn` couvre les deux, et les quatre requêtes de
+  la route se replient sur un select sans `updated_at` tant que la migration
+  n'est pas appliquée.
 - `AuthModal` prend un `reason` : un formulaire de connexion qui surgit sans
   explication se lit comme un mur. ⚠️ Il **ne navigue pas** — il se referme sur
   la fiche —, donc la « redirection après connexion » n'a pas lieu d'être : le
@@ -934,6 +955,50 @@ basculer `EMAIL_FROM` et `smtp_admin_email` sur ce domaine.
 `mailer_autoconfirm` reste à `true` (confirmation d'inscription coupée) tant que
 le domaine n'est pas vérifié : sinon un visiteur quelconque ne recevrait jamais
 son lien et resterait bloqué à l'inscription.
+
+## Mentions légales — `lib/legalEntity.ts`
+
+**Toute l'identité de l'éditeur vit dans ce module**, et nulle part ailleurs.
+`app/(site)/legal/mentions-legales/page.tsx` ne code rien en dur.
+
+Jusqu'au 2026-10-02 la page affichait des données **inventées** : « prototype
+de démonstration », « société par actions simplifiée (exemple) », « 12 rue de
+l'Élégance », « Directeur de la publication : l'équipe Nova Compagnie ». Les
+mentions légales sont obligatoires (art. 6-III de la LCEN) et le site référence
+de vrais professionnels — c'était à la fois inutilisable pour un contrôle et
+faux pour un client cherchant à qui s'adresser.
+
+- **Éditeur** : Jérémie Yang, **entrepreneur individuel (EI)**, micro-entreprise.
+  ⚠️ Ce n'est **pas une société** : ni capital social, ni RCS de personne
+  morale, et la page le dit explicitement. Ne pas réintroduire ces lignes.
+  ⚠️ La dénomination doit comporter le nom **avec** « entrepreneur individuel »
+  ou « EI » (obligatoire depuis le 15 mai 2022).
+- ⚠️ **SIREN et adresse sont VIDES, et c'est assumé.** Une mention manquante se
+  voit et se corrige en une ligne ; un SIREN inventé est une fausse déclaration
+  d'identité d'entreprise, qui passe tous les contrôles automatiques et ne se
+  découvre qu'au litige. `missingLegalMentions()` les liste et la page affiche
+  un bandeau « Mentions à compléter » au lieu de faire semblant.
+  **Pour compléter : `SIREN` et `ADDRESS` dans `lib/legalEntity.ts`.** Rien
+  d'autre à toucher.
+- Le SIREN est validé par sa **clé de Luhn** (`isValidSiren`) : un numéro mal
+  recopié a l'apparence de la conformité et désigne une autre entreprise. Un
+  SIREN invalide compte comme manquant. Le **SIRET est facultatif** (recommandé
+  seulement), mais s'il est renseigné il doit être valide (`invalidSiret`).
+- ⚠️ **L'hébergeur est Microsoft Azure**, pas Vercel ni Cloudflare :
+  `deploy.sh` déploie sur une VM Azure (`rg-nova` / `vm-nova`). Nommer un
+  hébergeur qui n'héberge pas prive la mention de son seul usage. Un test
+  l'interdit explicitement.
+- **Nouvelles sections** : « Avis des clients » (la contrepartie de
+  l'art. L111-7-2 : avis non vérifiés, aucune contrepartie, aucun tri par
+  note) et « Réclamations » — qui distingue ce dont Nova répond (le site) de ce
+  dont répond le chauffeur (la course).
+- ⚠️ **L'e-mail reste `CONTACT_EMAIL`** (`ContactFrance@novacompagnie.com`),
+  pas `contact@` : décision du 2026-10-02, § Contact.
+- `tests/legalEntity.test.ts` (20) **lit le code source** de toutes les pages
+  `/legal/*` et échoue si une mention factice réapparaît. ⚠️ Il retire les
+  commentaires avant de chercher : une note « ne pas réintroduire » cite
+  forcément le texte qu'elle interdit, et sans ce nettoyage documenter un
+  retrait ferait échouer le test qui en vérifie l'effet.
 
 ## Deployment workflow
 

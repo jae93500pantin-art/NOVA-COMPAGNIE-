@@ -52,6 +52,8 @@ export interface Review {
   rating: number;
   comment: string;
   createdAt: string;
+  /** Renseigné seulement si l'avis a été modifié après coup. */
+  updatedAt?: string | null;
 }
 
 export interface ReviewDraft {
@@ -168,4 +170,44 @@ export function reviewSignature(
   const last = (lastName ?? "").trim();
   if (!first) return "Client Nova";
   return last ? `${first} ${last[0].toUpperCase()}.` : first;
+}
+
+/**
+ * Cet avis appartient-il à cette personne ?
+ *
+ * ⚠️ **La seule règle de modification et de suppression**, et elle tient en une
+ * ligne : son auteur, personne d'autre. Pas de fenêtre de temps, pas de
+ * modération implicite.
+ *
+ * ⚠️ `authorId` null (compte supprimé) rend **false** : l'avis devient
+ * immodifiable plutôt que modifiable par n'importe qui. Sans ce cas, un
+ * `null === undefined` mal placé rendrait orphelin et public le droit
+ * d'écriture sur ces avis.
+ */
+export function canModifyReview(
+  review: Pick<Review, "authorId">,
+  userId: string | null | undefined
+): boolean {
+  if (!review.authorId || !userId) return false;
+  return review.authorId === userId;
+}
+
+/**
+ * Un avis modifié doit le DIRE.
+ *
+ * ⚠️ Sans cette mention, un auteur peut remplacer « chauffeur parfait » par
+ * « expérience catastrophique » sans que rien ne l'indique : le lecteur croit
+ * lire l'impression d'origine, et le chauffeur ne peut pas montrer que le texte
+ * a changé. L'horodatage de création reste affiché à côté.
+ */
+export function wasEdited(review: Pick<Review, "createdAt" | "updatedAt">): boolean {
+  if (!review.updatedAt) return false;
+  const created = new Date(review.createdAt).getTime();
+  const updated = new Date(review.updatedAt).getTime();
+  if (!Number.isFinite(created) || !Number.isFinite(updated)) return false;
+  // ⚠️ Une seconde de tolérance : `updated_at` est posé par défaut à la même
+  // valeur que `created_at` à l'insertion, et deux `now()` dans la même
+  // transaction peuvent différer de quelques microsecondes. Sans marge, tout
+  // avis neuf s'afficherait « modifié ».
+  return updated - created > 1000;
 }

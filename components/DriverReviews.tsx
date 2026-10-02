@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, Info, Loader2, PenLine, CheckCircle2 } from "lucide-react";
+import { Star, Info, Loader2, PenLine, Pencil, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { AuthModal } from "./AuthModal";
 import { cn } from "@/lib/utils";
@@ -12,8 +12,10 @@ import {
   RATING_MAX,
   REVIEW_DISCLOSURE,
   REVIEW_ERRORS,
+  canModifyReview,
   ratingSummary,
   reviewContentError,
+  wasEdited,
   type Review,
 } from "@/lib/reviews";
 
@@ -48,6 +50,7 @@ export function DriverReviews({
   const [reviews, setReviews] = useState<Review[] | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -69,7 +72,11 @@ export function DriverReviews({
   }, [load]);
 
   const summary = ratingSummary(reviews ?? []);
-  const mine = user ? (reviews ?? []).some((r) => r.authorId === user.id) : false;
+  // ⚠️ `canModifyReview` plutôt qu'une comparaison d'ids écrite ici : la règle
+  // est la même que celle du serveur, et elle traite le cas d'un auteur absent.
+  const mine = user
+    ? (reviews ?? []).find((r) => canModifyReview(r, user.id))
+    : undefined;
   // ⚠️ Le rôle du navigateur ne décide de rien — le serveur refait le contrôle
   // dans `/api/reviews`. Il ne sert qu'à ne pas proposer un formulaire que la
   // route refusera : un chauffeur n'évalue pas un confrère.
@@ -116,32 +123,64 @@ export function DriverReviews({
         </p>
       ) : (
         <ul className="mt-4 space-y-3">
-          {reviews.map((r) => (
-            <li key={r.id} className="rounded-2xl glass p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium text-white">{r.authorName}</p>
-                <Stars value={r.rating} />
-              </div>
-              <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-white/65">
-                {r.comment}
-              </p>
-              <p className="mt-2 text-[11px] text-white/30">
-                {formatDate(r.createdAt)}
-              </p>
-            </li>
-          ))}
+          {reviews.map((r) =>
+            mine?.id === r.id && editing ? (
+              <li key={r.id}>
+                <ReviewForm
+                  driverSlug={driverSlug}
+                  initial={r}
+                  onCancel={() => setEditing(false)}
+                  onPublished={async () => {
+                    setEditing(false);
+                    await load();
+                  }}
+                />
+              </li>
+            ) : (
+              <li key={r.id} className="rounded-2xl glass p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-white">{r.authorName}</p>
+                  <Stars value={r.rating} />
+                </div>
+                <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-white/65">
+                  {r.comment}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className="text-[11px] text-white/30">
+                    {formatDate(r.createdAt)}
+                    {/* ⚠️ Un avis modifié doit le dire : sans cette mention, un
+                        auteur peut retourner son texte sans que rien ne
+                        l'indique, et le chauffeur ne peut pas le montrer. */}
+                    {wasEdited(r) && " · modifié"}
+                  </p>
+                  {mine?.id === r.id && (
+                    <>
+                      <button
+                        onClick={() => setEditing(true)}
+                        className="inline-flex items-center gap-1 text-[11px] text-white/45 transition hover:text-white"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        Modifier
+                      </button>
+                      <DeleteReviewButton
+                        driverSlug={driverSlug}
+                        onDeleted={load}
+                      />
+                    </>
+                  )}
+                </div>
+              </li>
+            )
+          )}
         </ul>
       )}
 
       {/* Le bouton, ou la raison de son absence. ⚠️ On explique au lieu de
-          masquer : un bouton qui disparaît sans un mot se lit comme un bug. */}
+          masquer : un bouton qui disparaît sans un mot se lit comme un bug.
+          ⚠️ Rien ici quand l'avis existe déjà : « Modifier » et « Supprimer »
+          sont posés SUR l'avis, là où l'auteur le relit. */}
       <div className="mt-4">
-        {mine ? (
-          <p className="flex items-center gap-2 text-sm text-white/45">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-            Vous avez déjà publié un avis sur ce chauffeur.
-          </p>
-        ) : isDriverAccount ? (
+        {mine ? null : isDriverAccount ? (
           <p className="text-sm text-white/40">{REVIEW_ERRORS.notClient}</p>
         ) : formOpen ? (
           <ReviewForm
@@ -194,17 +233,81 @@ function Stars({ value }: { value: number }) {
   );
 }
 
+/**
+ * Supprimer son avis. ⚠️ Deux clics : un clic unique sur une ligne se donne
+ * par erreur, et l'avis n'est pas reproductible — son auteur devrait le
+ * réécrire de mémoire.
+ */
+function DeleteReviewButton({
+  driverSlug,
+  onDeleted,
+}: {
+  driverSlug: string;
+  onDeleted: () => void | Promise<void>;
+}) {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const remove = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/reviews/${encodeURIComponent(driverSlug)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) await onDeleted();
+    } finally {
+      setBusy(false);
+      setAsking(false);
+    }
+  };
+
+  if (!asking) {
+    return (
+      <button
+        onClick={() => setAsking(true)}
+        className="inline-flex items-center gap-1 text-[11px] text-white/45 transition hover:text-red-300"
+      >
+        <Trash2 className="h-3 w-3" />
+        Supprimer
+      </button>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2 text-[11px]">
+      <span className="text-white/60">Supprimer cet avis ?</span>
+      <button
+        onClick={remove}
+        disabled={busy}
+        className="font-medium text-red-300 hover:text-red-200 disabled:opacity-50"
+      >
+        {busy ? "…" : "Oui"}
+      </button>
+      <button
+        onClick={() => setAsking(false)}
+        className="text-white/45 hover:text-white"
+      >
+        Annuler
+      </button>
+    </span>
+  );
+}
+
 function ReviewForm({
   driverSlug,
+  initial,
   onCancel,
   onPublished,
 }: {
   driverSlug: string;
+  /** Présent = modification d'un avis existant, absent = publication. */
+  initial?: Review;
   onCancel: () => void;
   onPublished: () => void | Promise<void>;
 }) {
-  const [rating, setRating] = useState(0);
-  const [comment, setComment] = useState("");
+  const editMode = Boolean(initial);
+  const [rating, setRating] = useState(initial?.rating ?? 0);
+  const [comment, setComment] = useState(initial?.comment ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -221,7 +324,10 @@ function ReviewForm({
     setBusy(true);
     try {
       const res = await fetch(`/api/reviews/${encodeURIComponent(driverSlug)}`, {
-        method: "POST",
+        // ⚠️ Pas d'id d'avis dans le corps : le serveur retrouve l'avis par son
+        // AUTEUR, puisqu'il n'y en a qu'un par chauffeur. Un id envoyé par le
+        // navigateur devrait de toute façon être revérifié.
+        method: editMode ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating, comment }),
       });
@@ -247,7 +353,9 @@ function ReviewForm({
       onSubmit={submit}
       className="rounded-2xl glass p-5"
     >
-      <p className="text-sm font-medium text-white">Votre avis</p>
+      <p className="text-sm font-medium text-white">
+        {editMode ? "Modifier votre avis" : "Votre avis"}
+      </p>
 
       <div className="mt-3 flex items-center gap-1">
         {Array.from({ length: RATING_MAX }, (_, i) => i + 1).map((n) => (
@@ -309,7 +417,7 @@ function ReviewForm({
           className="btn-primary flex-1 text-sm disabled:opacity-50"
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-          Publier
+          {editMode ? "Enregistrer" : "Publier"}
         </button>
       </div>
     </motion.form>

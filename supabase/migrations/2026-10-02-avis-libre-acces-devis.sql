@@ -53,6 +53,15 @@ create policy "drivers_select" on public.drivers for select using (true);
 alter table public.reviews
   add column if not exists author_name text;
 
+-- ⚠️ `updated_at` est posé à `created_at` et NON à `now()` pour les lignes
+--    existantes : avec `now()`, tout avis déjà publié s'afficherait « modifié »
+--    le jour de la migration. `wasEdited()` compare les deux dates.
+alter table public.reviews
+  add column if not exists updated_at timestamptz;
+update public.reviews set updated_at = created_at where updated_at is null;
+alter table public.reviews
+  alter column updated_at set default now();
+
 -- ⚠️ Nettoyage AVANT la contrainte : un index unique sur des doublons
 --    existants échouerait, et le message de Postgres ne dirait pas lesquels.
 --    Il n'y a aucune donnée aujourd'hui (plus de réservation, donc plus
@@ -89,6 +98,22 @@ create unique index if not exists reviews_one_per_author_driver
  */
 drop policy if exists reviews_insert_after_completed_ride on public.reviews;
 drop policy if exists reviews_insert on public.reviews;
+
+/**
+ * ⚠️ PAS DE POLICY D'UPDATE NI DE DELETE NON PLUS — alors que modifier et
+ *    supprimer son propre avis EST une fonctionnalité du site.
+ *
+ * Elle passe par `PATCH` / `DELETE` sur `/api/reviews/[driverId]`. Une policy
+ * `for update to authenticated using (auth.uid() = author_id)` paraît
+ * équivalente et ne l'est pas : par PostgREST, elle laisserait un auteur
+ * réécrire son `rating` **sans repasser par aucune validation** — commentaire
+ * d'un caractère, note fractionnaire, aucune limite de cadence — et toucher à
+ * `author_name`, `driver_id` ou `created_at`, qu'aucun formulaire n'expose.
+ * Postgres ne sait pas restreindre un UPDATE à certaines colonnes dans une
+ * policy.
+ */
+drop policy if exists reviews_update_own on public.reviews;
+drop policy if exists reviews_delete_own on public.reviews;
 
 -- La lecture reste publique : un avis non lu ne sert à personne.
 drop policy if exists reviews_read_all on public.reviews;
