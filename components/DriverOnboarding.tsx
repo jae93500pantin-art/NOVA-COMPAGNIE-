@@ -90,6 +90,17 @@ export function DriverOnboarding() {
   // Étape 3
   const [documents, setDocuments] = useState<DocumentState[]>([]);
   const [uploading, setUploading] = useState<DriverDocumentKind | null>(null);
+  /**
+   * Les types de pièce que la base accepte réellement, tels que le serveur les
+   * rapporte. `null` = indéterminé : on applique alors la règle complète.
+   *
+   * ⚠️ Ce n'est pas une préférence d'affichage, c'est l'écart entre le code et
+   * la migration. Une pièce devenue obligatoire alors que l'enum
+   * `driver_document_kind` ne la connaît pas encore rend l'étape 3
+   * infranchissable : chaque dépôt est refusé, et la porte réclame une pièce
+   * qu'aucun fichier ne peut satisfaire.
+   */
+  const [supportedKinds, setSupportedKinds] = useState<string[] | null>(null);
 
   const isDriver = user?.role === "driver";
 
@@ -99,6 +110,9 @@ export function DriverOnboarding() {
       if (!res.ok) return;
       const data = await res.json();
       setDocuments((data.documents as DocumentState[]) ?? []);
+      setSupportedKinds(
+        Array.isArray(data.supportedKinds) ? (data.supportedKinds as string[]) : null
+      );
     } catch {
       /* hors ligne : l'étape reste utilisable, le dépôt échouera franchement */
     }
@@ -210,7 +224,14 @@ export function DriverOnboarding() {
 
   // Un seul dossier, celui du VTC : la carte CNAPS est facultative et ne
   // conditionne pas la validation (voir lib/cnaps.ts).
-  const missing = missingRequired(documents);
+  //
+  // ⚠️ `supportedKinds` écarte les pièces que la base ne sait pas encore
+  // stocker — sinon la porte exigerait l'impossible. L'exigence revient d'elle-
+  // même dès que la migration est appliquée, sans retoucher ce fichier.
+  const missing = missingRequired(documents, supportedKinds ?? undefined);
+  const unavailable = supportedKinds
+    ? documentsToCollect().filter((k) => !supportedKinds.includes(k))
+    : [];
 
   // Le SIREN est vérifié par sa clé de contrôle : un numéro inventé sur le bon
   // de réservation est exactement ce que ce document ne doit pas porter.
@@ -434,10 +455,24 @@ export function DriverOnboarding() {
                   kind={kind}
                   current={documents.find((d) => d.kind === kind)}
                   uploading={uploading === kind}
+                  unavailable={unavailable.includes(kind)}
                   onPick={(file) => upload(kind, file)}
                 />
               ))}
             </div>
+
+            {unavailable.length > 0 && (
+              <p className="rounded-2xl border border-amber-400/25 bg-amber-400/5 px-4 py-3 text-xs leading-relaxed text-amber-200/90">
+                Le dépôt de{" "}
+                {unavailable.map((k) => DOCUMENT_LABELS[k].label).join(" et ")} n
+                &apos;est pas encore ouvert sur la plateforme. Transmettez votre
+                dossier sans {unavailable.length > 1 ? "ces pièces" : "cette pièce"}{" "}
+                — {unavailable.length > 1 ? "elles" : "elle"} vous{" "}
+                {unavailable.length > 1 ? "seront" : "sera"} demandée
+                {unavailable.length > 1 ? "s" : ""} ensuite, avant la mise en
+                ligne de votre fiche.
+              </p>
+            )}
 
             <div className="flex gap-3">
               <button onClick={() => setStep(2)} className="btn-ghost flex-1 text-sm">
@@ -559,27 +594,48 @@ function DocumentRow({
   kind,
   current,
   uploading,
+  unavailable = false,
   onPick,
 }: {
   kind: DriverDocumentKind;
   current?: DocumentState;
   uploading: boolean;
+  /** La base n'accepte pas encore ce type : la ligne est montrée, pas offerte. */
+  unavailable?: boolean;
   onPick: (file: File) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const meta = DOCUMENT_LABELS[kind];
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-2xl border px-4 py-3",
+        unavailable
+          ? "border-white/5 bg-white/[0.015]"
+          : "border-white/10 bg-white/[0.03]"
+      )}
+    >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-white">
+        <p
+          className={cn(
+            "truncate text-sm",
+            unavailable ? "text-white/45" : "text-white"
+          )}
+        >
           {meta.label}
-          {!meta.required && (
-            <span className="ml-2 text-xs text-white/35">facultatif</span>
+          {unavailable ? (
+            <span className="ml-2 text-xs text-amber-300/70">bientôt</span>
+          ) : (
+            !meta.required && (
+              <span className="ml-2 text-xs text-white/35">facultatif</span>
+            )
           )}
         </p>
         <p className="truncate text-xs text-white/40">
-          {current?.review_note ?? meta.hint}
+          {unavailable
+            ? "Dépôt pas encore ouvert — ne bloque pas votre dossier."
+            : current?.review_note ?? meta.hint}
         </p>
       </div>
 
@@ -618,11 +674,18 @@ function DocumentRow({
       <button
         type="button"
         onClick={() => input.current?.click()}
-        disabled={uploading}
-        className="btn-ghost shrink-0 text-xs disabled:opacity-60"
+        disabled={uploading || unavailable}
+        title={
+          unavailable
+            ? "Le dépôt de cette pièce n'est pas encore ouvert"
+            : undefined
+        }
+        className="btn-ghost shrink-0 text-xs disabled:opacity-40"
       >
         {uploading ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : unavailable ? (
+          "Indisponible"
         ) : current ? (
           "Remplacer"
         ) : (

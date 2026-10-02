@@ -334,3 +334,50 @@ describe("validation par derogation", () => {
     expect(allRequiredChecked(docs, NOW)).toBe(false);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/*  Enum de la base en retard sur le code                                     */
+/* -------------------------------------------------------------------------- */
+
+describe("missingRequired face à un enum incomplet", () => {
+  // La situation réelle du 2026-10-02 : le code exige `vtc_register` et
+  // `kbis`, l'enum `driver_document_kind` ne les connaît pas encore.
+  const LIVE_ENUM = [
+    "licence",
+    "vtc_card",
+    "insurance",
+    "registration",
+    "identity",
+    "cnaps_card",
+  ];
+
+  it("n'exige pas une pièce que la base ne sait pas stocker", () => {
+    const missing = missingRequired([], LIVE_ENUM);
+    expect(missing).not.toContain("vtc_register");
+    expect(missing).not.toContain("kbis");
+  });
+
+  it("laisse le dossier se terminer avec les seules pièces déposables", () => {
+    const deposited = LIVE_ENUM.map((kind) => ({ kind }));
+    // ⚠️ Le cœur du correctif : sans cet argument la porte réclame deux pièces
+    // qu'aucun dépôt ne peut satisfaire, et l'étape 3 est infranchissable.
+    expect(missingRequired(deposited, LIVE_ENUM)).toEqual([]);
+  });
+
+  it("exige à nouveau les deux pièces dès que l'enum est à jour", () => {
+    const afterMigration = [...LIVE_ENUM, "vtc_register", "kbis"];
+    expect(missingRequired([], afterMigration)).toContain("vtc_register");
+    expect(missingRequired([], afterMigration)).toContain("kbis");
+  });
+
+  it("applique la règle complète quand la liste est indéterminée", () => {
+    // `undefined` ne veut pas dire « rien n'est accepté » mais « on ne sait
+    // pas » : on ne relâche alors aucune exigence.
+    expect(missingRequired([])).toEqual(missingRequired([], undefined));
+    expect(missingRequired([])).toContain("kbis");
+  });
+
+  it("ne rend jamais obligatoire une pièce facultative, enum ou pas", () => {
+    expect(missingRequired([], ["cnaps_card"])).toEqual([]);
+  });
+});

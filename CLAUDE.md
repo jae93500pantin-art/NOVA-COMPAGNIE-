@@ -543,7 +543,7 @@ validé, et sur quelles pièces ».
 
 ### Tests
 
-`tests/driverDocuments.test.ts` (33) pour les règles pures.
+`tests/driverDocuments.test.ts` (43) pour les règles pures.
 `tests/adminSecurity.test.ts` (16) ⚠️ **lit le code source** des routes
 d'administration : la propriété à garantir n'est pas le résultat d'une fonction,
 c'est qu'aucune route — y compris une route neuve — n'oublie `requireAdmin()`
@@ -1018,7 +1018,41 @@ interrompu se reprend. `/compte/profil` reste l'édition ultérieure.
   (`documentPath`, testé).
 - Redéposer **remplace et remet en attente d'examen** : sinon il suffirait de
   faire valider un document propre puis de le remplacer.
-- Règles partagées client/serveur dans `lib/driverDocuments.ts` (pur, 14 tests).
+- Règles partagées client/serveur dans `lib/driverDocuments.ts` (pur, 43 tests).
+
+### ⚠️ L'enum de la base peut être en retard sur le code
+
+`DOCUMENT_KINDS` est la liste du **code**, `driver_document_kind` celle de la
+**base**. Un nouveau type de pièce arrive donc en deux temps : le déploiement,
+puis la migration. Entre les deux, l'ancien comportement était un **500 opaque**
+— Postgres refuse la valeur d'enum, et le chauffeur lit « Enregistrement
+impossible » pour un fichier parfaitement valide. Rendre `vtc_register` et
+`kbis` obligatoires le 2026-10-02 a ainsi rendu l'étape 3 du tunnel
+**infranchissable** : la porte réclamait deux pièces qu'aucun dépôt ne pouvait
+satisfaire.
+
+`lib/documentSupport.ts` (`server-only`) lit les valeurs **réellement en place**
+dans le schéma publié par PostgREST (`definitions.driver_documents.properties.kind.enum`),
+en cache 30 s — assez pour ne pas interroger l'API à chaque dépôt, assez peu
+pour qu'une migration prenne effet sans redémarrer.
+
+- `GET /api/driver/documents` renvoie `supportedKinds` à côté des pièces ;
+  `missingRequired(docs, supported?)` n'exige que ce qui est déposable, et le
+  tunnel affiche les autres « bientôt », bouton désactivé. **L'exigence revient
+  d'elle-même après la migration, sans rien redéployer.**
+- ⚠️ **`null` ne veut pas dire « rien n'est accepté »** mais « indéterminé » :
+  en cas d'échec de la lecture, la règle complète s'applique. Une liste vide
+  bloquerait tous les dépôts parce qu'une requête annexe a échoué.
+- ⚠️ **Le refus a lieu AVANT le dépôt du fichier**, et répond **503** (la base
+  n'est pas à jour), pas 400 (l'appelant n'a rien fait de mal). L'insertion
+  venant après l'écriture dans le bucket, attendre l'erreur Postgres laisserait
+  une pièce d'identité orpheline que plus rien ne désigne. Le filet
+  (`isUnknownEnumError`) la supprime donc du bucket avant de répondre.
+- ⚠️ `isUnknownEnumError` reconnaît le **message**, pas le code : PostgREST
+  remonte `22P02` aussi bien pour un enum inconnu que pour un uuid mal formé,
+  et confondre les deux masquerait un vrai bug derrière un message rassurant.
+- Testé dans `tests/documentSupport.test.ts` (7, en environnement `node` —
+  `server-only` lève à l'import sous jsdom).
 
 ⚠️ Cette transaction est indivisible pour une raison précise : un slug posé sur
 `drivers` sans son pendant sur `profiles` donnerait un chauffeur visible

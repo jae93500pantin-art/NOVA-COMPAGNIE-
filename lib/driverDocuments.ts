@@ -152,15 +152,38 @@ export function documentError(file: {
  * la trace qu'une seconde prestation est en train de réapparaître.
  */
 export function missingRequired(
-  provided: { kind: string }[]
+  provided: { kind: string }[],
+  /**
+   * Les types que la base sait réellement stocker. `undefined` = on ne sait
+   * pas, donc on n'enlève rien : la règle complète s'applique.
+   *
+   * ⚠️ **Une pièce que la base refuse ne peut pas être exigée.** L'enum
+   * `driver_document_kind` est élargi par une migration, qui ne part pas
+   * forcément en même temps que le code. Entre les deux, exiger une pièce que
+   * tout dépôt rejette rend l'étape 3 du tunnel infranchissable — le chauffeur
+   * voit « pièce manquante » pour un fichier qu'il vient de déposer. On
+   * n'allège pas la vérification : on diffère l'exigence jusqu'à ce que la
+   * pièce soit déposable, et elle se remet d'elle-même après la migration.
+   */
+  supported?: readonly string[]
 ): DriverDocumentKind[] {
   const have = new Set(provided.map((d) => d.kind));
   return DOCUMENT_KINDS.filter(
-    (k) => DOCUMENT_LABELS[k].required && !have.has(k)
+    (k) =>
+      DOCUMENT_LABELS[k].required &&
+      !have.has(k) &&
+      (!supported || supported.includes(k))
   );
 }
 
-/** Les pièces présentées dans le formulaire : toutes, obligatoires ou non. */
+/**
+ * Les pièces présentées dans le formulaire : toutes, obligatoires ou non.
+ *
+ * ⚠️ On les présente **même** quand la base ne les accepte pas encore : les
+ * masquer les ferait oublier, et le chauffeur repartirait convaincu que son
+ * dossier est complet. Le formulaire les affiche indisponibles (voir
+ * `DriverOnboarding`), ce qui dit la vérité sans bloquer l'inscription.
+ */
 export function documentsToCollect(): DriverDocumentKind[] {
   return [...DOCUMENT_KINDS];
 }

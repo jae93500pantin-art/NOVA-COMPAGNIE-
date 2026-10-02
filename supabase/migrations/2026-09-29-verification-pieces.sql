@@ -28,8 +28,23 @@
 --   • `kbis` — Kbis ou avis de situation SIRENE, qui rattache le SIREN déclaré
 --     à une entreprise réellement immatriculée.
 
+-- ⚠️ Le type s'appelle bien `driver_document_kind`. Ni `document_type`, ni
+--    `driver_document_type` : ces deux noms n'existent pas, et un ALTER qui
+--    les viserait échouerait sur « type does not exist » — sans que rien
+--    n'indique que c'est le nom, et non la valeur, qui est en cause.
+
 alter type driver_document_kind add value if not exists 'vtc_register';
 alter type driver_document_kind add value if not exists 'kbis';
+
+-- ⚠️ CE BLOC NE BLOQUE PLUS L'INSCRIPTION D'UN CHAUFFEUR.
+--    Il l'a bloquée : `vtc_register` et `kbis` sont devenus obligatoires côté
+--    code avant que l'enum ne les connaisse, et l'étape 3 du tunnel devenait
+--    infranchissable — chaque dépôt répondait 500, et la porte réclamait une
+--    pièce qu'aucun fichier ne pouvait satisfaire.
+--    `lib/documentSupport.ts` lit désormais l'enum réellement en place et le
+--    code s'y conforme : les deux pièces sont montrées « bientôt », ne sont
+--    pas exigées, et redeviennent obligatoires **d'elles-mêmes** dès que ce
+--    bloc est validé. Rien à redéployer après.
 
 
 -- ═════════════════════════════════════════════════════════════

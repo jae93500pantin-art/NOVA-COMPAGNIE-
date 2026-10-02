@@ -5,16 +5,32 @@ import { isSupabaseAdminConfigured } from "@/lib/config";
 import { rateLimit, sanitizeText } from "@/lib/validation";
 import {
   DOCUMENT_KINDS,
+  DOCUMENT_LABELS,
   MAX_DOCUMENT_BYTES,
   ALLOWED_DOCUMENT_TYPES,
   documentPath,
   type DriverDocumentKind,
 } from "@/lib/driverDocuments";
+import {
+  supportedDocumentKinds,
+  isUnknownEnumError,
+} from "@/lib/documentSupport";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const BUCKET = "driver-docs";
+
+/**
+ * Le message rendu quand la base n'accepte pas encore ce type de pièce.
+ *
+ * ⚠️ Il nomme la pièce et dit **quoi faire** (continuer sans elle) : « Type de
+ * pièce indisponible » laisserait le chauffeur réessayer indéfiniment avec le
+ * même fichier, persuadé que c'est son PDF qui est en cause.
+ */
+function unavailableMessage(kind: DriverDocumentKind): string {
+  return `${DOCUMENT_LABELS[kind].label} : le dépôt de cette pièce n'est pas encore ouvert sur la plateforme. Poursuivez votre inscription sans elle, nous vous la demanderons ensuite.`;
+}
 
 /**
  * Pièces justificatives d'un chauffeur.
@@ -85,7 +101,18 @@ export async function GET() {
   if (error) {
     return Response.json({ error: "Lecture impossible" }, { status: 500 });
   }
-  return Response.json({ documents: data ?? [] });
+
+  /**
+   * `supportedKinds` dit au formulaire ce que la base accepte **aujourd'hui**.
+   *
+   * ⚠️ Sans cette information, le formulaire exige des pièces que tout dépôt
+   * rejette : le chauffeur dépose, reçoit une erreur, et l'étape reste bloquée
+   * sans que rien n'explique pourquoi. `null` = indéterminé, et le formulaire
+   * reste alors sur la règle complète (voir `lib/documentSupport.ts`).
+   */
+  const supportedKinds = await supportedDocumentKinds();
+
+  return Response.json({ documents: data ?? [], supportedKinds });
 }
 
 export async function POST(req: NextRequest) {
@@ -111,6 +138,25 @@ export async function POST(req: NextRequest) {
   const kind = sanitizeText(form.get("kind"), 24) as DriverDocumentKind;
   if (!DOCUMENT_KINDS.includes(kind)) {
     return Response.json({ error: "Type de pièce inconnu" }, { status: 400 });
+  }
+
+  /**
+   * ⚠️ Un type que l'enum de la base ne connaît pas est refusé **avant** le
+   * dépôt du fichier, pas après.
+   *
+   * L'ordre compte : l'insertion a lieu après l'écriture dans le bucket, donc
+   * attendre l'erreur Postgres laisserait le fichier déposé sans aucune ligne
+   * pour le désigner — une pièce d'identité orpheline, que plus rien ne
+   * permet de retrouver pour l'effacer (le même piège que la suppression d'un
+   * dossier). Et le statut : **503, pas 400** — l'appelant n'a rien fait de
+   * mal, c'est la base qui n'est pas à jour.
+   */
+  const supported = await supportedDocumentKinds();
+  if (supported && !supported.includes(kind)) {
+    console.error(
+      `[documents] type « ${kind} » absent de l'enum driver_document_kind — migration non appliquée`
+    );
+    return Response.json({ error: unavailableMessage(kind) }, { status: 503 });
   }
 
   const file = form.get("file");
@@ -174,7 +220,35 @@ export async function POST(req: NextRequest) {
 
   if (dbError) {
     console.error(`[documents] enregistrement refusé : ${dbError.message}`);
-    return Response.json({ error: "Enregistrement impossible" }, { status: 500 });
+
+    /**
+     * Le filet de dernier recours : l'enum a bien refusé la valeur.
+     *
+     * ⚠️ Le contrôle ci-dessus lit l'enum par le schéma publié et ne peut pas
+     * toujours répondre — API injoignable, schéma en cache de quelques
+     * secondes juste après une migration, lecture mise en défaut. On ne peut
+     * donc pas se contenter d'un `500` générique ici : c'est exactement le cas
+     * qui a bloqué l'étape 3 sans que rien ne l'explique.
+     *
+     * ⚠️ Et le fichier déjà déposé est retiré : l'insertion ayant échoué,
+     * aucune ligne ne le désigne plus. Le laisser conserverait une pièce
+     * d'identité que personne ne retrouverait pour l'effacer.
+     */
+    if (isUnknownEnumError(dbError.message)) {
+      await g.db.storage
+        .from(BUCKET)
+        .remove([path])
+        .catch(() => undefined);
+      return Response.json({ error: unavailableMessage(kind) }, { status: 503 });
+    }
+
+    return Response.json(
+      {
+        error:
+          "Votre pièce a bien été reçue mais n'a pas pu être enregistrée. Réessayez dans un instant.",
+      },
+      { status: 500 }
+    );
   }
 
   return Response.json({ ok: true, kind });
