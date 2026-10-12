@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ShieldAlert, Users, CalendarClock, Activity, ExternalLink } from "lucide-react";
+import { ShieldAlert, Users, CalendarClock, Activity, ExternalLink, Star } from "lucide-react";
 import { DeleteDriverButton } from "@/components/admin/DeleteDriverButton";
+import { DeleteReviewButton } from "@/components/admin/DeleteReviewButton";
 // ⚠️ `ApproveDriverButton` n'est plus utilisé ici : la validation exige
 // désormais d'avoir ouvert les pièces (voir /admin/chauffeurs/[id]).
 import { requireAdmin, adminDb } from "@/lib/admin";
@@ -58,6 +59,9 @@ const STATUS_TONE: Record<string, string> = {
   refused: "bg-red-400/10 text-red-400",
   cancelled: "bg-white/10 text-white/60",
 };
+
+/** Nombre d'avis listés dans la console. */
+const REVIEWS_SHOWN = 100;
 
 /* -------------------------------------------------------------------------- */
 
@@ -127,6 +131,57 @@ export default async function AdminDashboardPage() {
   }[];
 
   const pending = pendingDrivers ?? [];
+
+  // ── Avis publiés ─────────────────────────────────────────────
+  /**
+   * Les plus récents d'abord, plafonnés : la console sert à modérer ce qui
+   * vient d'arriver, pas à relire tout l'historique.
+   * ⚠️ `reviews.driver_id` est l'uuid du compte, pas le slug : le nom et la
+   * fiche publique se retrouvent dans `profiles`, avec l'e-mail de l'auteur —
+   * jamais publié, mais un modérateur en a besoin pour le joindre.
+   */
+  const { data: reviewRows, error: reviewsError } = await db
+    .from("reviews")
+    .select("id, driver_id, author_id, author_name, rating, comment, created_at")
+    .order("created_at", { ascending: false })
+    .limit(REVIEWS_SHOWN);
+
+  const reviews = (reviewRows ?? []) as {
+    id: string;
+    driver_id: string;
+    author_id: string | null;
+    author_name: string | null;
+    rating: number | string;
+    comment: string;
+    created_at: string;
+  }[];
+
+  const peopleIds = Array.from(
+    new Set(
+      reviews.flatMap((r) => [r.driver_id, r.author_id]).filter((x): x is string => !!x)
+    )
+  );
+  const { data: peopleRows } = peopleIds.length
+    ? await db
+        .from("profiles")
+        .select("id, first_name, last_name, email, driver_slug")
+        .in("id", peopleIds)
+    : { data: [] };
+  const people = new Map(
+    (
+      (peopleRows ?? []) as {
+        id: string;
+        first_name: string | null;
+        last_name: string | null;
+        email: string | null;
+        driver_slug: string | null;
+      }[]
+    ).map((p) => [p.id, p])
+  );
+  const fullName = (id: string | null) => {
+    const p = id ? people.get(id) : undefined;
+    return p ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() : "";
+  };
 
   return (
     <div className="min-h-screen-dvh bg-ink-950 pb-20">
@@ -318,6 +373,100 @@ export default async function AdminDashboardPage() {
                               name={name}
                               email={d.email ?? ""}
                               approved
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {/* ── Avis ──────────────────────────────────────────────── */}
+        <section className="glass rounded-2xl p-6">
+          <h2 className="flex items-center gap-2.5 text-lg font-semibold text-white">
+            Avis publiés
+            <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-white/70">
+              {reviews.length}
+            </span>
+          </h2>
+          <p className="mt-1 text-xs text-white/40">
+            Les {REVIEWS_SHOWN} plus récents. Un retrait exige un motif et reste tracé —
+            jamais en raison de la note : les mentions légales s&apos;y engagent.
+          </p>
+
+          {reviewsError ? (
+            <p className="mt-5 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4 text-sm text-amber-200/80">
+              Impossible de lire les avis ({reviewsError.message}).
+            </p>
+          ) : reviews.length === 0 ? (
+            <p className="mt-5 text-sm italic text-white/40">
+              Aucun avis publié pour le moment.
+            </p>
+          ) : (
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full min-w-[860px] border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/35">
+                    <th className="pb-3 font-semibold">Chauffeur</th>
+                    <th className="pb-3 font-semibold">Auteur</th>
+                    <th className="pb-3 font-semibold">Note</th>
+                    <th className="pb-3 font-semibold">Avis</th>
+                    <th className="pb-3 font-semibold">Publié le</th>
+                    <th className="pb-3 text-right font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {reviews.map((r) => {
+                    const driver = people.get(r.driver_id);
+                    const driverName = fullName(r.driver_id) || "Chauffeur supprimé";
+                    const authorEmail = r.author_id ? people.get(r.author_id)?.email : null;
+                    const authorName =
+                      fullName(r.author_id) || r.author_name?.trim() || "Compte supprimé";
+                    return (
+                      <tr key={r.id} className="align-top transition hover:bg-white/[0.03]">
+                        <td className="py-4 pr-4 text-sm">
+                          {driver?.driver_slug ? (
+                            <a
+                              href={`/drivers/${driver.driver_slug}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-royal-300 hover:underline"
+                            >
+                              {driverName}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : (
+                            <span className="text-white/70">{driverName}</span>
+                          )}
+                        </td>
+                        <td className="py-4 pr-4 text-sm">
+                          <p className="text-white">{authorName}</p>
+                          {authorEmail && (
+                            <p className="text-xs text-white/45">{authorEmail}</p>
+                          )}
+                        </td>
+                        <td className="py-4 pr-4 text-sm text-white/80">
+                          <span className="inline-flex items-center gap-1">
+                            <Star className="h-3.5 w-3.5 fill-gold-400 text-gold-400" />
+                            {Number(r.rating)}
+                          </span>
+                        </td>
+                        <td className="max-w-md whitespace-pre-line py-4 pr-4 text-sm leading-relaxed text-white/65">
+                          {r.comment}
+                        </td>
+                        <td className="whitespace-nowrap py-4 pr-4 text-sm text-white/45">
+                          {new Date(r.created_at).toLocaleDateString("fr-FR")}
+                        </td>
+                        <td className="py-4">
+                          <div className="flex justify-end">
+                            <DeleteReviewButton
+                              reviewId={r.id}
+                              author={authorName}
+                              driver={driverName}
                             />
                           </div>
                         </td>

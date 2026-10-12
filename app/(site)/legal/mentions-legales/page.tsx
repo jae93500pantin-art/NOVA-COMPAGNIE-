@@ -1,5 +1,6 @@
 import { CONTACT_EMAIL, CONTACT_PHONE_DISPLAY } from "@/lib/contact";
 import { whatsappUrl } from "@/lib/whatsapp";
+import { REVIEW_REMOVAL_LABELS, REVIEW_REMOVAL_REASONS } from "@/lib/reviews";
 import {
   ADDRESS,
   EDITOR_DENOMINATION,
@@ -124,6 +125,16 @@ export default function LegalNoticePage() {
         auteur peut les modifier ou les supprimer à tout moment depuis la fiche
         concernée.
       </p>
+      {/* Les critères de modération doivent être connus de ceux qui écrivent.
+          La liste est celle que la console d'administration impose : les deux
+          ne peuvent pas diverger. */}
+      <p>Nova Compagnie peut retirer un avis pour l’un des motifs suivants :</p>
+      <ul>
+        {REVIEW_REMOVAL_REASONS.filter((r) => r !== "other").map((r) => (
+          <li key={r}>{REVIEW_REMOVAL_LABELS[r]}.</li>
+        ))}
+        <li>Tout autre contenu manifestement illicite.</li>
+      </ul>
 
       <h2>Hébergement</h2>
       <p>

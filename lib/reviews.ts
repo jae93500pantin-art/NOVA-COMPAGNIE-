@@ -211,3 +211,67 @@ export function wasEdited(review: Pick<Review, "createdAt" | "updatedAt">): bool
   // avis neuf s'afficherait « modifié ».
   return updated - created > 1000;
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Retrait d'un avis par un administrateur                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Motifs pour lesquels un administrateur peut retirer l'avis d'un autre.
+ *
+ * ## ⚠️ Jeu FERMÉ, et aucun motif ne porte sur la note
+ *
+ * Les mentions légales promettent qu'« aucun avis n'est trié ni supprimé en
+ * fonction de la note attribuée ». Retirer les avis négatifs d'un chauffeur
+ * référencé serait une pratique commerciale trompeuse (art. L121-4 du Code de
+ * la consommation) : la moyenne publiée ne voudrait plus rien dire. Un motif
+ * libre pour tout laisserait passer exactement ça sous un intitulé vague ;
+ * ces motifs-là décrivent le **contenu** ou la **légitimité** de l'avis,
+ * jamais son sens. `tests/reviews.test.ts` échoue si un libellé parle de note.
+ *
+ * La liste est publiée telle quelle sur `/legal/mentions-legales` : les
+ * critères de modération doivent être connus de ceux qui écrivent.
+ */
+export const REVIEW_REMOVAL_REASONS = [
+  "abusive",
+  "personal_data",
+  "off_topic",
+  "conflict_of_interest",
+  "author_request",
+  "other",
+] as const;
+
+export type ReviewRemovalReason = (typeof REVIEW_REMOVAL_REASONS)[number];
+
+export const REVIEW_REMOVAL_LABELS: Record<ReviewRemovalReason, string> = {
+  abusive: "Propos injurieux, diffamatoires ou discriminatoires",
+  personal_data: "Données personnelles d'un tiers (nom, téléphone, plaque…)",
+  off_topic: "Contenu sans rapport avec le chauffeur, ou publicitaire",
+  conflict_of_interest: "Avis rédigé par le chauffeur, un proche ou un concurrent",
+  author_request: "Retrait demandé par son auteur",
+  other: "Autre motif (à préciser)",
+};
+
+export function isReviewRemovalReason(v: unknown): v is ReviewRemovalReason {
+  return (
+    typeof v === "string" &&
+    (REVIEW_REMOVAL_REASONS as readonly string[]).includes(v)
+  );
+}
+
+/**
+ * Le retrait est-il recevable ? `null` = oui, sinon le message à afficher.
+ *
+ * ⚠️ « Autre motif » exige une précision : c'est la seule trace qui dira, plus
+ * tard, pourquoi un avis a disparu d'une fiche — et la question viendra de
+ * son auteur, ou d'un contrôle.
+ */
+export function reviewRemovalError(reason: unknown, note: string): string | null {
+  if (!isReviewRemovalReason(reason)) return "Choisissez un motif de retrait.";
+  const trimmed = note.trim();
+  if (reason === "other" && trimmed.length < 10) {
+    return "Précisez le motif (10 caractères minimum).";
+  }
+  if (trimmed.length > 500) return "Précision trop longue (500 caractères maximum).";
+  return null;
+}

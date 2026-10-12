@@ -539,7 +539,8 @@ justifie, et que personne ne retrouverait pour la nettoyer.
 `driver_documents_viewed` (à l'ouverture de la fiche — le moment où les pièces
 deviennent consultables), `driver_document_checked`, `driver_approved` (avec les
 pièces et leurs échéances), `driver_rejected`, `driver_approved_override`, `driver_deleted` (avec le nombre
-de pièces retirées du stockage), `documents_expiry_notified`.
+de pièces retirées du stockage), `documents_expiry_notified`, `review_removed`
+(motif, texte et note de l'avis retiré).
 ⚠️ `user_id` porte l'**administrateur** qui agit, le chauffeur étant dans
 `detail.driver_id` : la question à laquelle ce journal doit répondre est « qui a
 validé, et sur quelles pièces ».
@@ -669,6 +670,16 @@ réservée au rôle `client`.
   répondait 500. `isMissingColumn` couvre les deux, et les quatre requêtes de
   la route se replient sur un select sans `updated_at` tant que la migration
   n'est pas appliquée.
+- **Modération par l'admin** (2026-10-12) : section « Avis publiés » de
+  `/admin` (100 plus récents) → `DeleteReviewButton` (deux clics, nomme auteur
+  et chauffeur) → `DELETE /api/admin/reviews/[reviewId]`. ⚠️ **Motif obligatoire
+  dans une liste fermée** (`REVIEW_REMOVAL_REASONS`, « Autre » exige une
+  précision), et **aucun motif ne porte sur la note** : les mentions légales
+  promettent qu'aucun avis n'est supprimé en fonction de la note — retirer les
+  avis négatifs fausserait la moyenne publiée (pratique trompeuse). Un test
+  l'interdit. La liste est publiée sur `/legal/mentions-legales` depuis la même
+  constante. Trace `review_removed` écrite **avant** la suppression, avec le
+  texte et la note : après, c'est la seule pièce qui reste.
 - `AuthModal` prend un `reason` : un formulaire de connexion qui surgit sans
   explication se lit comme un mur. ⚠️ Il **ne navigue pas** — il se referme sur
   la fiche —, donc la « redirection après connexion » n'a pas lieu d'être : le

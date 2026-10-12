@@ -9,6 +9,10 @@ import {
   reviewContentError,
   reviewSignature,
   wasEdited,
+  REVIEW_REMOVAL_LABELS,
+  REVIEW_REMOVAL_REASONS,
+  isReviewRemovalReason,
+  reviewRemovalError,
   type Review,
 } from "@/lib/reviews";
 
@@ -238,5 +242,35 @@ describe("wasEdited", () => {
     expect(
       wasEdited({ createdAt: "pas une date", updatedAt: "2026-10-03T09:00:00Z" })
     ).toBe(false);
+  });
+});
+
+describe("retrait d'un avis par un administrateur", () => {
+  it("exige un motif de la liste fermee", () => {
+    expect(reviewRemovalError(undefined, "")).not.toBeNull();
+    expect(reviewRemovalError("bad_rating", "")).not.toBeNull();
+    expect(reviewRemovalError("abusive", "")).toBeNull();
+  });
+
+  it("« autre motif » exige une precision", () => {
+    expect(reviewRemovalError("other", "")).not.toBeNull();
+    expect(reviewRemovalError("other", "   court   ")).not.toBeNull();
+    expect(reviewRemovalError("other", "Lien vers un site de jeux.")).toBeNull();
+  });
+
+  it("refuse une precision trop longue", () => {
+    expect(reviewRemovalError("abusive", "x".repeat(501))).not.toBeNull();
+  });
+
+  it("aucun motif ne porte sur la note", () => {
+    // Les mentions legales promettent qu'aucun avis n'est supprime en fonction
+    // de la note : un motif « note » ou « negatif » serait ce retrait-la.
+    for (const r of REVIEW_REMOVAL_REASONS) {
+      expect(isReviewRemovalReason(r)).toBe(true);
+      const label = REVIEW_REMOVAL_LABELS[r].toLowerCase();
+      for (const word of ["note", "négatif", "negatif", "défavorable", "étoile"]) {
+        expect(label, r).not.toContain(word);
+      }
+    }
   });
 });
