@@ -32,6 +32,8 @@ import {
   getTransferDestination,
   transferDestinationLabel,
   zoneDestinationId,
+  transferFromPrice,
+  transferPriceOf,
 } from "@/lib/transfer";
 
 /**
@@ -102,10 +104,9 @@ export function TransferEstimate({ drivers = [] }: { drivers?: Driver[] }) {
    * entrer donnerait un « à partir de 0 € » qui n'est le prix de personne.
    * Aucun tarif exploitable ⇒ `null`, et rien ne s'affiche.
    */
-  const fromPrice = useMemo(() => {
-    const rates = matching.map((d) => d.pricePerHour).filter((p) => p > 0);
-    return rates.length > 0 ? Math.min(...rates) : null;
-  }, [matching]);
+  // Minimum des prix ANNONCÉS par les chauffeurs listés : forfait aéroport
+  // s'il y en a, sinon tarif horaire — jamais les deux mélangés.
+  const fromPrice = useMemo(() => transferFromPrice(matching), [matching]);
 
   /** Distingués pour que le refus nomme sa cause — les deux se corrigent autrement. */
   const blockedBy: "destination" | "vehicle" | null =
@@ -276,11 +277,15 @@ export function TransferEstimate({ drivers = [] }: { drivers?: Driver[] }) {
               {/* ⚠️ Affiché seulement s'il existe un tarif annoncé à citer. */}
               {fromPrice !== null && (
                 <p className="mt-2 text-sm text-white/60">
-                  {t("drivers.fromPrice")}{" "}
+                  {fromPrice.unit === "flat"
+                    ? t("transfer.estFlatFrom")
+                    : t("drivers.fromPrice")}{" "}
                   <span className="font-semibold text-white">
-                    {formatPrice(fromPrice)}
+                    {formatPrice(fromPrice.amount)}
                   </span>
-                  <span className="text-white/40"> / h</span>
+                  {fromPrice.unit === "hour" && (
+                    <span className="text-white/40"> / h</span>
+                  )}
                 </p>
               )}
 
@@ -311,15 +316,29 @@ export function TransferEstimate({ drivers = [] }: { drivers?: Driver[] }) {
                         </span>
                       </span>
                       <span className="shrink-0 text-right">
-                        {d.pricePerHour > 0 ? (
-                          <span className="block text-sm font-semibold text-white">
-                            {formatPrice(d.pricePerHour)}
-                            <span className="text-[11px] font-normal text-white/40">
-                              {" "}
-                              / h
+                        {(() => {
+                          const price = transferPriceOf(d);
+                          if (!price) return null;
+                          return price.unit === "flat" ? (
+                            <>
+                              <span className="block text-[10px] uppercase tracking-wider text-white/40">
+                                {t("transfer.estFlatFrom")}
+                              </span>
+                              <span className="block text-sm font-semibold text-white">
+                                {formatPrice(price.amount)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="block text-sm font-semibold text-white">
+                              {formatPrice(price.amount)}
+                              <span className="text-[11px] font-normal text-white/40">
+                                {" "}
+                                / h
+                              </span>
                             </span>
-                          </span>
-                        ) : (
+                          );
+                        })()}
+                        {transferPriceOf(d) === null && (
                           <span className="block text-[11px] text-white/40">
                             {t("transfer.estNoRate")}
                           </span>

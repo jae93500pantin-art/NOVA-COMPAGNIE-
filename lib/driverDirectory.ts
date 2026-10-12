@@ -3,7 +3,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isSupabaseAdminConfigured } from "@/lib/config";
 import { sanitizeSchedule, type WeeklySchedule } from "@/lib/schedule";
-import { clampRate } from "@/lib/pricing";
+import { clampRate, isRateAcceptable } from "@/lib/pricing";
 import {
   hasExpiredRequired,
   allRequiredChecked,
@@ -75,7 +75,19 @@ interface ProfileRow {
   last_name: string | null;
   avatar_url: string | null;
   status: string | null;
+  /** Absent tant que la colonne n'existe pas en base (voir PROFILE_COLUMNS). */
+  airport_flat_rate?: number | string | null;
 }
+
+/**
+ * ⚠️ `airport_flat_rate` vit sur `profiles`, pas sur `drivers` : la colonne
+ * a été ajoutée là en base le 2026-10-12. On la lit avec le profil, qu'on lit
+ * de toute façon pour le statut de validation.
+ */
+const PROFILE_COLUMNS = "id, first_name, last_name, avatar_url, status, airport_flat_rate";
+/** Repli si la colonne manque (base non migrée) : l'annuaire reste lisible,
+ *  sans forfait, au lieu de se vider sur une erreur 42703. */
+const PROFILE_COLUMNS_LEGACY = "id, first_name, last_name, avatar_url, status";
 
 /**
  * ⚠️ Ni `rating`, ni `reviews_count`, ni `trips` : rien ne les lit (la note se
@@ -105,20 +117,20 @@ export async function listDirectory(): Promise<Driver[]> {
 
   // Le statut n'est pas dans `drivers` : il faut le profil pour savoir qui est
   // publiable. Une seule requête pour tout le lot, pas une par chauffeur.
-  const { data: profileRows, error: profileError } = await client
-    .from("profiles")
-    .select("id, first_name, last_name, avatar_url, status")
-    .in(
-      "id",
-      drivers.map((d) => d.id)
-    );
+  const ids = drivers.map((d) => d.id);
+  const readProfiles = (columns: string) =>
+    client.from("profiles").select(columns).in("id", ids);
+  let { data: profileRows, error: profileError } = await readProfiles(PROFILE_COLUMNS);
+  if (profileError?.code === "42703") {
+    ({ data: profileRows, error: profileError } = await readProfiles(PROFILE_COLUMNS_LEGACY));
+  }
   if (profileError) {
     console.error(`[annuaire] profils illisibles : ${profileError.message}`);
     return [];
   }
 
   const profiles = new Map(
-    ((profileRows ?? []) as ProfileRow[]).map((p) => [p.id, p])
+    ((profileRows ?? []) as unknown as ProfileRow[]).map((p) => [p.id, p])
   );
 
   const { expired, verified } = await documentState(
@@ -201,13 +213,18 @@ export async function getDirectoryDriver(slug: string): Promise<Driver | null> {
     .maybeSingle();
   if (error || !row) return null;
 
-  const { data: profile } = await client
-    .from("profiles")
-    .select("id, first_name, last_name, avatar_url, status")
-    .eq("id", (row as unknown as DriverRow).id)
-    .maybeSingle();
+  const readProfile = (columns: string) =>
+    client
+      .from("profiles")
+      .select(columns)
+      .eq("id", (row as unknown as DriverRow).id)
+      .maybeSingle();
+  let { data: profile, error: profileError } = await readProfile(PROFILE_COLUMNS);
+  if (profileError?.code === "42703") {
+    ({ data: profile } = await readProfile(PROFILE_COLUMNS_LEGACY));
+  }
 
-  const p = profile as ProfileRow | null;
+  const p = profile as unknown as ProfileRow | null;
   if (!p || p.status !== "approved") return null;
 
   // Même règle que la liste : une pièce obligatoire périmée répond 404, elle
@@ -364,6 +381,13 @@ function toDriver(
     pricePerHour: clampRate("hour", num(row.price_per_hour, 0)),
     pricePerDay: clampRate("day", num(row.price_per_day, 0)),
     pricePerKm: num(row.price_per_km, 0),
+    // ⚠️ Hors bornes = non communiqué (0), PAS ramené au plafond : `profiles`
+    // est modifiable par son propriétaire via PostgREST, donc une valeur peut
+    // arriver ici sans être passée par la route qui valide.
+    airportFlatRate: (() => {
+      const v = num(profile.airport_flat_rate ?? null, 0);
+      return isRateAcceptable("transfer", v) ? Math.round(v) : 0;
+    })(),
     bio: row.bio ?? "",
     badges: row.badges ?? [],
     // L'annuaire en base porte de vraies coordonnées ; les offsets de la carte

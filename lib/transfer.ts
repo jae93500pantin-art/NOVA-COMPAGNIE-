@@ -220,3 +220,50 @@ export function driversForTransferVehicle<
 export const getAirport = (id: string) => airports.find((a) => a.id === id);
 export const getZone = (id: string) => zones.find((z) => z.id === id);
 export const getVehicle = (id: string) => vehicles.find((v) => v.id === id);
+
+/* -------------------------------------------------------------------------- */
+/*  Prix affiché pour un transfert                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Le prix qu'un chauffeur annonce pour un transfert, et son unité.
+ *
+ * ⚠️ **Toujours un prix du chauffeur, jamais un prix de Nova.** Son forfait
+ * aéroport s'il en a annoncé un, sinon son tarif horaire — avec l'unité, pour
+ * qu'un « 65 € » horaire ne se lise jamais comme le prix du trajet. Aucun des
+ * deux : `null`, et rien ne s'affiche (pas de « 0 € », pas de valeur inventée).
+ */
+export type TransferPrice = { amount: number; unit: "flat" | "hour" };
+
+export function transferPriceOf(driver: {
+  airportFlatRate?: number;
+  pricePerHour: number;
+}): TransferPrice | null {
+  const flat = driver.airportFlatRate ?? 0;
+  if (Number.isFinite(flat) && flat > 0) return { amount: flat, unit: "flat" };
+  if (Number.isFinite(driver.pricePerHour) && driver.pricePerHour > 0) {
+    return { amount: driver.pricePerHour, unit: "hour" };
+  }
+  return null;
+}
+
+/**
+ * Le « à partir de » d'une liste de chauffeurs : le **minimum** des prix
+ * annoncés — jamais une moyenne, jamais une valeur choisie par la plateforme.
+ *
+ * ⚠️ On ne compare jamais un forfait à un tarif horaire : 70 € le trajet et
+ * 60 €/h ne se classent pas. Dès qu'un chauffeur annonce un forfait, le
+ * minimum porte sur les forfaits seuls (« Transfert dès … ») ; sinon sur les
+ * tarifs horaires (« … / h »).
+ */
+export function transferFromPrice(
+  drivers: { airportFlatRate?: number; pricePerHour: number }[]
+): TransferPrice | null {
+  const prices = drivers
+    .map(transferPriceOf)
+    .filter((p): p is TransferPrice => p !== null);
+  const flats = prices.filter((p) => p.unit === "flat");
+  const pool = flats.length > 0 ? flats : prices;
+  if (pool.length === 0) return null;
+  return { amount: Math.min(...pool.map((p) => p.amount)), unit: pool[0].unit };
+}

@@ -16,6 +16,8 @@ import {
   transferDestinationsForOptIn,
   driverHasTransferVehicle,
   driversForTransferVehicle,
+  transferPriceOf,
+  transferFromPrice,
 } from "@/lib/transfer";
 import { FIXTURE_DRIVERS as drivers } from "./fixtures/drivers";
 
@@ -226,5 +228,49 @@ describe("strict filtering by vehicle class", () => {
       0
     );
     expect(total).toBe(drivers.length);
+  });
+});
+
+describe("prix d'un transfert — toujours celui du chauffeur", () => {
+  it("prefere le forfait aeroport annonce", () => {
+    expect(transferPriceOf({ airportFlatRate: 70, pricePerHour: 60 })).toEqual({
+      amount: 70,
+      unit: "flat",
+    });
+  });
+
+  it("retombe sur le tarif horaire, avec son unite", () => {
+    expect(transferPriceOf({ pricePerHour: 60 })).toEqual({ amount: 60, unit: "hour" });
+    expect(transferPriceOf({ airportFlatRate: 0, pricePerHour: 60 })).toEqual({
+      amount: 60,
+      unit: "hour",
+    });
+  });
+
+  it("n'invente rien quand aucun prix n'est annonce", () => {
+    expect(transferPriceOf({ airportFlatRate: 0, pricePerHour: 0 })).toBeNull();
+    expect(transferPriceOf({ airportFlatRate: Number.NaN, pricePerHour: 0 })).toBeNull();
+  });
+
+  it("« a partir de » = minimum des forfaits, sans les comparer a un horaire", () => {
+    expect(
+      transferFromPrice([
+        { airportFlatRate: 90, pricePerHour: 50 },
+        { airportFlatRate: 70, pricePerHour: 80 },
+        { pricePerHour: 30 },
+      ])
+    ).toEqual({ amount: 70, unit: "flat" });
+  });
+
+  it("« a partir de » = minimum horaire quand personne n'a de forfait", () => {
+    expect(transferFromPrice([{ pricePerHour: 80 }, { pricePerHour: 55 }])).toEqual({
+      amount: 55,
+      unit: "hour",
+    });
+  });
+
+  it("aucun prix : aucun montant", () => {
+    expect(transferFromPrice([])).toBeNull();
+    expect(transferFromPrice([{ pricePerHour: 0 }])).toBeNull();
   });
 });

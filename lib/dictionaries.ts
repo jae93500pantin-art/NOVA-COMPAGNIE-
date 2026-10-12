@@ -176,8 +176,12 @@ const fr = {
     eyebrow: "Notre sélection",
     title: "Chauffeurs partenaires",
     subtitle:
-      "Chez NOVA, la sécurité et la sérénité de vos déplacements sont nos priorités. Chaque chauffeur partenaire est rigoureusement sélectionné, et ses habilitations administratives (carte VTC, assurance, agréments) sont vérifiées avant toute mise en relation.",
+      // ⚠️ Plus de « habilitations vérifiées avant toute mise en relation »
+      // (2026-10-12) : faux depuis la validation par dérogation. La mention
+      // est portée fiche par fiche, et c'est elle qu'il faut regarder.
+      "Des chauffeurs VTC indépendants, référencés après examen de leur dossier. Comparez leurs fiches et les tarifs qu'ils annoncent, puis contactez celui que vous choisissez. La mention « Habilitations vérifiées » signale les fiches dont toutes les pièces ont été contrôlées.",
     filters: "Affiner",
+    category: "Gamme de véhicule",
     hide: "Masquer",
     show: "Afficher",
     searchPlaceholder: "Nom, véhicule…",
@@ -192,7 +196,7 @@ const fr = {
     sortExperience: "Plus d'expérience",
     emptyTitle: "Aucun chauffeur inscrit pour le moment",
     emptyText:
-      "Les fiches publiées ici sont celles de chauffeurs réels, dont les habilitations ont été vérifiées une par une. Le référencement parisien ouvre bientôt — écrivez-nous en attendant.",
+      "Les fiches publiées ici sont celles de chauffeurs réels, référencés après examen de leur dossier. Le référencement parisien ouvre bientôt — écrivez-nous en attendant.",
     noneTitle: "Aucun chauffeur ne correspond",
     noneText: "Élargissez vos critères, ou écrivez-nous.",
     docsVerified: "Habilitations vérifiées",
@@ -339,7 +343,6 @@ const fr = {
     subtitle:
       "Nova Compagnie référence des chauffeurs VTC indépendants qui desservent les aéroports parisiens. Vous consultez leurs tarifs, vous choisissez, puis vous convenez de votre arrivée directement avec celui que vous avez retenu.",
     bookCta: "Voir les chauffeurs",
-    estimateCta: "Trouver un chauffeur",
     heroImageAlt: "Chauffeur privé accueillant un client à l'aéroport",
     badgePro: "Chauffeurs indépendants",
     badgeSecure: "Pièces contrôlées sur dossier",
@@ -347,6 +350,9 @@ const fr = {
     badgeFlexible: "Tarifs annoncés par le chauffeur",
     badgeSecureDetail:
       "Nous contrôlons sur pièces la carte professionnelle VTC et son inscription au registre des exploitants, l'attestation d'assurance responsabilité civile professionnelle, le Kbis, le permis et la carte grise. Les fiches dont le contrôle est complet portent la mention « Habilitations vérifiées » — vérifiez sa présence sur la fiche du chauffeur que vous retenez. Nous constatons l'existence de ces documents ; nous n'exécutons aucun transport.",
+    badgeSecureShort:
+      "Les fiches dont toutes les pièces ont été contrôlées portent la mention « Habilitations vérifiées ».",
+    learnMore: "Ce que nous contrôlons",
     featuresEyebrow: "Ce que proposent les chauffeurs",
     featuresTitle: "Des prestations qui se conviennent avec le chauffeur",
     featuresSubtitle:
@@ -366,10 +372,7 @@ const fr = {
     feat5Title: "Assistance bagages",
     feat5Text:
       "L'aide au chargement des bagages jusqu'au véhicule est d'usage. Selon le chauffeur et son véhicule.",
-    estimateEyebrow: "Recherche par trajet",
     estimateTitle: "Qui dessert votre trajet ?",
-    estimateSubtitle:
-      "Choisissez votre aéroport, votre destination et la classe de véhicule : nous affichons les chauffeurs référencés qui desservent ce trajet, avec le tarif que chacun annonce.",
     howEyebrow: "Comment ça marche",
     howTitle: "Trois étapes, et aucune réservation en ligne",
     howSubtitle:
@@ -391,7 +394,8 @@ const fr = {
     estVehicle: "Type de véhicule",
     estResult: "Chauffeurs sur ce trajet",
     estNote:
-      "Tarifs horaires déclarés par les chauffeurs. Nova n'en fixe aucun : le montant exact du trajet se convient avec le chauffeur.",
+      "Prix annoncés par les chauffeurs eux-mêmes : leur forfait aéroport quand ils en indiquent un, sinon leur tarif horaire. Nova n'en fixe aucun ; le montant exact se convient avec le chauffeur.",
+    estFlatFrom: "Transfert dès",
     estNoRate: "Tarif non communiqué",
     estCta: "Voir ces chauffeurs",
     estEmptyTry1: "Essayez une autre classe de véhicule ou une autre destination.",
@@ -419,51 +423,18 @@ const fr = {
       "Aucun chauffeur référencé n a coché ce trajet. Ce n est pas une indisponibilité passagère : personne ne l a encore déclaré.",
     estSupport: "Nous écrire",
     mapEyebrow: "Zones de prise en charge",
-    mapTitle: "Nous vous accueillons dans les plus grands hubs",
+    mapTitle: "Les aéroports parisiens desservis",
     mapSubtitle:
-      "Roissy-CDG et Orly — un réseau de chauffeurs prêts à vous accueillir à chaque terminal parisien.",
-    packsEyebrow: "Nos formules",
-    packsTitle: "Choisissez l'expérience qui vous ressemble",
-    packsSubtitle:
-      "Des offres pensées pour chaque voyageur, du déplacement d'affaires à l'arrivée en famille.",
-    packPopular: "Le plus choisi",
-    packCta: "Voir les chauffeurs",
-    packBusinessName: "Pack Business",
-    packBusinessDesc: "L'efficacité pour vos déplacements professionnels.",
-    packBusinessF1: "Transfert aéroport → hôtel ou lieu de rendez-vous",
-    packBusinessF2: "Wi-Fi à bord",
-    packBusinessF3: "Chargeurs téléphone",
-    packBusinessF4: "Bouteille d'eau offerte",
-    packBusinessF5: "Facturation automatique",
-    packFamilyName: "Pack Famille",
-    packFamilyDesc: "Le confort et la sérénité pour toute la famille.",
-    packFamilyF1: "Sièges enfants disponibles",
-    packFamilyF2: "Véhicules spacieux",
-    packFamilyF3: "Assistance bagages renforcée",
-    packFamilyF4: "",
-    packFamilyF5: "",
-    packPremiumName: "Pack Premium",
-    packPremiumDesc: "Le haut de gamme, jusque dans les détails.",
-    packPremiumF1: "Véhicules haut de gamme",
-    packPremiumF2: "Chauffeur dédié",
-    packPremiumF3: "Service VIP",
-    packPremiumF4: "Accueil personnalisé",
-    packPremiumF5: "",
-    packConciergeName: "Pack Concierge VIP",
-    packConciergeDesc: "L'expérience ultime, dès la sortie de l'avion.",
-    packConciergeF1: "Accueil dès la sortie de l'avion",
-    packConciergeF2: "Accompagnement dans l'aéroport",
-    packConciergeF3: "Aide aux formalités et bagages",
-    packConciergeF4: "Transfert premium jusqu'à destination",
-    packConciergeF5: "",
-    reviewsEyebrow: "Ils ont été accueillis",
-    // Trois témoignages inventés retiraient ici aussi (« Thomas B. »,
-    // « Marina K. », « Alexandre D. »). Voir la note dans `hero`.
-    teaserEyebrow: "Nouveau · Transfert Aéroport",
-    teaserTitle: "Un chauffeur privé vous attend dès l'atterrissage",
+      "Roissy-CDG, Orly et Le Bourget. Chaque chauffeur indique sur sa fiche les trajets qu'il dessert ; le point de rendez-vous se convient avec lui.",
+    // ⚠️ Les textes des anciens « Packs » ont été supprimés le 2026-10-12 :
+    // des prestations décidées et promises par Nova (équipements à bord,
+    // facturation, accueil en zone réservée) qu'aucun composant n'affichait
+    // plus. Une clé orpheline finit réaffichée par erreur. Ne pas les recréer.
+    teaserEyebrow: "Transfert Aéroport",
+    teaserTitle: "Un chauffeur pour CDG, Orly ou Le Bourget",
     teaserText:
-      "Accueil au terminal avec pancarte nominative, suivi de vol en temps réel et assistance bagages. L'arrivée devient un privilège.",
-    teaserCta: "Découvrir le service",
+      "Comparez les chauffeurs indépendants qui desservent les aéroports parisiens et les tarifs qu'ils annoncent, puis contactez directement celui que vous choisissez.",
+    teaserCta: "Trouver un chauffeur",
   },
   jet: {
     eyebrow: "Vol privé",
@@ -644,8 +615,9 @@ const en: Dict = {
     eyebrow: "Our selection",
     title: "Partner chauffeurs",
     subtitle:
-      "At NOVA, the safety and serenity of your journeys come first. Every partner chauffeur is rigorously selected, and their administrative credentials (VTC licence, insurance, approvals) are verified before any introduction.",
+      "Independent VTC chauffeurs, listed after a review of their file. Compare their profiles and the rates they advertise, then contact the one you choose. The « Credentials verified » mention marks the listings whose documents have all been checked.",
     filters: "Refine",
+    category: "Vehicle class",
     hide: "Hide",
     show: "Show",
     searchPlaceholder: "Name, vehicle…",
@@ -660,7 +632,7 @@ const en: Dict = {
     sortExperience: "Most experience",
     emptyTitle: "No chauffeur registered yet",
     emptyText:
-      "Every listing here belongs to a real chauffeur whose credentials were checked one by one. Our Paris directory opens shortly — message us in the meantime.",
+      "Every listing here belongs to a real chauffeur, listed after a review of their file. Our Paris directory opens shortly — message us in the meantime.",
     noneTitle: "No chauffeur matches",
     noneText: "Widen your filters, or message us.",
     docsVerified: "Credentials verified",
@@ -802,7 +774,6 @@ const en: Dict = {
     subtitle:
       "Nova Compagnie lists independent VTC chauffeurs who serve the Paris airports. You compare their rates, you choose, then you arrange your arrival directly with the one you picked.",
     bookCta: "See the drivers",
-    estimateCta: "Find a chauffeur",
     heroImageAlt: "Private chauffeur greeting a client at the airport",
     badgePro: "Independent chauffeurs",
     badgeSecure: "Documents checked on file",
@@ -810,6 +781,9 @@ const en: Dict = {
     badgeFlexible: "Driver-set rates",
     badgeSecureDetail:
       "We check on file the professional VTC card and its entry in the operator register, the professional liability insurance certificate, the company registration, the driving licence and the vehicle registration document. Listings whose check is complete carry a « Credentials verified » mention — look for it on the listing of the chauffeur you pick. We confirm that those documents exist; we do not carry out any transport.",
+    badgeSecureShort:
+      "Listings whose documents have all been checked carry the « Credentials verified » mention.",
+    learnMore: "What we check",
     featuresEyebrow: "What the chauffeurs offer",
     featuresTitle: "Services agreed with the chauffeur",
     featuresSubtitle:
@@ -829,10 +803,7 @@ const en: Dict = {
     feat5Title: "Luggage assistance",
     feat5Text:
       "Help loading your luggage into the vehicle is customary. Depends on the chauffeur and their vehicle.",
-    estimateEyebrow: "Search by route",
     estimateTitle: "Who serves your route?",
-    estimateSubtitle:
-      "Pick your airport, your destination and the vehicle class: we show the listed chauffeurs who serve that route, each with the rate they advertise.",
     howEyebrow: "How it works",
     howTitle: "Three steps, and no online booking",
     howSubtitle:
@@ -854,7 +825,8 @@ const en: Dict = {
     estVehicle: "Vehicle type",
     estResult: "Chauffeurs on this route",
     estNote:
-      "Hourly rates declared by the chauffeurs. Nova sets none: the exact fare for the journey is agreed with the chauffeur.",
+      "Prices advertised by the chauffeurs themselves: their airport flat rate when they give one, otherwise their hourly rate. Nova sets none; the exact fare is agreed with the chauffeur.",
+    estFlatFrom: "Transfer from",
     estNoRate: "Rate not provided",
     estCta: "See these drivers",
     estEmptyTry1: "Try another vehicle class or another destination.",
@@ -882,49 +854,14 @@ const en: Dict = {
       "No listed chauffeur has ticked this route. This is not a temporary gap: nobody has declared it yet.",
     estSupport: "Message us",
     mapEyebrow: "Pickup zones",
-    mapTitle: "We welcome you at the biggest hubs",
+    mapTitle: "The Paris airports served",
     mapSubtitle:
-      "Paris CDG and Orly — a network of chauffeurs ready to greet you at every Paris terminal.",
-    packsEyebrow: "Our packages",
-    packsTitle: "Choose the experience that suits you",
-    packsSubtitle:
-      "Offers designed for every traveller, from business trips to family arrivals.",
-    packPopular: "Most chosen",
-    packCta: "See the drivers",
-    packBusinessName: "Business Pack",
-    packBusinessDesc: "Efficiency for your business travel.",
-    packBusinessF1: "Airport transfer → hotel or meeting point",
-    packBusinessF2: "Onboard Wi-Fi",
-    packBusinessF3: "Phone chargers",
-    packBusinessF4: "Complimentary water bottle",
-    packBusinessF5: "Automatic invoicing",
-    packFamilyName: "Family Pack",
-    packFamilyDesc: "Comfort and peace of mind for the whole family.",
-    packFamilyF1: "Child seats available",
-    packFamilyF2: "Spacious vehicles",
-    packFamilyF3: "Enhanced luggage assistance",
-    packFamilyF4: "",
-    packFamilyF5: "",
-    packPremiumName: "Premium Pack",
-    packPremiumDesc: "The high-end experience, down to the details.",
-    packPremiumF1: "High-end vehicles",
-    packPremiumF2: "Dedicated chauffeur",
-    packPremiumF3: "VIP service",
-    packPremiumF4: "Personalised welcome",
-    packPremiumF5: "",
-    packConciergeName: "VIP Concierge Pack",
-    packConciergeDesc: "The ultimate experience, right off the plane.",
-    packConciergeF1: "Welcome right off the plane",
-    packConciergeF2: "Escort through the airport",
-    packConciergeF3: "Help with formalities and luggage",
-    packConciergeF4: "Premium transfer to your destination",
-    packConciergeF5: "",
-    reviewsEyebrow: "They were welcomed",
-    teaserEyebrow: "New · Airport Transfer",
-    teaserTitle: "A private chauffeur waiting the moment you land",
+      "Paris CDG, Orly and Le Bourget. Each chauffeur lists the routes they serve on their profile; the meeting point is agreed with them.",
+    teaserEyebrow: "Airport Transfer",
+    teaserTitle: "A chauffeur for CDG, Orly or Le Bourget",
     teaserText:
-      "Terminal welcome with a name sign, real-time flight tracking and luggage assistance. Arrival becomes a privilege.",
-    teaserCta: "Discover the service",
+      "Compare the independent chauffeurs serving the Paris airports and the rates they advertise, then contact the one you choose directly.",
+    teaserCta: "Find a chauffeur",
   },
   jet: {
     eyebrow: "Private jet",

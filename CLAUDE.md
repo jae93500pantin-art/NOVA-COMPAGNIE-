@@ -152,7 +152,7 @@ components/                   All client components unless noted
   DriverContactCard           Colonne de droite de la fiche chauffeur, en remplacement de `BookingWidget`. Composant SERVEUR. Trois choses : les tarifs tels que le chauffeur les annonce, ses disponibilités s'il en a déclaré, et un lien de mise en relation (WhatsApp Nova). Plus la mention qui dit avec qui le contrat se noue. ⚠️ Aucun sélecteur d'unité, aucun créneau, aucun total client.
   ContactForm                 Professional contact form (nom/prénom, e-mail, téléphone, type de demande, message) with client-side validation + animated success confirmation. ⚠️ L'envoi est SIMULÉ — aucun backend ne reçoit le message.
   TransferEstimate            Recherche « qui dessert ce trajet ? » : aeroport + zone + classe → la LISTE des chauffeurs concernes, chacun avec le tarif qu'IL a annonce, plus un « a partir de » qui est le MINIMUM de ces tarifs (jamais une moyenne, jamais une valeur plateforme ; un 0 est exclu, aucun tarif ⇒ aucun montant). Etat vide qui nomme sa cause et propose une suite. Recoit les chauffeurs en prop depuis la page serveur.
-  TransferAirport             Corps client de la page transfert (i18n) : hero, gages de confiance + ce que « habilitations verifiees » recouvre, 5 services « selon le chauffeur », la recherche, « Comment ca marche » en 3 etapes, la carte des zones, et la mention legale d'annuaire en bas de page.
+  TransferAirport             Corps client de la page transfert (i18n) : hero QUI CONTIENT la recherche (`TransferEstimate`, plus de photo — 2026-10-12), gages de confiance + une phrase courte et un `<details>` « Ce que nous contrôlons » (le détail reste un clic plus loin, pas supprimé), 5 services « selon le chauffeur », « Comment ça marche » en 3 étapes, la carte des zones (CDG, Orly, Le Bourget), et la mention légale d'annuaire en bas de page.
   TransferPickupMap           Stylised pickup-zones map (airport pins + animated rings), same aesthetic as InteractiveMap.
   CityShowcase
   AuthForm                    Client/driver toggle, Supabase auth + demo fallback. Props `embedded`/`onSuccess`/`onSwitchMode` when rendered inside AuthModal.
@@ -839,11 +839,23 @@ publique — la table porte nom, e-mail et téléphone de particuliers.
   moyenne, jamais une valeur choisie par la plateforme. ⚠️ Un tarif à 0 (« non
   communiqué ») est exclu du calcul, et aucun tarif exploitable ⇒ **aucun montant
   affiché** : il n'y en a aucun à citer.
-  ⚠️ **Le montant cité est HORAIRE**, avec son suffixe « / h ». Les chauffeurs
-  déclarent un tarif à l'heure et à la journée ; **aucun ne déclare de forfait
-  transfert** (il n'existe pas de colonne pour ça). Écrire « forfait » sur un
-  tarif horaire serait un prix inventé. Un vrai forfait par chauffeur demande une
-  colonne, un champ dans le tunnel et une migration.
+- **Forfait transfert aéroport (2026-10-12)** — `profiles.airport_flat_rate`,
+  **fixé par le chauffeur** dans `ProfileEditor` (champ facultatif, visible
+  quand il accepte les transferts, jamais prérempli). Affiché « Transfert dès
+  … » dans la recherche et sur la fiche (`DriverContactCard`).
+  `transferPriceOf` / `transferFromPrice` (`lib/transfer.ts`, testés) : forfait
+  s'il existe, sinon tarif horaire **avec « / h »** ; le « à partir de » ne
+  compare **jamais** un forfait à un horaire (minimum des forfaits dès qu'il y
+  en a un). Aucun prix : aucun montant.
+  ⚠️ La colonne est sur **`profiles`**, pas `drivers` (créée ainsi en base) :
+  pas de `check`, et `profiles_update_own` laisse son propriétaire l'écrire
+  par PostgREST. D'où les bornes `RATE_LIMITS.transfer` (1–1 000 €) appliquées
+  à l'écriture (400, pas un clamp silencieux) **et** à la lecture (hors bornes
+  = non communiqué, pas ramené au plafond). 0 s'écrit `NULL`.
+  ⚠️ `profiles.min_rate` existe aussi en base mais **n'est lue nulle part** :
+  son sens n'a jamais été défini. Ne pas l'afficher sans l'avoir défini.
+  ⚠️ La sauvegarde de `ProfileEditor` ne lit pas la réponse du serveur : la
+  validation du forfait doit donc bloquer CÔTÉ FORMULAIRE.
 - **L'état vide nomme sa cause et propose une suite** (autre classe, autre
   destination, WhatsApp, annuaire complet) au lieu d'afficher « 0 chauffeur
   habilité ». ⚠️ Il distingue « personne ne dessert ce trajet » de « personne
@@ -1089,6 +1101,12 @@ Les retirer aussi du `.env.local` de la VM lors du prochain déploiement.
   localStorage `lumecar_lang`. Same URL for both languages (no `/fr` `/en`
   routing) — `LanguageSwitcher` dropdown in the navbar flips it instantly.
 - `t("section.key")` looks up the active lang, falls back to FR, then the key.
+- ⚠️ **Une clé manquante ne plante pas : elle s'affiche en clair.** `t()`
+  retombe sur la clé, et le typage ne l'attrape pas (`t` prend une `string`).
+  L'accueil a ainsi publié « transfer.badge247 » et l'annuaire
+  « drivers.category ». `tests/i18nKeys.test.ts` échoue désormais si un
+  `t("a.b")` du code n'existe pas en FR **et** en EN. Retirer une clé du
+  dictionnaire sans retirer son appel est exactement ce qu'il attrape.
 - Translate UI strings via the dictionary — don't hardcode user-facing text in
   components. EN object must match the FR shape (typed as `Dict`).
 

@@ -27,7 +27,13 @@ export function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-export type RateUnit = "hour" | "day";
+/**
+ * `transfer` = forfait transfert aéroport, **annoncé par le chauffeur**
+ * (`profiles.airport_flat_rate`). Facultatif, contrairement aux deux autres :
+ * un chauffeur peut ne pas en annoncer, et c'est alors son tarif horaire qui
+ * s'affiche.
+ */
+export type RateUnit = "hour" | "day" | "transfer";
 
 /**
  * Garde-fous de saisie, **identiques pour tout le monde**. Ce ne sont pas des
@@ -43,6 +49,12 @@ export type RateUnit = "hour" | "day";
 export const RATE_LIMITS: Record<RateUnit, { min: number; max: number }> = {
   hour: { min: 1, max: 1000 },
   day: { min: 1, max: 10000 },
+  // ⚠️ Aucun `check` en base pour celui-ci (colonne ajoutée hors du dépôt sur
+  // `profiles`) : ces bornes sont donc le seul garde-fou, appliqué à
+  // l'écriture ET à la lecture (`lib/driverDirectory.ts`). `profiles` étant
+  // modifiable par son propriétaire via PostgREST, une valeur hors bornes
+  // écrite en contournant la route se lit « non communiqué ».
+  transfer: { min: 1, max: 1000 },
 };
 
 /** Bornes de saisie d'une unité. Ne dépend **plus** de la gamme du véhicule. */
@@ -77,8 +89,18 @@ export function rateError(unit: RateUnit, value: number): string | null {
   if (!Number.isFinite(value) || value <= 0) return "Indiquez un tarif.";
   const { min, max } = boundsFor(unit);
   if (value < min || value > max) {
-    const what = unit === "day" ? "journalier" : "horaire";
+    const what =
+      unit === "day" ? "journalier" : unit === "transfer" ? "de transfert" : "horaire";
     return `Tarif ${what} attendu entre ${min} € et ${max} € TTC.`;
   }
   return null;
+}
+
+/**
+ * Même contrôle pour un tarif **facultatif** : vide ou 0 est accepté (« non
+ * communiqué »), seule une valeur saisie hors bornes est refusée.
+ */
+export function optionalRateError(unit: RateUnit, value: number): string | null {
+  if (!Number.isFinite(value) || value === 0) return null;
+  return rateError(unit, value);
 }

@@ -11,8 +11,7 @@ import {
   Lock,
   Plane,
   ArrowRight,
-  Clock,
-  Zap,
+  Tag,
 } from "lucide-react";
 import { Hero } from "@/components/Hero";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -56,13 +55,17 @@ export default function Home() {
                 {t("transfer.teaserText")}
               </p>
               <div className="mt-6 flex flex-wrap gap-2">
+                {/* ⚠️ « 24h/24 » a été retiré (2026-10-12) : la clé
+                    n'existait plus, la page affichait « transfer.badge247 »
+                    en clair — et la promesse était fausse de toute façon,
+                    chaque chauffeur a son propre planning. */}
                 <span className="chip gap-1.5">
-                  <Clock className="h-3.5 w-3.5 text-royal-300" />
-                  {t("transfer.badge247")}
+                  <BadgeCheck className="h-3.5 w-3.5 text-royal-300" />
+                  {t("transfer.badgePro")}
                 </span>
                 <span className="chip gap-1.5">
-                  <Zap className="h-3.5 w-3.5 text-royal-300" />
-                  {t("transfer.badgeInstant")}
+                  <Tag className="h-3.5 w-3.5 text-royal-300" />
+                  {t("transfer.badgeFlexible")}
                 </span>
               </div>
               <Link href="/transfert-aeroport" className="btn-primary mt-8">

@@ -82,6 +82,12 @@ export interface Driver {
   /** Fixed daily rate (euros) based on the vehicle model/category. */
   pricePerDay: number;
   pricePerKm: number;
+  /**
+   * Forfait transfert aéroport annoncé PAR LE CHAUFFEUR (euros), lu dans
+   * `profiles.airport_flat_rate`. Absent ou 0 = non communiqué : on affiche
+   * alors son tarif horaire. ⚠️ Nova n'en fixe aucun et n'en calcule aucun.
+   */
+  airportFlatRate?: number;
   bio: string;
   badges: string[];
   /** Relative coordinates (0-100) used to position the live pin on the map. */

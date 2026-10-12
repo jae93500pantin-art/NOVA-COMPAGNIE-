@@ -5,6 +5,7 @@ import {
   clampRate,
   isRateAcceptable,
   rateError,
+  optionalRateError,
 } from "@/lib/pricing";
 import { FIXTURE_DRIVERS as drivers } from "./fixtures/drivers";
 
@@ -71,5 +72,27 @@ describe("pricing — cohérence des tarifs chauffeur", () => {
       expect(clampRate("hour", d.pricePerHour), d.id).toBe(d.pricePerHour);
       expect(clampRate("day", d.pricePerDay), d.id).toBe(d.pricePerDay);
     }
+  });
+});
+
+describe("forfait transfert aeroport (facultatif)", () => {
+  it("vide ou 0 = non communique, accepte", () => {
+    expect(optionalRateError("transfer", 0)).toBeNull();
+    expect(optionalRateError("transfer", Number.NaN)).toBeNull();
+  });
+
+  it("refuse une valeur hors bornes", () => {
+    expect(optionalRateError("transfer", 5000)).not.toBeNull();
+    expect(optionalRateError("transfer", 0.5)).not.toBeNull();
+  });
+
+  it("accepte un forfait plausible", () => {
+    expect(optionalRateError("transfer", 70)).toBeNull();
+  });
+
+  it("clampRate n'invente pas de forfait", () => {
+    expect(clampRate("transfer", 0)).toBe(0);
+    expect(clampRate("transfer", Number.NaN)).toBe(0);
+    expect(clampRate("transfer", 70.4)).toBe(70);
   });
 });

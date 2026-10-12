@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -17,6 +16,7 @@ import {
   Search,
   MessageCircle,
   Scale,
+  ChevronDown,
 } from "lucide-react";
 import { SectionHeader } from "@/components/SectionHeader";
 import { Reveal } from "@/components/Reveal";
@@ -82,55 +82,52 @@ export function TransferAirport({ drivers }: { drivers: Driver[] }) {
           <div className="absolute inset-0 bg-grid-faint [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_top,#000_10%,transparent_70%)]" />
         </div>
 
-        <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 lg:grid-cols-2 lg:px-8">
+        {/* ⚠️ La recherche EST le hero (2026-10-12) : c'est ce que le visiteur
+            vient faire. Elle était sous les badges, un paragraphe juridique et
+            cinq services — il fallait défiler pour commencer. */}
+        <div className="mx-auto max-w-5xl px-5 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between"
           >
-            <span className="section-eyebrow mb-5">{t("transfer.eyebrow")}</span>
-            <h1 className="text-balance text-3xl font-semibold leading-[1.1] tracking-tight text-white sm:text-4xl lg:text-5xl">
-              {t("transfer.title")}
-            </h1>
-            <p className="mt-5 max-w-lg text-base leading-relaxed text-white/60">
-              {t("transfer.subtitle")}
-            </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link href="/drivers" className="btn-primary">
-                {t("transfer.bookCta")}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <a href="#estimate" className="btn-ghost">
-                {t("transfer.estimateCta")}
-              </a>
+            <div className="max-w-2xl">
+              <span className="section-eyebrow mb-5">{t("transfer.eyebrow")}</span>
+              <h1 className="text-balance text-3xl font-semibold leading-[1.1] tracking-tight text-white sm:text-4xl lg:text-5xl">
+                {t("transfer.title")}
+              </h1>
+              <p className="mt-5 text-base leading-relaxed text-white/60">
+                {t("transfer.subtitle")}
+              </p>
             </div>
+            <Link href="/drivers" className="btn-ghost shrink-0 self-start lg:self-auto">
+              {t("transfer.bookCta")}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.7, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className="relative"
+            id="estimate"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+            className="mt-10 scroll-mt-28"
           >
-            <div className="relative aspect-[4/3] overflow-hidden rounded-[2rem] border border-white/10 shadow-card">
-              <Image
-                src="https://images.unsplash.com/photo-1600320254374-ce2d293c324e?auto=format&fit=crop&w=1200&q=80"
-                alt={t("transfer.heroImageAlt")}
-                fill
-                priority
-                sizes="(max-width: 1024px) 100vw, 50vw"
-                className="object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-ink-950/70 via-transparent to-transparent" />
-            </div>
+            <h2 className="mb-4 text-lg font-semibold text-white">
+              {t("transfer.estimateTitle")}
+            </h2>
+            <TransferEstimate drivers={drivers} />
           </motion.div>
         </div>
 
         {/* Gages de confiance + ce que « habilitations vérifiées » recouvre.
-            ⚠️ Un badge qui dit « vérifié » sans dire QUOI ne vaut rien : c'est
-            la phrase en dessous qui le rend contrôlable. */}
+            ⚠️ Un badge qui dit « vérifié » sans dire QUOI ne vaut rien : le
+            détail reste UN CLIC plus loin, pas supprimé. `<details>` plutôt
+            qu'un état React : il s'ouvre sans JavaScript, au clavier, et le
+            texte reste dans le HTML (lisible par un moteur de recherche). */}
         <Reveal>
-          <div className="mx-auto mt-14 max-w-5xl px-5 lg:px-8">
+          <div className="mx-auto mt-12 max-w-5xl px-5 lg:px-8">
             <div className="flex flex-wrap items-center justify-center gap-3">
               {badges.map((b) => (
                 <span key={b.label} className="chip gap-2 px-4 py-2 text-white/80">
@@ -139,9 +136,16 @@ export function TransferAirport({ drivers }: { drivers: Driver[] }) {
                 </span>
               ))}
             </div>
-            <p className="mx-auto mt-4 max-w-2xl text-center text-xs leading-relaxed text-white/45">
-              {t("transfer.badgeSecureDetail")}
-            </p>
+            <div className="mx-auto mt-4 max-w-2xl text-center text-xs leading-relaxed text-white/45">
+              <p>{t("transfer.badgeSecureShort")}</p>
+              <details className="group mt-2">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-royal-300 transition hover:text-royal-200 [&::-webkit-details-marker]:hidden">
+                  {t("transfer.learnMore")}
+                  <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" />
+                </summary>
+                <p className="mt-2 text-left sm:text-center">{t("transfer.badgeSecureDetail")}</p>
+              </details>
+            </div>
           </div>
         </Reveal>
       </section>
@@ -168,20 +172,6 @@ export function TransferAirport({ drivers }: { drivers: Driver[] }) {
             </Reveal>
           ))}
         </div>
-      </section>
-
-      {/* Estimate */}
-      <section id="estimate" className="mx-auto max-w-5xl px-5 py-16 lg:px-8">
-        <SectionHeader
-          eyebrow={t("transfer.estimateEyebrow")}
-          title={t("transfer.estimateTitle")}
-          subtitle={t("transfer.estimateSubtitle")}
-        />
-        <Reveal>
-          <div className="mt-12">
-            <TransferEstimate drivers={drivers} />
-          </div>
-        </Reveal>
       </section>
 
       {/* Comment ça marche — trois étapes, dont aucune n'est « réserver ». */}

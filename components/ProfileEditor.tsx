@@ -34,6 +34,7 @@ import {
 import {
   boundsFor,
   clampRate,
+  optionalRateError,
   rateError,
 } from "@/lib/pricing";
 import { formatPrice } from "@/lib/utils";
@@ -100,6 +101,9 @@ export function ProfileEditor() {
   // Rates are typed as text so the field can be emptied while editing.
   const [hourRate, setHourRate] = useState("");
   const [dayRate, setDayRate] = useState("");
+  /** Forfait transfert aéroport — facultatif, et fixé par le chauffeur. */
+  const [flatRate, setFlatRate] = useState("");
+  const [loadedFlatRate, setLoadedFlatRate] = useState(0);
   const [photos, setPhotos] = useState<string[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -132,6 +136,7 @@ export function ProfileEditor() {
       .then((data) => {
         if (cancelled) return;
         setDriverProfile((data?.profile as DriverProfileDto) ?? null);
+        setLoadedFlatRate(Number(data?.airportFlatRate) || 0);
         setProfileLoaded(true);
       })
       .catch(() => !cancelled && setProfileLoaded(true));
@@ -185,6 +190,7 @@ export function ProfileEditor() {
     // chauffeur saisit le sien, c'est la condition pour paraître à l'annuaire.
     setHourRate(rateValue(p?.price_per_hour ?? o.pricePerHour));
     setDayRate(rateValue(p?.price_per_day ?? o.pricePerDay));
+    setFlatRate(rateValue(loadedFlatRate));
     setCnapsVerified(p?.cnaps_verified === true);
     setCarMake(p?.car_make ?? o.car?.make ?? "");
     setCarModel(p?.car_model ?? o.car?.model ?? "");
@@ -195,7 +201,7 @@ export function ProfileEditor() {
         ? p.car_photos
         : o.carPhotos ?? []
     );
-  }, [user, isDriver, profileLoaded, driverProfile, publicSlug]);
+  }, [user, isDriver, profileLoaded, driverProfile, publicSlug, loadedFlatRate]);
 
   // ⚠️ Changer de gamme ne touche plus aux tarifs. L'ancien effet les recalait
   // dans la bande de la nouvelle classe : passer de Luxury à Business écrasait
@@ -213,7 +219,7 @@ export function ProfileEditor() {
     e.preventDefault();
     // An out-of-band rate blocks the whole save: a half-saved profile whose
     // price silently reverted is worse than a refusal.
-    if (isDriver && (hourError || dayError)) {
+    if (isDriver && (hourError || dayError || flatError)) {
       setRateBlocked(true);
       return;
     }
@@ -234,6 +240,8 @@ export function ProfileEditor() {
           acceptsTransfers: transfers,
           pricePerHour: hourValue,
           pricePerDay: dayValue,
+          // 0 = « je n'annonce pas de forfait » : le serveur écrit NULL.
+          airportFlatRate: flatValue,
           carMake: carMake.trim(),
           carModel: carModel.trim(),
           carYear,
@@ -313,6 +321,11 @@ export function ProfileEditor() {
   const dayValue = Number.parseFloat(dayRate);
   const hourError = rateError("hour", hourValue);
   const dayError = rateError("day", dayValue);
+  const flatBounds = boundsFor("transfer");
+  const flatValue = flatRate.trim() === "" ? 0 : Number.parseFloat(flatRate);
+  // ⚠️ Bloque l'envoi côté formulaire : la sauvegarde ne lit pas la réponse
+  // du serveur, un refus 400 y passerait inaperçu.
+  const flatError = optionalRateError("transfer", flatValue);
 
   const patchDay = (i: number, patch: Partial<DaySchedule>) =>
     setSchedule((prev) =>
@@ -738,6 +751,28 @@ export function ProfileEditor() {
                     aéroport.
                   </p>
                 )}
+                {/* ⚠️ Le forfait est le prix DU CHAUFFEUR. Aucune valeur
+                    proposée par défaut : un chiffre prérempli serait un tarif
+                    conseillé par la plateforme (règle 3 du statut d'annuaire). */}
+                {transfers && (
+                  <div className="mt-3">
+                    <RateInput
+                      label="Forfait transfert aéroport TTC (facultatif)"
+                      suffix="€"
+                      value={flatRate}
+                      min={flatBounds.min}
+                      max={flatBounds.max}
+                      error={flatError}
+                      onChange={setFlatRate}
+                    />
+                    <p className="mt-2 text-[11px] leading-relaxed text-white/40">
+                      Le prix à partir duquel vous effectuez un trajet entre
+                      Paris et un aéroport. Il s&apos;affiche « Transfert dès … € »
+                      sur votre fiche et dans la recherche de transfert. Laissé
+                      vide, c&apos;est votre tarif horaire qui s&apos;affiche.
+                    </p>
+                  </div>
+                )}
               </Field>
 
               {/* ⚠️ Plus aucune déclaration de prestation ici. Nova Compagnie
@@ -837,10 +872,10 @@ export function ProfileEditor() {
           </section>
         )}
 
-        {rateBlocked && (hourError || dayError) && (
+        {rateBlocked && (hourError || dayError || flatError) && (
           <p className="flex items-center gap-1.5 rounded-xl border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs text-red-300">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-            {hourError ?? dayError}
+            {hourError ?? dayError ?? flatError}
           </p>
         )}
 
