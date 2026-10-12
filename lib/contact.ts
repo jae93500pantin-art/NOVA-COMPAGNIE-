@@ -25,10 +25,10 @@ export const CONTACT_EMAIL = "ContactFrance@novacompagnie.com";
  * `wa.me`, qui ne redresse rien et ouvre une conversation vide si le numéro
  * ne lui plaît pas.
  */
-export const CONTACT_PHONE_DIGITS = "33744783457";
+export const CONTACT_PHONE_DIGITS = "33744784991";
 
 /** Le numéro tel qu'on l'écrit en France. */
-export const CONTACT_PHONE_DISPLAY = "07 44 78 34 57";
+export const CONTACT_PHONE_DISPLAY = "07 44 78 49 91";
 
 /**
  * ⚠️ **Il n'y a volontairement PAS de lien `tel:`.**

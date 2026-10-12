@@ -273,7 +273,9 @@ le dit maintenant : `bookings`, `messages`, `reviews`, `payments`,
 **volontairement hors du chemin** de `compose-schema.ps1` / `apply-schema.ps1` :
 il contient des `drop table`, et un script qui rejoue automatiquement une
 suppression de table finit par la rejouer sur une base qui avait des données.
-Il n'a **pas encore été appliqué**.
+Il n'a **pas encore été appliqué**. ⚠️ Corrigé le 2026-10-12 : il supprimait
+aussi `reviews`, revenue entre-temps (§ Avis de compte) — il n'en retire plus
+que `booking_id`. Ordre : 09-28, puis 09-29 (bloc A seul, puis B), puis 10-02.
 
 ## Auth & accounts (current = demo mode)
 
@@ -722,7 +724,7 @@ publique — la table porte nom, e-mail et téléphone de particuliers.
 - ⚠️ **Les coordonnées vivent dans `lib/contact.ts`, et nulle part ailleurs.**
   `CONTACT_EMAIL` (**ContactFrance@novacompagnie.com**), `CONTACT_PHONE_DIGITS`
   (format `wa.me` : international, sans `+`, sans espace, sans le `0`) et
-  `CONTACT_PHONE_DISPLAY` (**07 44 78 34 57**, tel qu'on l'écrit en France).
+  `CONTACT_PHONE_DISPLAY` (**07 44 78 49 91**, tel qu'on l'écrit en France).
   `lib/whatsapp.ts` en **dérive** son numéro : la ligne WhatsApp et le numéro
   affiché ne peuvent donc pas diverger.
 - ⚠️ **Aucun lien `tel:`, nulle part — et pas de canal « Téléphone ».** Ce

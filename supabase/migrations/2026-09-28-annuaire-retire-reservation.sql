@@ -65,7 +65,12 @@ drop function if exists public.calculate_booking_price(
 -- Ordre imposé par les clés étrangères : messages et reviews pointent sur
 -- bookings, payments aussi.
 drop table if exists public.messages cascade;
-drop table if exists public.reviews cascade;
+-- ⚠️ `reviews` N'EST PLUS SUPPRIMÉE (correction du 2026-10-12). Ce fichier a
+-- été écrit le 2026-09-28, quand les avis disparaissaient avec la course ; ils
+-- sont revenus le 2026-10-02 (avis de compte, non vérifiés). La supprimer ici
+-- effacerait les avis publiés et ferait échouer la migration du 2026-10-02,
+-- qui modifie cette table. On ne retire que son lien vers `bookings`.
+alter table if exists public.reviews drop column if exists booking_id;
 drop table if exists public.payments cascade;
 drop table if exists public.bookings cascade;
 
@@ -99,6 +104,8 @@ commit;
 --   profiles · drivers · vehicles · driver_documents  → l'annuaire lui-même,
 --     le dossier d'un chauffeur et son véhicule (la plaque sert à vérifier
 --     l'immatriculation déclarée, elle n'est pas publiée).
+--   reviews                                           → avis de compte,
+--     revenus le 2026-10-02 (sans `booking_id`).
 --   consents · audit_log · delete_my_account()        → RGPD.
 --   approve_driver() · driver_slug_from_name()        → validation d'un
 --     chauffeur par un administrateur, inchangée.
