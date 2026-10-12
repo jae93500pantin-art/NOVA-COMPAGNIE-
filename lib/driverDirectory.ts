@@ -58,9 +58,6 @@ interface DriverRow {
   cnaps_verified: boolean | null;
   available: boolean | null;
   response_time: string | null;
-  rating: number | string | null;
-  reviews_count: number | null;
-  trips: number | null;
   badges: string[] | null;
   lng: number | null;
   lat: number | null;
@@ -80,8 +77,14 @@ interface ProfileRow {
   status: string | null;
 }
 
+/**
+ * ⚠️ Ni `rating`, ni `reviews_count`, ni `trips` : rien ne les lit (la note se
+ * calcule sur les avis présents), et la migration du 2026-09-28 les supprime.
+ * Les nommer ici ferait répondre 42703 à toute lecture de l'annuaire le jour
+ * où elle passe — un annuaire vide, sans erreur visible.
+ */
 const COLUMNS =
-  "id, slug, age, city_id, bio, languages, experience_years, categories, transfer_destinations, cnaps_verified, price_per_hour, price_per_day, price_per_km, available, response_time, rating, reviews_count, trips, badges, lng, lat, car_make, car_model, car_year, car_color, car_photos, schedule";
+  "id, slug, age, city_id, bio, languages, experience_years, categories, transfer_destinations, cnaps_verified, price_per_hour, price_per_day, price_per_km, available, response_time, badges, lng, lat, car_make, car_model, car_year, car_color, car_photos, schedule";
 
 function db() {
   return isSupabaseAdminConfigured ? getSupabaseAdmin() : null;
@@ -305,7 +308,7 @@ async function documentState(
   return { expired, verified };
 }
 
-/** Les slugs publiables — pour `generateStaticParams` et les sitemaps. */
+/** Les slugs publiables — pour un futur sitemap (plus de `generateStaticParams` : voir /drivers/[id]). */
 export async function listDirectorySlugs(): Promise<string[]> {
   return (await listDirectory()).map((d) => d.id);
 }

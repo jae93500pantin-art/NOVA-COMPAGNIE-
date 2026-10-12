@@ -116,7 +116,7 @@ app/
     layout.tsx
     page.tsx                  Accueil : Hero (carte de recherche + globe), teaser transfert, how-it-works, features, CTA
     drivers/page.tsx          Listing + filters (Suspense → DriversExplorer)
-    drivers/[id]/page.tsx     Fiche chauffeur (SSG via generateStaticParams) : galerie, faits, vehicule, badge CNAPS + bloc de contact. Plus de section avis, plus de reservation.
+    drivers/[id]/page.tsx     Fiche chauffeur (force-dynamic, plus SSG — voir le commentaire du fichier) : galerie, faits, vehicule, badge CNAPS + bloc de contact. Plus de section avis, plus de reservation.
     transfert-aeroport/page.tsx  Composant SERVEUR : lit l'annuaire (listDirectory, service role) et le passe a TransferAirport. force-dynamic.
     vol-prive/page.tsx      Vol privé : page « bientôt disponible » + liste d'attente (clé i18n `jet.*`). ⚠️ **Plus aucun lien n'y mène** — retirée de la Navbar, elle ne répond qu'à l'URL directe. Le fichier et les clés `nav.privateJet` sont conservés (restaurer = une ligne dans `links`). ⚠️ L'inscription est SIMULÉE — aucun backend ne recueille l'adresse, elle est perdue à la soumission.
     contact/page.tsx          Contact page (SectionHeader + ContactForm): info panel + professional contact form
@@ -686,9 +686,8 @@ réservée au rôle `client`.
   explication se lit comme un mur. ⚠️ Il **ne navigue pas** — il se referme sur
   la fiche —, donc la « redirection après connexion » n'a pas lieu d'être : le
   visiteur n'a jamais quitté la page.
-- ⚠️ `DriverReviews` est un composant **client** : la fiche est pré-générée
-  (`generateStaticParams`), donc figer les avis dans le HTML afficherait l'état
-  du dernier build.
+- `DriverReviews` est un composant **client** : il recharge la liste après un
+  dépôt, une modification ou une suppression sans recharger la fiche.
 
 ### ⚠️ Migration à lancer
 
@@ -1281,9 +1280,12 @@ serveur).
 
 **Pages** : `/drivers` est `force-dynamic` et lit côté serveur, puis passe la
 liste à `DriversExplorer` (client, il ne peut pas interroger la base).
-`/drivers/[id]` pré-génère les fiches validées et rend les suivantes à la
-demande — un chauffeur validé après le build doit être joignable sans
-reconstruction. Un profil non validé répond 404.
+`/drivers/[id]` est **aussi `force-dynamic`** depuis le 2026-10-12. ⚠️ Il
+exportait `generateStaticParams` : l'annuaire étant lu en `no-store`, `next
+start` répondait **500** (« Page changed from static to dynamic at runtime »)
+sur toute fiche validée après le build — donc toutes, l'annuaire étant vide au
+build. `next dev` ne le montre pas : seul le parcours joué sur `npm start` l'a
+révélé. Un profil non validé répond 404.
 
 ⚠️ **Reste en dur** : `TransferEstimate` est le dernier composant client sans
 page serveur pour l'alimenter — il lit encore `lib/drivers.ts`, donc rien, et

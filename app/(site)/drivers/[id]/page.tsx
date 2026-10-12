@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { getDirectoryDriver, listDirectorySlugs } from "@/lib/driverDirectory";
+import { getDirectoryDriver } from "@/lib/driverDirectory";
 import { hasVerifiedCnapsCard } from "@/lib/cnaps";
 import { getCity } from "@/lib/cities";
 import { Gallery } from "@/components/Gallery";
@@ -22,13 +22,20 @@ import { DriverReviews } from "@/components/DriverReviews";
 import { QuoteRequestForm } from "@/components/QuoteRequestForm";
 
 /**
- * Les fiches sont pré-générées pour les chauffeurs déjà validés, et les
- * suivantes rendues à la demande (`dynamicParams` est vrai par défaut) : un
- * chauffeur validé après le build doit être joignable sans reconstruction.
+ * ⚠️ Rendue à CHAQUE requête, plus pré-générée (corrigé le 2026-10-12).
+ *
+ * La version précédente exportait `generateStaticParams` pour pré-générer les
+ * fiches validées. Mais l'annuaire est lu avec `cache: "no-store"` : en
+ * production, Next refusait alors de rendre la page d'un chauffeur validé
+ * APRÈS le build (« Page changed from static to dynamic at runtime ») et
+ * répondait 500. Avec un annuaire vide au build, c'était donc TOUTES les
+ * fiches. Vu en conditions réelles : `next dev` ne le montre pas.
+ *
+ * Et une fiche figée mentirait de toute façon : une pièce qui expire retire le
+ * chauffeur et sa mention « habilitations vérifiées », ce qu'un HTML du dernier
+ * build ignorerait. Même régime que `/drivers`.
  */
-export async function generateStaticParams() {
-  return (await listDirectorySlugs()).map((id) => ({ id }));
-}
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   const driver = await getDirectoryDriver(params.id);
