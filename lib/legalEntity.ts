@@ -50,13 +50,13 @@ export const EDITOR_DENOMINATION = `${EDITOR_NAME}, entrepreneur individuel (EI)
 export const PUBLICATION_DIRECTOR = EDITOR_NAME;
 
 /** ⚠️ À RENSEIGNER — 9 chiffres. Vide = la page signale la mention manquante. */
-export const SIREN = "";
+export const SIREN = "933822868";
 
 /** ⚠️ À RENSEIGNER — 14 chiffres (SIREN + NIC de l'établissement). Facultatif. */
-export const SIRET = "";
+export const SIRET = "93382286800016";
 
 /** ⚠️ À RENSEIGNER — l'adresse de l'établissement déclaré au répertoire SIRENE. */
-export const ADDRESS = "";
+export const ADDRESS = "3 place Jean Giraudoux, 94000 Créteil, France";
 
 /* -------------------------------------------------------------------------- */
 /*  Hébergeur                                                                 */

@@ -984,13 +984,17 @@ faux pour un client cherchant à qui s'adresser.
   morale, et la page le dit explicitement. Ne pas réintroduire ces lignes.
   ⚠️ La dénomination doit comporter le nom **avec** « entrepreneur individuel »
   ou « EI » (obligatoire depuis le 15 mai 2022).
-- ⚠️ **SIREN et adresse sont VIDES, et c'est assumé.** Une mention manquante se
-  voit et se corrige en une ligne ; un SIREN inventé est une fausse déclaration
-  d'identité d'entreprise, qui passe tous les contrôles automatiques et ne se
-  découvre qu'au litige. `missingLegalMentions()` les liste et la page affiche
-  un bandeau « Mentions à compléter » au lieu de faire semblant.
-  **Pour compléter : `SIREN` et `ADDRESS` dans `lib/legalEntity.ts`.** Rien
-  d'autre à toucher.
+- **SIREN 933 822 868, SIRET 933 822 868 00016, 3 place Jean Giraudoux,
+  94000 Créteil** — fournis par le propriétaire le 2026-10-12 (clés de Luhn
+  valides). ⚠️ Si l'un d'eux est vidé, `missingLegalMentions()` le liste et la
+  page réaffiche le bandeau « Mentions à compléter » : ne jamais y mettre une
+  valeur plausible à la place — un SIREN inventé est une fausse déclaration
+  d'identité d'entreprise.
+- ⚠️ Le texte fourni par le propriétaire le 2026-10-12 nommait **Vercel**
+  comme hébergeur, renvoyait vers le **formulaire de contact** (simulé, les
+  messages sont perdus) et désignait le directeur de la publication comme
+  « le responsable légal » sans le nommer : ces trois points n'ont **pas** été
+  repris (la LCEN exige un directeur nommé).
 - Le SIREN est validé par sa **clé de Luhn** (`isValidSiren`) : un numéro mal
   recopié a l'apparence de la conformité et désigne une autre entreprise. Un
   SIREN invalide compte comme manquant. Le **SIRET est facultatif** (recommandé

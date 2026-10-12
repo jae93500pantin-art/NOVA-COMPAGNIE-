@@ -37,7 +37,7 @@ export default function LegalNoticePage() {
   return (
     <>
       <h1>Mentions légales</h1>
-      <p className="updated">Dernière mise à jour : 2 octobre 2026</p>
+      <p className="updated">Dernière mise à jour : 12 octobre 2026</p>
 
       {(missing.length > 0 || siretWrong) && (
         <p className="rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-4 text-sm leading-relaxed text-amber-100">
