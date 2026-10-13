@@ -16,6 +16,7 @@ import {
 import {
   QUOTE_ERRORS,
   QUOTE_LIMITS,
+  QUOTE_RETENTION_MONTHS,
   quoteError,
   type QuoteDraft,
   type QuoteField,
@@ -111,7 +112,7 @@ export function QuoteRequestForm({
         {/* ⚠️ « mise en relation », pas « réservation confirmée » : rien n'est
             réservé, et le prix reste à convenir avec le chauffeur. */}
         <p className="mt-2 text-xs leading-relaxed text-white/55">
-          Nous transmettons votre demande à {driverName}. Il vous répondra
+          Nous transmettons votre demande à {driverName}, qui vous recontactera
           directement avec son tarif et ses disponibilités. Aucune course
           n&apos;est réservée à ce stade.
         </p>
@@ -134,7 +135,11 @@ export function QuoteRequestForm({
         Demander un devis
       </p>
       <p className="mt-1.5 text-xs leading-relaxed text-white/50">
-        Sans compte. {driverName} vous répond avec son propre tarif.
+        {/* ⚠️ « Nova transmet », pas « X vous répond » : la demande arrive chez
+            Nova, qui la fait suivre. Promettre la réponse du chauffeur, c'est
+            garantir ce que personne ne contrôle. */}
+        Sans compte. Nova transmet votre demande à {driverName}, qui vous
+        répond avec son propre tarif.
       </p>
 
       <div className="mt-4 space-y-3">
@@ -190,6 +195,21 @@ export function QuoteRequestForm({
           ne fixe pas le prix et n&apos;encaisse rien. Le devis et la facture
           viennent du chauffeur.
         </span>
+      </p>
+      {/* ⚠️ Information obligatoire AU MOMENT de la collecte (art. 13 RGPD) :
+          ces visiteurs n'ont pas de compte, donc aucune autre occasion de la
+          lire. La durée vient de la même constante que la purge de la console
+          et que /legal/confidentialite. */}
+      <p className="mt-2 text-[11px] leading-relaxed text-white/35">
+        Vos coordonnées servent uniquement à transmettre cette demande à{" "}
+        {driverName} et à vous recontacter. Conservées {QUOTE_RETENTION_MONTHS}{" "}
+        mois au plus.{" "}
+        <a
+          href="/legal/confidentialite"
+          className="underline underline-offset-2 hover:text-white/60"
+        >
+          Politique de confidentialité
+        </a>
       </p>
       <a
         href={whatsappUrl(

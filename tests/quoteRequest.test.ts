@@ -144,4 +144,14 @@ describe("conservation des demandes", () => {
     );
     expect(src).toContain("{QUOTE_RETENTION_MONTHS} mois");
   });
+
+  it("le formulaire informe le visiteur au moment de la collecte", () => {
+    // art. 13 RGPD : le visiteur n'a pas de compte, c'est sa seule occasion.
+    const src = readFileSync(
+      resolve(__dirname, "..", "components", "QuoteRequestForm.tsx"),
+      "utf8"
+    );
+    expect(src).toContain("{QUOTE_RETENTION_MONTHS}");
+    expect(src).toContain("/legal/confidentialite");
+  });
 });
