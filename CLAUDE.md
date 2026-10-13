@@ -542,7 +542,9 @@ justifie, et que personne ne retrouverait pour la nettoyer.
 deviennent consultables), `driver_document_checked`, `driver_approved` (avec les
 pièces et leurs échéances), `driver_rejected`, `driver_approved_override`, `driver_deleted` (avec le nombre
 de pièces retirées du stockage), `documents_expiry_notified`, `review_removed`
-(motif, texte et note de l'avis retiré).
+(motif, texte et note de l'avis retiré), `quote_deleted` et `quotes_purged`
+(⚠️ **sans** nom, e-mail ni téléphone du client — garder les coordonnées
+d'une demande effacée dans le journal viderait l'effacement).
 ⚠️ `user_id` porte l'**administrateur** qui agit, le chauffeur étant dans
 `detail.driver_id` : la question à laquelle ce journal doit répondre est « qui a
 validé, et sur quelles pièces ».
@@ -608,6 +610,16 @@ précisions. Règles pures dans `lib/quoteRequest.ts` (testé, 14).
 - La notification part vers `CONTACT_EMAIL`, **pas vers le chauffeur** : ses
   coordonnées ne sont pas publiées (`profiles` en lecture propriétaire), et un
   envoi vers une adresse tierce est de toute façon refusé par Resend.
+- **Suivi dans la console** (2026-10-13) : section « Demandes de devis » de
+  `/admin` (toutes les non traitées, plus anciennes d'abord, + les 30
+  dernières traitées), KPI « Devis non traités ». `QuoteActions` →
+  `PATCH /api/admin/quotes/[id]` `{handled}` (pose/retire `handled_at`) et
+  `DELETE` (deux clics). ⚠️ C'est **le seul endroit** où une demande se lit
+  si l'e-mail de notification n'est pas parti.
+- **Conservation : `QUOTE_RETENTION_MONTHS` = 12**, annoncée sur
+  `/legal/confidentialite` depuis la même constante (un test le vérifie).
+  Purge par bouton → `POST /api/admin/quotes/purge`. ⚠️ Jamais à l'ouverture
+  de la console : une consultation qui supprime est un piège.
 - Cadence : **5/min et 20/h par IP**. Une route ouverte qui écrit en base et
   déclenche un e-mail est exactement ce qu'un robot cherche ; une seule fenêtre
   laisse passer le remplissage lent.

@@ -1,8 +1,18 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ShieldAlert, Users, CalendarClock, Activity, ExternalLink, Star } from "lucide-react";
+import {
+  ShieldAlert,
+  Users,
+  CalendarClock,
+  Activity,
+  ExternalLink,
+  Star,
+  Inbox,
+} from "lucide-react";
 import { DeleteDriverButton } from "@/components/admin/DeleteDriverButton";
 import { DeleteReviewButton } from "@/components/admin/DeleteReviewButton";
+import { QuoteActions, PurgeQuotesButton } from "@/components/admin/QuoteActions";
+import { QUOTE_RETENTION_MONTHS, quoteRetentionCutoff } from "@/lib/quoteRequest";
 // ⚠️ `ApproveDriverButton` n'est plus utilisé ici : la validation exige
 // désormais d'avoir ouvert les pièces (voir /admin/chauffeurs/[id]).
 import { requireAdmin, adminDb } from "@/lib/admin";
@@ -62,6 +72,32 @@ const STATUS_TONE: Record<string, string> = {
 
 /** Nombre d'avis listés dans la console. */
 const REVIEWS_SHOWN = 100;
+
+/** Demandes déjà traitées gardées sous les yeux (les non traitées sont toutes listées). */
+const HANDLED_QUOTES_SHOWN = 30;
+
+type QuoteRow = {
+  id: string;
+  driver_slug: string | null;
+  name: string;
+  email: string;
+  phone: string;
+  trip: string;
+  details: string | null;
+  handled_at: string | null;
+  created_at: string;
+};
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Paris",
+  });
+}
 
 /* -------------------------------------------------------------------------- */
 
@@ -132,6 +168,60 @@ export default async function AdminDashboardPage() {
 
   const pending = pendingDrivers ?? [];
 
+  // ── Demandes de devis ────────────────────────────────────────
+  /**
+   * ⚠️ C'est le seul endroit où une demande se lit si l'e-mail de
+   * notification n'est pas parti (domaine non vérifié chez Resend) : la route
+   * publique enregistre en base AVANT d'envoyer. Sans cette section, une
+   * demande non notifiée attendait une réponse que personne ne savait devoir
+   * donner. Les non traitées sont TOUTES listées, les plus anciennes d'abord.
+   */
+  const QUOTE_COLUMNS = "id, driver_slug, name, email, phone, trip, details, handled_at, created_at";
+  const [openQuotesRes, handledQuotesRes, expiredQuotesRes] = await Promise.all([
+    db
+      .from("quote_requests")
+      .select(QUOTE_COLUMNS)
+      .is("handled_at", null)
+      .order("created_at", { ascending: true }),
+    db
+      .from("quote_requests")
+      .select(QUOTE_COLUMNS)
+      .not("handled_at", "is", null)
+      .order("handled_at", { ascending: false })
+      .limit(HANDLED_QUOTES_SHOWN),
+    db
+      .from("quote_requests")
+      .select("id", { count: "exact", head: true })
+      .lt("created_at", quoteRetentionCutoff().toISOString()),
+  ]);
+  const quotesError = openQuotesRes.error ?? handledQuotesRes.error;
+  const openQuotes = (openQuotesRes.data ?? []) as QuoteRow[];
+  const handledQuotes = (handledQuotesRes.data ?? []) as QuoteRow[];
+  const expiredQuotes = expiredQuotesRes.count ?? 0;
+
+  const quoteSlugs = Array.from(
+    new Set(
+      [...openQuotes, ...handledQuotes]
+        .map((q) => q.driver_slug)
+        .filter((x): x is string => !!x)
+    )
+  );
+  const { data: quoteDriverRows } = quoteSlugs.length
+    ? await db
+        .from("profiles")
+        .select("first_name, last_name, driver_slug")
+        .in("driver_slug", quoteSlugs)
+    : { data: [] };
+  const quoteDrivers = new Map(
+    (
+      (quoteDriverRows ?? []) as {
+        first_name: string | null;
+        last_name: string | null;
+        driver_slug: string;
+      }[]
+    ).map((p) => [p.driver_slug, `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()])
+  );
+
   // ── Avis publiés ─────────────────────────────────────────────
   /**
    * Les plus récents d'abord, plafonnés : la console sert à modérer ce qui
@@ -201,7 +291,7 @@ export default async function AdminDashboardPage() {
 
       <main className="mx-auto max-w-7xl space-y-10 px-4 py-10 sm:px-6">
         {/* ── KPI ─────────────────────────────────────────────── */}
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Kpi
             icon={CalendarClock}
             label="Chauffeurs référencés"
@@ -213,6 +303,12 @@ export default async function AdminDashboardPage() {
             value={String(pending.length)}
             tone={pending.length > 0 ? "warn" : "default"}
           />
+          <Kpi
+            icon={Inbox}
+            label="Devis non traités"
+            value={String(openQuotes.length)}
+            tone={openQuotes.length > 0 ? "warn" : "default"}
+          />
           <div className="glass rounded-2xl p-6">
             <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-white/45">
               <Activity className="h-3.5 w-3.5" />
@@ -223,6 +319,119 @@ export default async function AdminDashboardPage() {
               Supabase ✓ · E-mails {isEmailConfigured ? "✓" : "—"}
             </p>
           </div>
+        </section>
+
+        {/* ── Demandes de devis ───────────────────────────────── */}
+        <section className="glass rounded-2xl p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2.5 text-lg font-semibold text-white">
+                Demandes de devis
+                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-white/70">
+                  {openQuotes.length} à traiter
+                </span>
+              </h2>
+              <p className="mt-1 text-xs text-white/40">
+                Envoyées depuis les fiches chauffeurs. Transmettez-les au chauffeur choisi
+                par le client, puis marquez-les traitées. Conservées{" "}
+                {QUOTE_RETENTION_MONTHS} mois.
+              </p>
+            </div>
+            {expiredQuotes > 0 && <PurgeQuotesButton count={expiredQuotes} />}
+          </div>
+
+          {quotesError ? (
+            <p className="mt-5 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4 text-sm text-amber-200/80">
+              Impossible de lire les demandes de devis ({quotesError.message}).
+            </p>
+          ) : openQuotes.length + handledQuotes.length === 0 ? (
+            <p className="mt-5 text-sm italic text-white/40">
+              Aucune demande de devis pour le moment.
+            </p>
+          ) : (
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full min-w-[900px] border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/35">
+                    <th className="pb-3 font-semibold">Reçue le</th>
+                    <th className="pb-3 font-semibold">Client</th>
+                    <th className="pb-3 font-semibold">Chauffeur demandé</th>
+                    <th className="pb-3 font-semibold">Trajet</th>
+                    <th className="pb-3 text-right font-semibold">Suivi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {[...openQuotes, ...handledQuotes].map((q) => {
+                    const handled = !!q.handled_at;
+                    const driverName =
+                      (q.driver_slug && quoteDrivers.get(q.driver_slug)) ||
+                      q.driver_slug ||
+                      "Chauffeur supprimé";
+                    return (
+                      <tr
+                        key={q.id}
+                        className={`align-top transition hover:bg-white/[0.03] ${
+                          handled ? "opacity-55" : ""
+                        }`}
+                      >
+                        <td className="whitespace-nowrap py-4 pr-4 text-sm text-white/60">
+                          {formatDateTime(q.created_at)}
+                          {handled && q.handled_at && (
+                            <p className="mt-1 text-[11px] text-emerald-400/80">
+                              Traitée le {formatDateTime(q.handled_at)}
+                            </p>
+                          )}
+                        </td>
+                        <td className="py-4 pr-4 text-sm">
+                          <p className="font-medium text-white">{q.name}</p>
+                          <a
+                            href={`mailto:${q.email}`}
+                            className="block text-xs text-royal-300 hover:underline"
+                          >
+                            {q.email}
+                          </a>
+                          <p className="text-xs text-white/55">{q.phone}</p>
+                        </td>
+                        <td className="py-4 pr-4 text-sm">
+                          {q.driver_slug ? (
+                            <a
+                              href={`/drivers/${q.driver_slug}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-royal-300 hover:underline"
+                            >
+                              {driverName}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : (
+                            <span className="text-white/50">{driverName}</span>
+                          )}
+                        </td>
+                        <td className="max-w-md py-4 pr-4 text-sm leading-relaxed">
+                          <p className="text-white/80">{q.trip}</p>
+                          {q.details && (
+                            <p className="mt-1 whitespace-pre-line text-xs text-white/50">
+                              {q.details}
+                            </p>
+                          )}
+                        </td>
+                        <td className="py-4">
+                          <div className="flex justify-end">
+                            <QuoteActions quoteId={q.id} handled={handled} client={q.name} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {handledQuotes.length === HANDLED_QUOTES_SHOWN && (
+            <p className="mt-3 text-[11px] text-white/30">
+              Seules les {HANDLED_QUOTES_SHOWN} dernières demandes traitées sont affichées.
+            </p>
+          )}
         </section>
 
         {/* ── Chauffeurs en attente ───────────────────────────── */}

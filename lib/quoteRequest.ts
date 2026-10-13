@@ -97,3 +97,27 @@ export function normalizeQuote(draft: QuoteDraft): Required<QuoteDraft> {
     details: (draft.details ?? "").trim().slice(0, QUOTE_LIMITS.details),
   };
 }
+
+/**
+ * Durée de conservation d'une demande de devis, en mois.
+ *
+ * ⚠️ Une demande porte le nom, l'e-mail et le téléphone d'un particulier qui
+ * n'a pas de compte : rien ne justifie de la garder indéfiniment. Douze mois
+ * couvrent la relance et un éventuel litige sur la mise en relation. La durée
+ * est annoncée sur `/legal/confidentialite` : la changer ici sans changer la
+ * page ferait mentir la politique de confidentialité.
+ */
+export const QUOTE_RETENTION_MONTHS = 12;
+
+/** Instant avant lequel une demande a dépassé sa durée de conservation. */
+export function quoteRetentionCutoff(now: Date = new Date()): Date {
+  const cutoff = new Date(now);
+  cutoff.setMonth(cutoff.getMonth() - QUOTE_RETENTION_MONTHS);
+  return cutoff;
+}
+
+/** La demande a-t-elle dépassé sa durée de conservation ? */
+export function isQuoteExpired(createdAt: string, now: Date = new Date()): boolean {
+  const t = new Date(createdAt).getTime();
+  return Number.isFinite(t) && t < quoteRetentionCutoff(now).getTime();
+}

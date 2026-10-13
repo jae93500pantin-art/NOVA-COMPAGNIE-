@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   QUOTE_LIMITS,
+  QUOTE_RETENTION_MONTHS,
+  isQuoteExpired,
+  quoteRetentionCutoff,
   normalizeQuote,
   quoteError,
   type QuoteDraft,
@@ -105,5 +110,38 @@ describe("normalizeQuote", () => {
     for (const forbidden of ["price", "amount", "total", "quote", "fare"]) {
       expect(q[forbidden]).toBeUndefined();
     }
+  });
+});
+
+describe("conservation des demandes", () => {
+  const now = new Date("2026-10-13T12:00:00+02:00");
+
+  it("dure douze mois", () => {
+    expect(QUOTE_RETENTION_MONTHS).toBe(12);
+    expect(quoteRetentionCutoff(now).getFullYear()).toBe(2025);
+    expect(quoteRetentionCutoff(now).getMonth()).toBe(9);
+  });
+
+  it("garde une demande de moins d'un an", () => {
+    expect(isQuoteExpired("2026-01-01T00:00:00Z", now)).toBe(false);
+    expect(isQuoteExpired("2025-10-14T00:00:00Z", now)).toBe(false);
+  });
+
+  it("expire une demande de plus d'un an", () => {
+    expect(isQuoteExpired("2025-10-01T00:00:00Z", now)).toBe(true);
+  });
+
+  it("n'expire pas une date illisible", () => {
+    // Supprimer une demande sur une date qu'on ne sait pas lire serait
+    // une perte de données décidée par un bug.
+    expect(isQuoteExpired("pas une date", now)).toBe(false);
+  });
+
+  it("la politique de confidentialité annonce cette durée", () => {
+    const src = readFileSync(
+      resolve(__dirname, "..", "app", "(site)", "legal", "confidentialite", "page.tsx"),
+      "utf8"
+    );
+    expect(src).toContain("{QUOTE_RETENTION_MONTHS} mois");
   });
 });

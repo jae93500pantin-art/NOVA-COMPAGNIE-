@@ -1,4 +1,5 @@
 import { CONTACT_EMAIL } from "@/lib/contact";
+import { QUOTE_RETENTION_MONTHS } from "@/lib/quoteRequest";
 
 export const metadata = { title: "Politique de confidentialité — Nova Compagnie" };
 
@@ -6,7 +7,7 @@ export default function PrivacyPage() {
   return (
     <>
       <h1>Politique de confidentialité</h1>
-      <p className="updated">Dernière mise à jour : 11 juin 2026</p>
+      <p className="updated">Dernière mise à jour : 13 octobre 2026</p>
       <p className="lead">
         Nova Compagnie accorde la plus grande importance à la protection de vos données
         personnelles. Cette politique explique quelles données nous collectons,
@@ -33,8 +34,9 @@ export default function PrivacyPage() {
           langues, tarifs, biographie, photos.
         </li>
         <li>
-          <strong>Communications&nbsp;:</strong> messages échangés via la
-          messagerie.
+          <strong>Demandes de devis&nbsp;:</strong> nom, e-mail, téléphone,
+          trajet et précisions saisis dans le formulaire d’une fiche chauffeur,
+          pour transmettre la demande au chauffeur choisi.
         </li>
         <li>
           <strong>Techniques&nbsp;:</strong> données de connexion strictement
@@ -67,8 +69,9 @@ export default function PrivacyPage() {
       <h2>4. Durées de conservation</h2>
       <p>
         Les données de compte sont conservées tant que votre compte est actif,
-        puis supprimées ou anonymisées sous 30 jours après clôture. Les messages
-        du salon live sont éphémères et ne sont jamais enregistrés.
+        puis supprimées ou anonymisées sous 30 jours après clôture. Les demandes de
+        devis sont conservées {QUOTE_RETENTION_MONTHS} mois au plus, puis
+        supprimées.
       </p>
 
       <h2>5. Vos droits</h2>
