@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  QUOTE_HONEYPOT_FIELD,
   QUOTE_LIMITS,
+  isHoneypotFilled,
   QUOTE_RETENTION_MONTHS,
   isQuoteExpired,
   quoteRetentionCutoff,
@@ -153,5 +155,30 @@ describe("conservation des demandes", () => {
     );
     expect(src).toContain("{QUOTE_RETENTION_MONTHS}");
     expect(src).toContain("/legal/confidentialite");
+  });
+});
+
+describe("champ piège (antispam)", () => {
+  it("vide ou absent : un humain", () => {
+    expect(isHoneypotFilled("")).toBe(false);
+    expect(isHoneypotFilled("   ")).toBe(false);
+    expect(isHoneypotFilled(undefined)).toBe(false);
+    expect(isHoneypotFilled(null)).toBe(false);
+  });
+
+  it("rempli : un robot", () => {
+    expect(isHoneypotFilled("http://spam.example")).toBe(true);
+  });
+
+  it("ne porte pas un nom que le navigateur préremplit", () => {
+    // Sinon l'autoremplissage d'un vrai visiteur ferait perdre sa demande.
+    expect(QUOTE_HONEYPOT_FIELD).not.toMatch(/web|site|url|company|org|fax|name|mail|phone|tel|address/i);
+  });
+
+  it("la route l'examine avant toute écriture", () => {
+    const src = readFileSync(resolve(__dirname, "..", "app", "api", "quotes", "route.ts"), "utf8");
+    const trap = src.indexOf("isHoneypotFilled(");
+    expect(trap).toBeGreaterThan(-1);
+    expect(trap).toBeLessThan(src.indexOf(".insert("));
   });
 });

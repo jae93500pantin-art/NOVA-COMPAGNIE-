@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   User,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import {
   QUOTE_ERRORS,
+  QUOTE_HONEYPOT_FIELD,
   QUOTE_LIMITS,
   QUOTE_RETENTION_MONTHS,
   quoteError,
@@ -59,6 +60,9 @@ export function QuoteRequestForm({
     details: "",
   });
   const [error, setError] = useState<string | null>(null);
+  // Champ piège : un humain ne le voit pas, donc le laisse vide.
+  const [trap, setTrap] = useState("");
+  const detailsId = useId();
   const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
 
   const set =
@@ -83,7 +87,11 @@ export function QuoteRequestForm({
       const res = await fetch("/api/quotes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, driverId: driverSlug }),
+        body: JSON.stringify({
+          ...form,
+          driverId: driverSlug,
+          [QUOTE_HONEYPOT_FIELD]: trap,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -119,6 +127,7 @@ export function QuoteRequestForm({
         <button
           onClick={() => {
             setForm({ name: "", email: "", phone: "", trip: "", details: "" });
+            setTrap("");
             setStatus("idle");
           }}
           className="btn-ghost mt-4 w-full text-sm"
@@ -130,7 +139,7 @@ export function QuoteRequestForm({
   }
 
   return (
-    <form onSubmit={submit} className="rounded-3xl glass-strong p-6">
+    <form onSubmit={submit} className="relative rounded-3xl glass-strong p-6">
       <p className="text-[11px] uppercase tracking-wider text-white/40">
         Demander un devis
       </p>
@@ -143,20 +152,45 @@ export function QuoteRequestForm({
       </p>
 
       <div className="mt-4 space-y-3">
-        <Field icon={User} placeholder="Votre nom" value={form.name} onChange={set("name")} max={QUOTE_LIMITS.name} />
-        <Field icon={Mail} type="email" placeholder="Votre e-mail" value={form.email} onChange={set("email")} max={QUOTE_LIMITS.email} />
-        <Field icon={Phone} type="tel" placeholder="Votre téléphone" value={form.phone} onChange={set("phone")} max={QUOTE_LIMITS.phone} />
-        <Field icon={Route} placeholder="Trajet souhaité (départ → destination)" value={form.trip} onChange={set("trip")} max={QUOTE_LIMITS.trip} />
-        <div className="relative">
-          <MessageSquare className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-white/30" />
-          <textarea
-            value={form.details}
-            onChange={set("details")}
-            maxLength={QUOTE_LIMITS.details}
-            rows={3}
-            placeholder="Précisions (date approximative, nombre de passagers, bagages…)"
-            className="input resize-none pl-10"
-          />
+        {/* ⚠️ Des étiquettes FIXES, pas seulement un texte d'exemple : le
+            texte gris disparaît à la saisie, et sur mobile on ne sait plus ce
+            qu'on remplit. Le texte d'exemple reste, comme exemple. */}
+        <Field label="Votre nom" icon={User} placeholder="Ex. Claire Moreau" value={form.name} onChange={set("name")} max={QUOTE_LIMITS.name} autoComplete="name" />
+        <Field label="Votre e-mail" icon={Mail} type="email" placeholder="Ex. claire@exemple.fr" value={form.email} onChange={set("email")} max={QUOTE_LIMITS.email} autoComplete="email" />
+        <Field label="Votre téléphone" icon={Phone} type="tel" placeholder="Ex. 06 12 34 56 78" value={form.phone} onChange={set("phone")} max={QUOTE_LIMITS.phone} autoComplete="tel" />
+        <Field label="Trajet souhaité" icon={Route} placeholder="Ex. Orly → Paris 8e" value={form.trip} onChange={set("trip")} max={QUOTE_LIMITS.trip} autoComplete="off" />
+        <div>
+          <label htmlFor={detailsId} className="mb-1.5 block text-xs font-medium text-white/60">
+            Précisions <span className="font-normal text-white/35">(facultatif)</span>
+          </label>
+          <div className="relative">
+            <MessageSquare className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-white/30" />
+            <textarea
+              id={detailsId}
+              value={form.details}
+              onChange={set("details")}
+              maxLength={QUOTE_LIMITS.details}
+              rows={3}
+              placeholder="Date approximative, nombre de passagers, bagages…"
+              className="input resize-none pl-10"
+            />
+          </div>
+        </div>
+        {/* Champ piège (antispam). ⚠️ Hors écran plutôt que display:none —
+            certains robots sautent les champs masqués —, hors tabulation et
+            caché aux lecteurs d'écran, sans autoremplissage. */}
+        <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+          <label>
+            Ne pas remplir
+            <input
+              type="text"
+              name={QUOTE_HONEYPOT_FIELD}
+              tabIndex={-1}
+              autoComplete="off"
+              value={trap}
+              onChange={(e) => setTrap(e.target.value)}
+            />
+          </label>
         </div>
       </div>
 
@@ -226,31 +260,43 @@ export function QuoteRequestForm({
 }
 
 function Field({
+  label,
   icon: Icon,
   value,
   onChange,
   placeholder,
   type = "text",
   max,
+  autoComplete,
 }: {
+  label: string;
   icon: typeof User;
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   placeholder: string;
   type?: string;
   max: number;
+  autoComplete?: string;
 }) {
+  const id = useId();
   return (
-    <div className="relative">
-      <Icon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        maxLength={max}
-        placeholder={placeholder}
-        className="input pl-10"
-      />
+    <div>
+      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-white/60">
+        {label}
+      </label>
+      <div className="relative">
+        <Icon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+        <input
+          id={id}
+          autoComplete={autoComplete}
+          type={type}
+          value={value}
+          onChange={onChange}
+          maxLength={max}
+          placeholder={placeholder}
+          className="input pl-10"
+        />
+      </div>
     </div>
   );
 }

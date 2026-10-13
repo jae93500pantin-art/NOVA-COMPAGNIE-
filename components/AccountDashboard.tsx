@@ -15,6 +15,7 @@ import {
   Sparkles,
   Loader2,
   LogOut,
+  Inbox,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { whatsappUrl } from "@/lib/whatsapp";
@@ -225,7 +226,15 @@ function DriverSpace({ slug }: { slug: string | null }) {
         </span>
       </button>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
+        {/* Demandes de devis adressées depuis la fiche publique. Lecture
+            seule : le chauffeur chiffre et répond lui-même, hors plateforme. */}
+        <Tile
+          href="/compte/demandes"
+          icon={Inbox}
+          title="Mes demandes"
+          text="Demandes de devis reçues"
+        />
         <Tile
           href="/compte/profil"
           icon={Car}

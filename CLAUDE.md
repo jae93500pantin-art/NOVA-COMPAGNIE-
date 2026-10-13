@@ -620,7 +620,21 @@ précisions. Règles pures dans `lib/quoteRequest.ts` (testé, 14).
   `/legal/confidentialite` depuis la même constante (un test le vérifie).
   Purge par bouton → `POST /api/admin/quotes/purge`. ⚠️ Jamais à l'ouverture
   de la console : une consultation qui supprime est un piège.
-- Cadence : **5/min et 20/h par IP**. Une route ouverte qui écrit en base et
+- Cadence : **5/min et 20/h par IP**.
+- **Champ piège** (`QUOTE_HONEYPOT_FIELD` = `nova_hp_check`, 2026-10-13) :
+  hors écran, hors tabulation, `aria-hidden`. Rempli ⇒ la route répond
+  **200 `{ok:true}` sans rien écrire ni envoyer** (un refus apprendrait au
+  robot quel champ éviter). ⚠️ Ne pas le renommer `website`/`company`… :
+  l'autoremplissage d'un vrai visiteur ferait perdre sa demande (testé).
+- **Étiquettes fixes** au-dessus de chaque champ ; le texte gris n'est plus
+  qu'un exemple. Mention RGPD (art. 13) sous le bouton.
+- **« Mes demandes » côté chauffeur** (`/compte/demandes`, tuile dans
+  `AccountDashboard`) : lecture seule des demandes où `driver_id` = l'uuid
+  de **session** (`requireUser`), en service role côté serveur, sur
+  `QUOTE_RETENTION_MONTHS`. ⚠️ **Toujours aucune policy RLS** sur
+  `quote_requests` : en ajouter une « pour le chauffeur » ouvrirait une seconde
+  porte PostgREST. Client ⇒ renvoyé vers `/compte`. Pas de bouton
+  « accepter », pas de montant : le chauffeur répond hors plateforme. Une route ouverte qui écrit en base et
   déclenche un e-mail est exactement ce qu'un robot cherche ; une seule fenêtre
   laisse passer le remplissage lent.
 

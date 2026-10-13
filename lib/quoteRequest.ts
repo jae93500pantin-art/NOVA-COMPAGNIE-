@@ -121,3 +121,22 @@ export function isQuoteExpired(createdAt: string, now: Date = new Date()): boole
   const t = new Date(createdAt).getTime();
   return Number.isFinite(t) && t < quoteRetentionCutoff(now).getTime();
 }
+
+/**
+ * Champ piège (« honeypot ») du formulaire de devis.
+ *
+ * Invisible et hors de la tabulation pour un humain ; un robot qui remplit
+ * tous les champs le remplit aussi. La route répond alors **comme un succès**
+ * sans rien enregistrer ni envoyer : un refus explicite apprendrait au robot
+ * quel champ éviter.
+ *
+ * ⚠️ Le nom ne doit ressembler à rien que le navigateur sache préremplir
+ * (`website`, `company`, `fax`…) : l'autoremplissage d'un vrai visiteur le
+ * ferait passer pour un robot, et sa demande serait perdue en silence.
+ */
+export const QUOTE_HONEYPOT_FIELD = "nova_hp_check";
+
+/** Le champ piège a-t-il été rempli ? */
+export function isHoneypotFilled(value: unknown): boolean {
+  return typeof value === "string" && value.trim() !== "";
+}

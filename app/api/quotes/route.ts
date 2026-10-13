@@ -5,7 +5,9 @@ import { rateLimit, sanitizeText } from "@/lib/validation";
 import { getDirectoryDriver, getDirectoryDriverAccountId } from "@/lib/driverDirectory";
 import {
   QUOTE_ERRORS,
+  QUOTE_HONEYPOT_FIELD,
   QUOTE_LIMITS,
+  isHoneypotFilled,
   normalizeQuote,
   quoteError,
 } from "@/lib/quoteRequest";
@@ -73,6 +75,13 @@ export async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return Response.json({ error: "Requête invalide" }, { status: 400 });
+  }
+
+  // Champ piège rempli : un robot. Faux succès, rien d'écrit, rien d'envoyé
+  // — un refus lui dirait quel champ éviter (voir `QUOTE_HONEYPOT_FIELD`).
+  if (isHoneypotFilled(body[QUOTE_HONEYPOT_FIELD])) {
+    console.warn(`[quotes] champ piège rempli, demande ignorée (${ip})`);
+    return Response.json({ ok: true });
   }
 
   const slug = sanitizeText(body.driverId, 80);
