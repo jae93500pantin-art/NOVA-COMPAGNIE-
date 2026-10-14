@@ -34,10 +34,11 @@ export function Hero() {
           <h1 className="text-balance text-3xl font-semibold leading-[1.1] tracking-tight text-white sm:text-4xl lg:text-5xl">
             {t("hero.tagline")}
           </h1>
-          {/* Ce qu'est Nova, dit dès le premier écran : un annuaire, gratuit
-              pour le client, sans commission. Sans cette ligne, le visiteur
-              croit arriver sur une application de VTC qui lui attribue une
-              voiture. */}
+          {/* Ce qu'est Nova, dès le premier écran : un annuaire, gratuit pour
+              le client, sans commission. ⚠️ « réglez la course directement
+              avec le chauffeur » : le CONTACT passe par Nova (devis, WhatsApp),
+              seul le règlement est direct — ne pas écrire « contactez-le en
+              direct ». */}
           <p className="mb-8 mt-4 max-w-lg text-pretty text-sm leading-relaxed text-white/65 sm:text-base">
             {t("hero.pitch")}
           </p>

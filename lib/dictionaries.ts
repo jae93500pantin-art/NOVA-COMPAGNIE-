@@ -46,7 +46,7 @@ const fr = {
     // ⚠️ Plus de « Connectez-vous pour retrouver vos trajets » : le compte ne
     // garde aucun trajet, et l'annuaire se consulte sans compte.
     pitch:
-      "Annuaire direct des chauffeurs VTC. Contactez et payez le chauffeur en direct — 100 % gratuit pour le client, sans commission.",
+      "Annuaire direct des chauffeurs VTC. Transmettez votre demande en 1 clic et réglez la course directement avec le chauffeur — 100 % gratuit pour le client, sans commission.",
     freeAccess: "Consultez l'annuaire librement. Mises en relation directes et transparentes.",
     statVerified: "Chauffeurs vérifiés",
     statRating: "Note moyenne",
@@ -507,7 +507,7 @@ const en: Dict = {
     subtitle:
       "Book a verified private chauffeur in seconds in Paris — excellence at your fingertips.",
     pitch:
-      "A direct directory of VTC chauffeurs. Contact and pay the chauffeur directly — 100% free for clients, no commission.",
+      "A direct directory of VTC chauffeurs. Send your request in one click and settle the ride directly with the chauffeur — 100% free for clients, no commission.",
     freeAccess: "Browse the directory freely. Direct, transparent introductions.",
     statVerified: "Verified chauffeurs",
     statRating: "Average rating",

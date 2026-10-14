@@ -41,6 +41,8 @@ describe("promesses de la page d'accueil", () => {
     expect(dictionaries.fr.hero.pitch).toMatch(/Annuaire/);
     expect(dictionaries.fr.hero.pitch).toMatch(/sans commission/);
     expect(dictionaries.en.hero.pitch).toMatch(/no commission/);
+    // Le contact passe par Nova : seul le règlement est direct.
+    expect(dictionaries.fr.hero.pitch).not.toMatch(/contactez[^.]*en direct/i);
   });
 });
 
