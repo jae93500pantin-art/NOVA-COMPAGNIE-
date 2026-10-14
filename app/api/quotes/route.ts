@@ -9,6 +9,7 @@ import {
   QUOTE_LIMITS,
   isHoneypotFilled,
   normalizeQuote,
+  quoteDetailsForStorage,
   quoteError,
 } from "@/lib/quoteRequest";
 import { quoteRequestEmail, sendEmail } from "@/lib/email";
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
     email: sanitizeText(body.email, QUOTE_LIMITS.email),
     phone: sanitizeText(body.phone, QUOTE_LIMITS.phone),
     trip: sanitizeText(body.trip, QUOTE_LIMITS.trip),
+    when: sanitizeText(body.when, QUOTE_LIMITS.when),
     details: sanitizeText(body.details, QUOTE_LIMITS.details),
   });
 
@@ -136,7 +138,7 @@ export async function POST(req: NextRequest) {
       email: draft.email,
       phone: draft.phone,
       trip: draft.trip,
-      details: draft.details || null,
+      details: quoteDetailsForStorage(draft),
     })
     .select("id")
     .maybeSingle();
@@ -170,6 +172,7 @@ export async function POST(req: NextRequest) {
       email: draft.email,
       phone: draft.phone,
       trip: draft.trip,
+      when: draft.when,
       details: draft.details,
     }),
   });

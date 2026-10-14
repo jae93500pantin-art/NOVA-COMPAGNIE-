@@ -104,29 +104,35 @@ export function DriverCard({ driver, index = 0 }: { driver: Driver; index?: numb
                   {driver.car.make} {driver.car.model}
                 </span>
               </p>
-              <p className="mt-1 flex items-center gap-1 text-xs text-white/50">
-                <Languages className="h-3 w-3 shrink-0" />
-                <span className="truncate">{driver.languages.join(", ")}</span>
-              </p>
+              {driver.languages.length > 0 && (
+                <p className="mt-1 flex items-center gap-1 text-xs text-white/50">
+                  <Languages className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{driver.languages.join(", ")}</span>
+                </p>
+              )}
               {/* ⚠️ Plus de note ni d'étoiles. Un avis ne pouvait être certifié
                   que par la course qui l'a produite ; sans réservation, il n'y
                   a plus rien à certifier. `drivers.rating` vaut 5.0 par défaut
                   en base : l'afficher publierait « 5,0 ★ · 0 avis » sur chaque
                   fiche neuve, c'est-à-dire une note inventée. */}
-              <p className="mt-2 flex items-center gap-1 text-[11px] text-white/40">
-                <Clock className="h-3 w-3 shrink-0" />
-                {driver.experienceYears} {t("drivers.yearsExp")}
-              </p>
+              {driver.experienceYears > 0 && (
+                <p className="mt-2 flex items-center gap-1 text-[11px] text-white/40">
+                  <Clock className="h-3 w-3 shrink-0" />
+                  {driver.experienceYears} {t("drivers.yearsExp")}
+                </p>
+              )}
             </div>
           </div>
         </div>
 
         <div className="px-5 pb-5">
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/50">
-            <span className="inline-flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {driver.responseTime}
-            </span>
+            {driver.responseTime && (
+              <span className="inline-flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {driver.responseTime}
+              </span>
+            )}
           </div>
 
           <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-4">

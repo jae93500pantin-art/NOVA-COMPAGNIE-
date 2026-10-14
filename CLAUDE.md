@@ -141,7 +141,7 @@ components/                   All client components unless noted
   CitySwitcher                City dropdown (front bar, next to LanguageSwitcher) — cities from lib/cities.ts (Paris only for now); selecting routes to /drivers?city=<id>, persisted in localStorage `nova_city`.
   LanguageSwitcher            FR/EN dropdown (globe icon). Persists choice; default = browser language.
   Footer, SectionHeader, Reveal (anim wrapper)
-  Hero                        Uber-inspired homepage hero: tagline ("Trouvez votre chauffeur" / "Find your driver") + Uber-style booking card on the left, Globe focal point on the right. Left scrim keeps text legible. Below: 3 FICTIONAL client testimonials (about the SITE/reliability, not drivers). No big title/subtitle, no stats row.
+  Hero                        Uber-inspired homepage hero: tagline ("Trouvez votre chauffeur" / "Find your driver") + Uber-style booking card on the left, Globe focal point on the right. Left scrim keeps text legible. Sous le titre, `hero.pitch` dit ce qu'est Nova (« Annuaire direct… 100 % gratuit pour le client, sans commission ») ; sous la carte, `hero.freeAccess`. ⚠️ Plus de « Connectez-vous pour retrouver vos trajets » (aucun trajet n'est gardé) ni de témoignages. `tests/clientPromises.test.ts` interdit le retour des promesses retirées le 2026-10-14 : NDA, « pour accéder à l'annuaire », « avant toute mise en relation », « 5 minutes ». No stats row.
   SearchBar                   Carte de recherche de l'accueil : Ville + Date et heure, sur un jour ou **plusieurs** (`DatePicker` en `mode="range"`) + CTA → /drivers?city=&date=&dateEnd=&time=. ⚠️ Le créneau est un CRITÈRE DE RECHERCHE, pas une réservation : il filtre sur le planning déclaré, il ne bloque rien. Il voyage par l'URL (filtre partageable), plus par `sessionStorage`. Le bouton reste « Voir les chauffeurs » — ne pas le retitrer « Réserver ».
   DatePicker                  Sélecteur date + heure premium (popover glass par portail) : chips rapides (aujourd'hui / demain / ce week-end), calendrier lundi-first, chips d'heures, navigation clavier, bascule vers le haut quand l'écran manque, `prefers-reduced-motion`, i18n. Logique pure dans lib/calendar.ts. ⚠️ Ne rend jamais un créneau passé (`rollPastTimeToNextDay` reporte au lendemain, une heure passée sur une autre date est effacée) — les deux cas sont expliqués par une note. ⚠️ Le `mode="range"` est celui utilisé par `SearchBar` : un clic ouvre la plage, le second la ferme, un troisième repart — un seul clic suffit donc toujours pour un jour unique. Sur une plage, l'heure s'affiche à la FIN et une seule fois (elle vaut pour chaque jour, pas comme un départ suivi d'un retour).
   Globe                       Animated WebGL globe (cobe) — Google-Earth "blue marble" hero backdrop, slow auto-rotation. NOTE: pin cobe to 0.6.3; v2 has a WebGL regression that renders only markers (no sphere).
@@ -590,7 +590,12 @@ précisions. Règles pures dans `lib/quoteRequest.ts` (testé, 14).
 
 - ⚠️ **Ce n'est pas une réservation, et le vocabulaire en dépend** :
   « Demander un devis » jamais « Réserver » ; **aucun créneau** à choisir (une
-  date imposée ici se lirait comme un créneau retenu) ; **aucun montant** ni
+  date imposée ici se lirait comme un créneau retenu). ⚠️ Depuis le 2026-10-14,
+  à la demande du propriétaire, un champ **« Date et heure souhaitées »** existe :
+  **texte libre, facultatif**, jamais parsé ni proposé par un calendrier, écrit
+  en tête de `details` (`quoteDetailsForStorage`, pas de colonne dédiée). Ne
+  pas le transformer en sélecteur de date ni le rendre obligatoire — un test
+  le vérifie ; **aucun montant** ni
   avant ni après l'envoi ; la confirmation annonce une *mise en relation*, pas
   une course confirmée.
 - ⚠️ **Aucune colonne de prix dans `quote_requests`**, et il ne faut pas en
@@ -772,6 +777,19 @@ publique — la table porte nom, e-mail et téléphone de particuliers.
   dans `.env.local` et exige un domaine vérifié chez Resend. Il a été aligné
   sur la même adresse (il portait `reservations@`, qui ne veut plus rien dire
   depuis le statut d'annuaire), mais le changer n'a aucun effet sur les pages.
+
+## Fiche chauffeur : rien d'affiché qui n'ait été déclaré (2026-10-14)
+
+- `age`, `experienceYears`, `responseTime` et `languages` vides ⇒ **rien ne
+  s'affiche** (plus de « · 0 ans », de « 0 ans d'expérience » ni de « Langues
+  parlées » vide).
+- ⚠️ `drivers.response_time` valait **« ≈ 5 min » par défaut en base** et
+  aucun écran ne la fait remplir : `declaredResponseTime` écarte cette valeur,
+  et `2026-10-14-response-time-sans-defaut.sql` retire le défaut (non appliquée).
+- Prix à la française : `formatPrice` rend « 65 € » (espace insécable).
+- Mobile : barre fixe « Demander un devis » (`lg:hidden`, ancre `#devis`).
+- Pied de page : plus d'icônes Instagram / YouTube / TikTok (liens génériques,
+  aucun compte Nova) ni de lien « Tarifs ».
 
 ## Disponibilité d'un chauffeur : planning + interrupteur
 

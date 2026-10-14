@@ -9,6 +9,7 @@ import {
   isQuoteExpired,
   quoteRetentionCutoff,
   normalizeQuote,
+  quoteDetailsForStorage,
   quoteError,
   type QuoteDraft,
 } from "@/lib/quoteRequest";
@@ -74,12 +75,22 @@ describe("quoteError", () => {
     );
   });
 
-  it("n'exige PAS de compte ni de date", () => {
-    // Le brouillon ne porte ni identifiant de session ni créneau : exiger un
-    // compte écarterait les visiteurs, et un créneau se lirait comme une
-    // réservation.
+  it("n'exige PAS de compte, et la date reste un texte libre facultatif", () => {
+    // Pas d'identifiant de session : exiger un compte écarterait les
+    // visiteurs. La date souhaitée (2026-10-14) est du TEXTE, jamais exigée :
+    // un créneau obligatoire ou parsé se lirait comme une réservation.
     const keys = Object.keys(draft({ details: "" })).sort();
     expect(keys).toEqual(["details", "email", "name", "phone", "trip"]);
+    expect(quoteError(draft({ when: "" }))).toBeNull();
+    expect(normalizeQuote(draft({ when: "  vendredi vers 7 h " })).when).toBe("vendredi vers 7 h");
+  });
+
+  it("écrit la date souhaitée en tête des précisions enregistrées", () => {
+    expect(quoteDetailsForStorage({ when: "vendredi 7 h", details: "2 valises" })).toBe(
+      "Date et heure souhaitées : vendredi 7 h\n\n2 valises"
+    );
+    expect(quoteDetailsForStorage({ when: "", details: "2 valises" })).toBe("2 valises");
+    expect(quoteDetailsForStorage({})).toBeNull();
   });
 });
 

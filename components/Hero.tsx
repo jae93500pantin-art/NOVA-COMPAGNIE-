@@ -31,9 +31,16 @@ export function Hero() {
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
           className="max-w-xl"
         >
-          <h1 className="mb-8 text-balance text-3xl font-semibold leading-[1.1] tracking-tight text-white sm:text-4xl lg:text-5xl">
+          <h1 className="text-balance text-3xl font-semibold leading-[1.1] tracking-tight text-white sm:text-4xl lg:text-5xl">
             {t("hero.tagline")}
           </h1>
+          {/* Ce qu'est Nova, dit dès le premier écran : un annuaire, gratuit
+              pour le client, sans commission. Sans cette ligne, le visiteur
+              croit arriver sur une application de VTC qui lui attribue une
+              voiture. */}
+          <p className="mb-8 mt-4 max-w-lg text-pretty text-sm leading-relaxed text-white/65 sm:text-base">
+            {t("hero.pitch")}
+          </p>
 
           {/* Booking card */}
           <div>
@@ -48,13 +55,7 @@ export function Hero() {
             {t("transfer.bookCta")}
           </Link>
 
-          <p className="mt-4 text-xs text-white/40">
-            {t("hero.memberPrompt")}{" "}
-            <Link href="/auth/login" className="text-white/70 underline-offset-4 hover:underline">
-              {t("hero.memberLogin")}
-            </Link>{" "}
-            {t("hero.memberSuffix")}
-          </p>
+          <p className="mt-4 text-xs text-white/45">{t("hero.freeAccess")}</p>
         </motion.div>
 
         {/* Right — globe focal point (spacer on large screens; globe sits behind) */}

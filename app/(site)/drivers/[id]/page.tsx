@@ -10,6 +10,7 @@ import {
   Clock,
   ShieldCheck,
   Sparkles,
+  Send,
 } from "lucide-react";
 import { getDirectoryDriver } from "@/lib/driverDirectory";
 import { hasVerifiedCnapsCard } from "@/lib/cnaps";
@@ -53,14 +54,22 @@ export default async function DriverProfile({ params }: { params: { id: string }
   if (!driver) notFound();
   const city = getCity(driver.cityId);
 
+  // ⚠️ Un fait non renseigné ne s'affiche pas : « 0 ans d'expérience » ou un
+  // délai de réponse par défaut seraient des informations inventées.
   const facts = [
-    { icon: CalendarClock, label: "Expérience", value: `${driver.experienceYears} ans` },
-    { icon: Clock, label: "Réponse", value: driver.responseTime },
-    { icon: MapPin, label: "Ville", value: city?.name ?? "" },
-  ];
+    driver.experienceYears > 0 && {
+      icon: CalendarClock,
+      label: "Expérience",
+      value: `${driver.experienceYears} ans`,
+    },
+    driver.responseTime && { icon: Clock, label: "Réponse", value: driver.responseTime },
+    city && { icon: MapPin, label: "Ville", value: city.name },
+  ].filter((f): f is { icon: typeof Clock; label: string; value: string } => Boolean(f));
 
   return (
-    <div className="mx-auto max-w-7xl px-5 pb-16 pt-28 lg:px-8 lg:pt-32">
+    // `pb-32` sur mobile : la barre fixe du bas ne doit masquer ni le
+    // formulaire ni le pied de page.
+    <div className="mx-auto max-w-7xl px-5 pb-32 pt-28 lg:px-8 lg:pb-16 lg:pt-32">
       <Link
         href="/drivers"
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-white/50 transition hover:text-white"
@@ -87,9 +96,11 @@ export default async function DriverProfile({ params }: { params: { id: string }
                 {driver.badges.includes("Top Pro") && (
                   <BadgeCheck className="h-6 w-6 text-royal-400" />
                 )}
-                <span className="text-lg font-normal text-white/40">
-                  · {driver.age} ans
-                </span>
+                {driver.age && (
+                  <span className="text-lg font-normal text-white/40">
+                    · {driver.age} ans
+                  </span>
+                )}
               </h1>
               {/* ⚠️ Ni note ni compteur d'avis : un avis n'etait certifie que
                   par la course qui l'avait produite. Sans reservation, il n'y a
@@ -193,17 +204,19 @@ export default async function DriverProfile({ params }: { params: { id: string }
             </div>
           </section>
 
-          {/* Languages */}
-          <section className="mt-8">
-            <h2 className="text-lg font-semibold text-white">Langues parlées</h2>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {driver.languages.map((l) => (
-                <span key={l} className="chip">
-                  <Languages className="h-3 w-3" /> {l}
-                </span>
-              ))}
-            </div>
-          </section>
+          {/* Languages — masqué quand le chauffeur n'en a déclaré aucune. */}
+          {driver.languages.length > 0 && (
+            <section className="mt-8">
+              <h2 className="text-lg font-semibold text-white">Langues parlées</h2>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {driver.languages.map((l) => (
+                  <span key={l} className="chip">
+                    <Languages className="h-3 w-3" /> {l}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Bio */}
           <section className="mt-8">
@@ -225,11 +238,25 @@ export default async function DriverProfile({ params }: { params: { id: string }
         {/* Colonne de droite — contact et demande de devis, pas reservation */}
         <div className="space-y-4">
           <DriverContactCard driver={driver} />
-          <QuoteRequestForm
-            driverSlug={driver.id}
-            driverName={driver.firstName}
-          />
+          {/* Ancre de la barre mobile ; `scroll-mt` laisse la place de la navbar. */}
+          <div id="devis" className="scroll-mt-28">
+            <QuoteRequestForm
+              driverSlug={driver.id}
+              driverName={driver.firstName}
+            />
+          </div>
         </div>
+      </div>
+
+      {/* Barre d'action fixe, mobile seulement. Sur téléphone, la colonne de
+          contact tombe sous la galerie, le véhicule et les avis : sans elle,
+          beaucoup de visiteurs ne trouvaient pas le formulaire. Un simple
+          lien d'ancre — ni JavaScript, ni réservation. */}
+      <div className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-ink-950/90 px-4 pt-3 backdrop-blur-xl lg:hidden">
+        <a href="#devis" className="btn-primary mb-3 w-full">
+          <Send className="h-4 w-4" />
+          Demander un devis
+        </a>
       </div>
     </div>
   );

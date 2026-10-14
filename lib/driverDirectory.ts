@@ -103,6 +103,14 @@ function db() {
 }
 
 /** Tous les chauffeurs validés, ou une liste vide si la base est absente. */
+/** L'ancienne valeur par défaut de `drivers.response_time`, jamais déclarée. */
+const RESPONSE_TIME_DB_DEFAULT = "≈ 5 min";
+
+function declaredResponseTime(raw: string | null | undefined): string | null {
+  const v = raw?.trim();
+  return v && v !== RESPONSE_TIME_DB_DEFAULT ? v : null;
+}
+
 export async function listDirectory(): Promise<Driver[]> {
   const client = db();
   if (!client) return [];
@@ -356,7 +364,7 @@ function toDriver(
     id: row.slug as string,
     firstName: profile.first_name ?? "",
     lastName: profile.last_name ?? "",
-    age: row.age ?? 0,
+    age: row.age && row.age > 0 ? row.age : null,
     avatar: profile.avatar_url ?? "",
     cityId: row.city_id,
     languages: row.languages ?? [],
@@ -377,7 +385,11 @@ function toDriver(
     cnapsVerified: row.cnaps_verified ?? false,
     available: row.available ?? false,
     schedule: readSchedule(row.schedule),
-    responseTime: row.response_time ?? "≈ 5 min",
+    // ⚠️ Aucune valeur par défaut : voir `Driver.responseTime`. Et la
+    // colonne vaut « ≈ 5 min » PAR DÉFAUT en base, alors qu'aucun écran ne la
+    // fait remplir au chauffeur : cette valeur-là n'a été déclarée par
+    // personne, elle est écartée (même piège que `drivers.rating` à 5.0).
+    responseTime: declaredResponseTime(row.response_time),
     pricePerHour: clampRate("hour", num(row.price_per_hour, 0)),
     pricePerDay: clampRate("day", num(row.price_per_day, 0)),
     pricePerKm: num(row.price_per_km, 0),

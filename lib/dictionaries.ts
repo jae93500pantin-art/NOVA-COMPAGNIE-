@@ -43,9 +43,11 @@ const fr = {
     title2: "en première classe.",
     subtitle:
       "Réservez un chauffeur privé vérifié en quelques secondes à Paris — l'excellence à portée de main.",
-    memberPrompt: "Déjà membre ?",
-    memberLogin: "Connectez-vous",
-    memberSuffix: "pour retrouver vos trajets.",
+    // ⚠️ Plus de « Connectez-vous pour retrouver vos trajets » : le compte ne
+    // garde aucun trajet, et l'annuaire se consulte sans compte.
+    pitch:
+      "Annuaire direct des chauffeurs VTC. Contactez et payez le chauffeur en direct — 100 % gratuit pour le client, sans commission.",
+    freeAccess: "Consultez l'annuaire librement. Mises en relation directes et transparentes.",
     statVerified: "Chauffeurs vérifiés",
     statRating: "Note moyenne",
     statTrips: "Trajets premium",
@@ -111,22 +113,22 @@ const fr = {
     whyTitle: "Une exigence de vérification, pas une place de marché",
     feat1Title: "Habilitations vérifiées",
     feat1Text:
-      "Permis, carte professionnelle VTC, attestation d'assurance et carte grise contrôlés sur pièces avant toute mise en relation.",
+      "Permis, carte VTC, assurance et carte grise examinés sur pièces. La mention « Habilitations vérifiées » figure sur chaque fiche dont toutes les pièces ont été contrôlées.",
     feat2Title: "Professionnels indépendants",
     feat2Text:
       "Chaque chauffeur exerce pour son compte, sous son SIREN, et facture son client.",
-    feat3Title: "Flotte premium",
-    feat3Text: "Mercedes Classe S, Range Rover, Tesla, vans 7 places et plus.",
-    feat4Title: "Réponse éclair",
-    feat4Text: "Temps de réponse moyen inférieur à 5 minutes.",
+    // ⚠️ Retirés : « Flotte premium » (une flotte que Nova ne possède pas),
+    // « Réponse éclair < 5 min » (une statistique inventée) et « NDA disponible
+    // sur demande » (un engagement que personne ne signe).
     feat5Title: "Discrétion",
-    feat5Text: "Confidentialité garantie, NDA disponible sur demande.",
+    feat5Text:
+      "Vos coordonnées servent uniquement à vous mettre en relation avec le chauffeur que vous choisissez.",
     feat6Title: "Service client dédié",
     feat6Text: "Échangez en privé avec notre service client par WhatsApp et e-mail pour préciser vos besoins.",
     ctaTitle: "Prêt à voyager autrement ?",
     ctaSubtitle:
-      "Créez votre compte pour accéder à l'annuaire, ou faites-y référencer votre activité de chauffeur.",
-    ctaClient: "Créer un compte client",
+      "Consultez l'annuaire librement. Mises en relation directes et transparentes.",
+    ctaClient: "Voir l'annuaire",
     ctaDriver: "Proposer mes services",
   },
   footer: {
@@ -504,9 +506,9 @@ const en: Dict = {
     title2: "in first class.",
     subtitle:
       "Book a verified private chauffeur in seconds in Paris — excellence at your fingertips.",
-    memberPrompt: "Already a member?",
-    memberLogin: "Log in",
-    memberSuffix: "to find your trips.",
+    pitch:
+      "A direct directory of VTC chauffeurs. Contact and pay the chauffeur directly — 100% free for clients, no commission.",
+    freeAccess: "Browse the directory freely. Direct, transparent introductions.",
     statVerified: "Verified chauffeurs",
     statRating: "Average rating",
     statTrips: "Premium trips",
@@ -566,22 +568,19 @@ const en: Dict = {
     whyTitle: "A verification standard, not a marketplace",
     feat1Title: "Credentials verified",
     feat1Text:
-      "Driving licence, professional VTC card, insurance certificate and registration document checked on file before any introduction.",
+      "Driving licence, VTC card, insurance and registration document reviewed on file. The “Credentials verified” mark appears on every profile whose documents have all been checked.",
     feat2Title: "Independent professionals",
     feat2Text:
       "Every chauffeur works for themselves, under their own company number, and invoices their own client.",
-    feat3Title: "Premium fleet",
-    feat3Text: "Mercedes S-Class, Range Rover, Tesla, 7-seat vans and more.",
-    feat4Title: "Lightning response",
-    feat4Text: "Average response time under 5 minutes.",
     feat5Title: "Discretion",
-    feat5Text: "Guaranteed confidentiality, NDA available on request.",
+    feat5Text:
+      "Your details are used only to put you in touch with the chauffeur you choose.",
     feat6Title: "Dedicated support",
     feat6Text: "Chat privately with our customer service on WhatsApp and email to specify your needs.",
     ctaTitle: "Ready to travel differently?",
     ctaSubtitle:
-      "Create your account to browse the directory, or have your chauffeur business listed in it.",
-    ctaClient: "Create a client account",
+      "Browse the directory freely. Direct, transparent introductions.",
+    ctaClient: "Browse the directory",
     ctaDriver: "Offer my services",
   },
   footer: {

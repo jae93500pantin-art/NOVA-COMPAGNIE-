@@ -2,8 +2,13 @@ export function cn(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(" ");
 }
 
+/**
+ * Un prix à la française : « 65 € », le symbole APRÈS le montant, séparé par
+ * une espace insécable (le « € » ne part jamais seul à la ligne). L'ancien
+ * « €65 » était la notation anglaise.
+ */
 export function formatPrice(value: number, currency = "€") {
-  return `${currency}${formatAmount(value)}`;
+  return `${formatAmount(value)} ${currency}`;
 }
 
 /**

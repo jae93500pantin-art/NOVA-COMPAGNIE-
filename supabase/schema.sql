@@ -120,7 +120,7 @@ create table if not exists public.drivers (
   price_per_day    numeric(10,2) default 0 check (price_per_day  >= 0 and price_per_day  <= 10000),
   price_per_km     numeric(10,2) default 0,
   available        boolean     default true,
-  response_time    text        default '≈ 5 min',
+  response_time    text,  -- ⚠️ plus de défaut « ≈ 5 min » : une promesse inventée (migration 2026-10-14)
   rating           numeric(3,2) default 5.0,
   reviews_count    int         default 0,
   trips            int         default 0,

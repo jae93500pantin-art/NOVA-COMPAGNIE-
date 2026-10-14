@@ -331,6 +331,7 @@ export function quoteRequestEmail(d: {
   email: string;
   phone: string;
   trip: string;
+  when?: string;
   details?: string;
 }): RenderedEmail {
   const rows: EmailRow[] = [
@@ -340,6 +341,8 @@ export function quoteRequestEmail(d: {
     { label: "Téléphone", value: d.phone },
     { label: "Trajet", value: d.trip, stacked: true },
   ];
+  // Texte libre du client, pas un créneau retenu (voir `QuoteDraft.when`).
+  if (d.when) rows.push({ label: "Date et heure souhaitées", value: d.when });
   if (d.details) rows.push({ label: "Précisions", value: d.details, stacked: true });
 
   return build(

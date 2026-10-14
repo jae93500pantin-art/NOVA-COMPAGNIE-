@@ -28,7 +28,8 @@ export interface Driver {
   id: string;
   firstName: string;
   lastName: string;
-  age: number;
+  /** `null` = non renseigné : rien ne s'affiche (jamais « 0 ans »). */
+  age: number | null;
   avatar: string;
   cityId: string;
   /**
@@ -77,7 +78,12 @@ export interface Driver {
    * Absent = no constraint; see `scheduleOf()`.
    */
   schedule?: WeeklySchedule;
-  responseTime: string;
+  /**
+   * Délai de réponse DÉCLARÉ par le chauffeur, `null` s'il n'a rien dit.
+   * ⚠️ Plus de « ≈ 5 min » par défaut : c'était une promesse inventée, publiée
+   * sur chaque fiche au nom d'un professionnel qui ne l'avait jamais faite.
+   */
+  responseTime: string | null;
   pricePerHour: number;
   /** Fixed daily rate (euros) based on the vehicle model/category. */
   pricePerDay: number;

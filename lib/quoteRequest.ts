@@ -31,6 +31,17 @@ export interface QuoteDraft {
   email: string;
   phone: string;
   trip: string;
+  /**
+   * Date et heure souhaitées — **texte libre, facultatif** (2026-10-14, à la
+   * demande du propriétaire : sans elle, chaque demande appelait un aller-retour).
+   *
+   * ⚠️ Ce n'est PAS un créneau : pas de calendrier, pas de date parsée, rien
+   * de bloqué. « Vendredi matin, vol à 9 h » dit ce que le client souhaite ;
+   * le chauffeur dit s'il est libre. Un sélecteur de date ici se lirait comme
+   * une réservation (règle 1 du statut d'annuaire). Pas de colonne dédiée :
+   * la route l'écrit en tête de `details`.
+   */
+  when?: string;
   /** Facultatif : le visiteur décrit ce qu'il veut, il n'est pas interrogé. */
   details?: string;
 }
@@ -42,6 +53,7 @@ export const QUOTE_LIMITS = {
   email: 254,
   phone: 30,
   trip: 200,
+  when: 120,
   details: 1000,
 } as const;
 
@@ -94,6 +106,7 @@ export function normalizeQuote(draft: QuoteDraft): Required<QuoteDraft> {
     email: draft.email.trim().toLowerCase().slice(0, QUOTE_LIMITS.email),
     phone: draft.phone.trim().slice(0, QUOTE_LIMITS.phone),
     trip: draft.trip.trim().slice(0, QUOTE_LIMITS.trip),
+    when: (draft.when ?? "").trim().slice(0, QUOTE_LIMITS.when),
     details: (draft.details ?? "").trim().slice(0, QUOTE_LIMITS.details),
   };
 }
@@ -139,4 +152,20 @@ export const QUOTE_HONEYPOT_FIELD = "nova_hp_check";
 /** Le champ piège a-t-il été rempli ? */
 export function isHoneypotFilled(value: unknown): boolean {
   return typeof value === "string" && value.trim() !== "";
+}
+
+/** Libellé de la date souhaitée, partout où elle est relue (base, e-mail). */
+export const QUOTE_WHEN_LABEL = "Date et heure souhaitées";
+
+/**
+ * Le texte enregistré dans `quote_requests.details` : la date souhaitée en
+ * tête, puis les précisions. Pas de colonne dédiée — en ajouter une demandait
+ * une migration, et la console affiche déjà `details` tel quel. `null` quand
+ * il n'y a ni l'une ni les autres (la colonne est nullable).
+ */
+export function quoteDetailsForStorage(q: { when?: string; details?: string }): string | null {
+  const when = (q.when ?? "").trim();
+  const details = (q.details ?? "").trim();
+  const parts = [when ? `${QUOTE_WHEN_LABEL} : ${when}` : "", details].filter(Boolean);
+  return parts.length ? parts.join("\n\n").slice(0, QUOTE_LIMITS.details + QUOTE_LIMITS.when + 40) : null;
 }

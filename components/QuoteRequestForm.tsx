@@ -7,6 +7,7 @@ import {
   Mail,
   Phone,
   Route,
+  CalendarClock,
   MessageSquare,
   Send,
   Loader2,
@@ -57,6 +58,7 @@ export function QuoteRequestForm({
     email: "",
     phone: "",
     trip: "",
+    when: "",
     details: "",
   });
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +128,7 @@ export function QuoteRequestForm({
         </p>
         <button
           onClick={() => {
-            setForm({ name: "", email: "", phone: "", trip: "", details: "" });
+            setForm({ name: "", email: "", phone: "", trip: "", when: "", details: "" });
             setTrap("");
             setStatus("idle");
           }}
@@ -159,6 +161,9 @@ export function QuoteRequestForm({
         <Field label="Votre e-mail" icon={Mail} type="email" placeholder="Ex. claire@exemple.fr" value={form.email} onChange={set("email")} max={QUOTE_LIMITS.email} autoComplete="email" />
         <Field label="Votre téléphone" icon={Phone} type="tel" placeholder="Ex. 06 12 34 56 78" value={form.phone} onChange={set("phone")} max={QUOTE_LIMITS.phone} autoComplete="tel" />
         <Field label="Trajet souhaité" icon={Route} placeholder="Ex. Orly → Paris 8e" value={form.trip} onChange={set("trip")} max={QUOTE_LIMITS.trip} autoComplete="off" />
+        {/* ⚠️ Texte libre, facultatif — PAS un sélecteur de date : rien n'est
+            réservé, le chauffeur dit s'il est disponible (`QuoteDraft.when`). */}
+        <Field label="Date et heure souhaitées" optional icon={CalendarClock} placeholder="Ex. vendredi 17 octobre vers 7 h" value={form.when ?? ""} onChange={set("when")} max={QUOTE_LIMITS.when} autoComplete="off" />
         <div>
           <label htmlFor={detailsId} className="mb-1.5 block text-xs font-medium text-white/60">
             Précisions <span className="font-normal text-white/35">(facultatif)</span>
@@ -171,7 +176,7 @@ export function QuoteRequestForm({
               onChange={set("details")}
               maxLength={QUOTE_LIMITS.details}
               rows={3}
-              placeholder="Date approximative, nombre de passagers, bagages…"
+              placeholder="Nombre de passagers, bagages, numéro de vol…"
               className="input resize-none pl-10"
             />
           </div>
@@ -268,8 +273,10 @@ function Field({
   type = "text",
   max,
   autoComplete,
+  optional = false,
 }: {
   label: string;
+  optional?: boolean;
   icon: typeof User;
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -283,6 +290,7 @@ function Field({
     <div>
       <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-white/60">
         {label}
+        {optional && <span className="font-normal text-white/35"> (facultatif)</span>}
       </label>
       <div className="relative">
         <Icon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />

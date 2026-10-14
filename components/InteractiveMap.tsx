@@ -128,9 +128,11 @@ export function InteractiveMap({ drivers }: { drivers: Driver[] }) {
                     {active.car.make} {active.car.model}
                   </p>
                   {/* Plus d'étoiles : il n'y a plus d'avis à certifier. */}
-                  <p className="mt-1 text-[11px] text-white/40">
-                    {active.responseTime}
-                  </p>
+                  {active.responseTime && (
+                    <p className="mt-1 text-[11px] text-white/40">
+                      {active.responseTime}
+                    </p>
+                  )}
                 </div>
               </Link>
             </motion.div>

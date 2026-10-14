@@ -153,7 +153,7 @@ export default function Home() {
                 {t("home.ctaSubtitle")}
               </p>
               <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <Link href="/auth/register" className="btn-white">
+                <Link href="/drivers" className="btn-white">
                   {t("home.ctaClient")}
                 </Link>
                 <Link
