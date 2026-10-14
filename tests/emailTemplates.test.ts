@@ -141,7 +141,7 @@ describe("formulaire de contact", () => {
   it("ne promet aucune disponibilité continue, et affiche l'adresse légale", () => {
     for (const lang of ["fr", "en"] as const) {
       const c = dictionaries[lang].contact;
-      expect(JSON.stringify(c)).not.toMatch(/24\s?h?\s?\/\s?24|24\/7|7j\/7|Champs/);
+      expect(JSON.stringify(c)).not.toMatch(/24\s?h?\s?\/\s?24|24\/7|7j\/7|24 heures|24 hours|Champs/);
       expect(c.infoAddress).toBe(ADDRESS);
       for (const t of CONTACT_TYPES) expect(c[t]).toBeTruthy();
     }

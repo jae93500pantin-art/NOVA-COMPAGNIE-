@@ -4,8 +4,25 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, RotateCcw, Trash2, Loader2, AlertTriangle } from "lucide-react";
 
+/** Libellés et route selon ce qu'on traite : demande de devis ou message de contact. */
+const KINDS = {
+  quote: {
+    endpoint: "/api/admin/quotes",
+    the: "la demande",
+    this: "cette demande",
+    done: "Traitée",
+  },
+  contact: {
+    endpoint: "/api/admin/contact-messages",
+    the: "le message",
+    this: "ce message",
+    done: "Traité",
+  },
+} as const;
+
 /**
- * Actions sur une demande de devis : marquer traitée / rouvrir, supprimer.
+ * Actions sur une demande de devis ou un message de contact : marquer traité /
+ * rouvrir, supprimer.
  *
  * ⚠️ La suppression demande deux clics et nomme le client : c'est une donnée
  * qu'on ne retrouvera pas.
@@ -14,11 +31,14 @@ export function QuoteActions({
   quoteId,
   handled,
   client,
+  kind = "quote",
 }: {
   quoteId: string;
   handled: boolean;
   client: string;
+  kind?: keyof typeof KINDS;
 }) {
+  const k = KINDS[kind];
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -28,7 +48,7 @@ export function QuoteActions({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/quotes/${quoteId}`, {
+      const res = await fetch(`${k.endpoint}/${quoteId}`, {
         ...init,
         headers: { "Content-Type": "application/json" },
       });
@@ -52,7 +72,7 @@ export function QuoteActions({
         <p className="flex items-start gap-1.5 text-xs leading-relaxed text-red-100">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            Supprimer la demande de <strong className="text-white">{client}</strong> ?
+            Supprimer {k.the} de <strong className="text-white">{client}</strong> ?
             Irréversible.
           </span>
         </p>
@@ -96,13 +116,13 @@ export function QuoteActions({
           ) : (
             <Check className="h-3.5 w-3.5" />
           )}
-          {handled ? "Rouvrir" : "Traitée"}
+          {handled ? "Rouvrir" : k.done}
         </button>
         <button
           onClick={() => setAsking(true)}
           disabled={busy}
-          title="Supprimer cette demande"
-          aria-label={`Supprimer la demande de ${client}`}
+          title={`Supprimer ${k.this}`}
+          aria-label={`Supprimer ${k.the} de ${client}`}
           className="rounded-xl border border-white/10 p-2 text-white/40 transition hover:border-red-400/40 hover:bg-red-400/10 hover:text-red-300"
         >
           <Trash2 className="h-4 w-4" />

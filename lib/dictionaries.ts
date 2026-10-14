@@ -307,7 +307,7 @@ const fr = {
     eyebrow: "Contact",
     title: "Parlons de votre prochain trajet",
     subtitle:
-      "Une question, une demande sur-mesure ou un projet d'entreprise ? Notre équipe vous répond sous 24 heures.",
+      "Une question, un partenariat ? Écrivez-nous, nous vous répondrons dans les meilleurs délais.",
     infoTitle: "Nous contacter",
     infoEmailLabel: "E-mail",
     infoPhoneLabel: "Téléphone",
@@ -339,8 +339,9 @@ const fr = {
     submit: "Envoyer ma demande",
     sending: "Envoi…",
     successTitle: "Message bien reçu !",
+    // Le titre « Message bien reçu ! » est juste au-dessus : il n'est pas répété.
     successText:
-      "Merci pour votre message. Notre équipe vous recontacte sous 24 heures.",
+      "Nous avons bien pris en compte votre demande et vous recontacterons dans les meilleurs délais.",
     successAgain: "Envoyer un autre message",
     errorRequired: "Merci de remplir tous les champs obligatoires.",
     errorEmail: "Adresse e-mail invalide.",
@@ -753,7 +754,7 @@ const en: Dict = {
     eyebrow: "Contact",
     title: "Let's talk about your next ride",
     subtitle:
-      "A question, a bespoke request or a corporate project? Our team replies within 24 hours.",
+      "A question, a partnership? Write to us and we will get back to you as soon as possible.",
     infoTitle: "Get in touch",
     infoEmailLabel: "Email",
     infoPhoneLabel: "Phone",
@@ -781,7 +782,7 @@ const en: Dict = {
     sending: "Sending…",
     successTitle: "Message received!",
     successText:
-      "Thank you for your message. Our team will get back to you within 24 hours.",
+      "We have received your request and will get back to you as soon as possible.",
     successAgain: "Send another message",
     errorRequired: "Please fill in all required fields.",
     errorEmail: "Invalid email address.",

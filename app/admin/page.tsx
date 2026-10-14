@@ -8,11 +8,13 @@ import {
   ExternalLink,
   Star,
   Inbox,
+  Mail,
 } from "lucide-react";
 import { DeleteDriverButton } from "@/components/admin/DeleteDriverButton";
 import { DeleteReviewButton } from "@/components/admin/DeleteReviewButton";
 import { QuoteActions, PurgeQuotesButton } from "@/components/admin/QuoteActions";
 import { QUOTE_RETENTION_MONTHS, quoteRetentionCutoff } from "@/lib/quoteRequest";
+import { CONTACT_RETENTION_MONTHS } from "@/lib/contactMessage";
 // ⚠️ `ApproveDriverButton` n'est plus utilisé ici : la validation exige
 // désormais d'avoir ouvert les pièces (voir /admin/chauffeurs/[id]).
 import { requireAdmin, adminDb } from "@/lib/admin";
@@ -75,6 +77,24 @@ const REVIEWS_SHOWN = 100;
 
 /** Demandes déjà traitées gardées sous les yeux (les non traitées sont toutes listées). */
 const HANDLED_QUOTES_SHOWN = 30;
+
+/** Messages de contact déjà traités gardés sous les yeux. */
+const HANDLED_CONTACTS_SHOWN = 30;
+
+/**
+ * ⚠️ Colonnes de la table RÉELLE (créée hors du dépôt, relue le 2026-10-14).
+ * `phone` n'y est pas : le nommer dans le `select` ferait échouer toute la
+ * lecture (42703). Il reste dans l'e-mail de notification.
+ */
+type ContactRow = {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  handled_at: string | null;
+  created_at: string;
+};
 
 type QuoteRow = {
   id: string;
@@ -222,6 +242,30 @@ export default async function AdminDashboardPage() {
     ).map((p) => [p.driver_slug, `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()])
   );
 
+  // ── Messages de contact ──────────────────────────────────────
+  /**
+   * Même lecture que les devis : les non traités TOUS, les plus anciens
+   * d'abord, puis les derniers traités. C'est le seul endroit où se lit un
+   * message dont l'e-mail de notification n'est pas parti.
+   */
+  const CONTACT_COLUMNS = "id, name, email, subject, message, handled_at, created_at";
+  const [openContactsRes, handledContactsRes] = await Promise.all([
+    db
+      .from("contact_messages")
+      .select(CONTACT_COLUMNS)
+      .is("handled_at", null)
+      .order("created_at", { ascending: true }),
+    db
+      .from("contact_messages")
+      .select(CONTACT_COLUMNS)
+      .not("handled_at", "is", null)
+      .order("handled_at", { ascending: false })
+      .limit(HANDLED_CONTACTS_SHOWN),
+  ]);
+  const contactsError = openContactsRes.error ?? handledContactsRes.error;
+  const openContacts = (openContactsRes.data ?? []) as ContactRow[];
+  const handledContacts = (handledContactsRes.data ?? []) as ContactRow[];
+
   // ── Avis publiés ─────────────────────────────────────────────
   /**
    * Les plus récents d'abord, plafonnés : la console sert à modérer ce qui
@@ -291,7 +335,7 @@ export default async function AdminDashboardPage() {
 
       <main className="mx-auto max-w-7xl space-y-10 px-4 py-10 sm:px-6">
         {/* ── KPI ─────────────────────────────────────────────── */}
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <Kpi
             icon={CalendarClock}
             label="Chauffeurs référencés"
@@ -308,6 +352,12 @@ export default async function AdminDashboardPage() {
             label="Devis non traités"
             value={String(openQuotes.length)}
             tone={openQuotes.length > 0 ? "warn" : "default"}
+          />
+          <Kpi
+            icon={Mail}
+            label="Messages non traités"
+            value={String(openContacts.length)}
+            tone={openContacts.length > 0 ? "warn" : "default"}
           />
           <div className="glass rounded-2xl p-6">
             <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-white/45">
@@ -430,6 +480,98 @@ export default async function AdminDashboardPage() {
           {handledQuotes.length === HANDLED_QUOTES_SHOWN && (
             <p className="mt-3 text-[11px] text-white/30">
               Seules les {HANDLED_QUOTES_SHOWN} dernières demandes traitées sont affichées.
+            </p>
+          )}
+        </section>
+
+        {/* ── Messages de contact ─────────────────────────────── */}
+        <section className="glass rounded-2xl p-6">
+          <div>
+            <h2 className="flex items-center gap-2.5 text-lg font-semibold text-white">
+              Messages de contact
+              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-white/70">
+                {openContacts.length} à traiter
+              </span>
+            </h2>
+            <p className="mt-1 text-xs text-white/40">
+              Envoyés depuis la page Contact. Répondez par e-mail, puis marquez-les traités.
+              Conservés {CONTACT_RETENTION_MONTHS} mois.
+            </p>
+          </div>
+
+          {contactsError ? (
+            <p className="mt-5 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4 text-sm text-amber-200/80">
+              Impossible de lire les messages de contact ({contactsError.message}).
+            </p>
+          ) : openContacts.length + handledContacts.length === 0 ? (
+            <p className="mt-5 text-sm italic text-white/40">
+              Aucun message de contact pour le moment.
+            </p>
+          ) : (
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full min-w-[900px] border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/35">
+                    <th className="pb-3 font-semibold">Reçu le</th>
+                    <th className="pb-3 font-semibold">Expéditeur</th>
+                    <th className="pb-3 font-semibold">Sujet</th>
+                    <th className="pb-3 font-semibold">Message</th>
+                    <th className="pb-3 text-right font-semibold">Suivi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {[...openContacts, ...handledContacts].map((m) => {
+                    const handled = !!m.handled_at;
+                    return (
+                      <tr
+                        key={m.id}
+                        className={`align-top transition hover:bg-white/[0.03] ${
+                          handled ? "opacity-55" : ""
+                        }`}
+                      >
+                        <td className="whitespace-nowrap py-4 pr-4 text-sm text-white/60">
+                          {formatDateTime(m.created_at)}
+                          {handled && m.handled_at && (
+                            <p className="mt-1 text-[11px] text-emerald-400/80">
+                              Traité le {formatDateTime(m.handled_at)}
+                            </p>
+                          )}
+                        </td>
+                        <td className="py-4 pr-4 text-sm">
+                          <p className="font-medium text-white">{m.name}</p>
+                          <a
+                            href={`mailto:${m.email}`}
+                            className="block text-xs text-royal-300 hover:underline"
+                          >
+                            {m.email}
+                          </a>
+                        </td>
+                        <td className="whitespace-nowrap py-4 pr-4 text-sm text-white/80">
+                          {m.subject}
+                        </td>
+                        <td className="max-w-md py-4 pr-4 text-sm leading-relaxed">
+                          <p className="whitespace-pre-line text-white/70">{m.message}</p>
+                        </td>
+                        <td className="py-4">
+                          <div className="flex justify-end">
+                            <QuoteActions
+                              kind="contact"
+                              quoteId={m.id}
+                              handled={handled}
+                              client={m.name}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {handledContacts.length === HANDLED_CONTACTS_SHOWN && (
+            <p className="mt-3 text-[11px] text-white/30">
+              Seuls les {HANDLED_CONTACTS_SHOWN} derniers messages traités sont affichés.
             </p>
           )}
         </section>
