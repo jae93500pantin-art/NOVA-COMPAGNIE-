@@ -1,5 +1,3 @@
-import { ADDRESS } from "./legalEntity";
-
 export type Lang = "fr" | "en";
 
 type Dict = typeof fr;
@@ -318,11 +316,6 @@ const fr = {
     // ⚠️ Plus de « 24h/24, 7j/7 » : une disponibilité continue que personne
     // ne garantit. On décrit le canal, pas une astreinte.
     infoHours: "Par e-mail ou WhatsApp, dans les meilleurs délais",
-    // ⚠️ L'adresse vient de `lib/legalEntity.ts`, jamais recopiée : elle
-    // affichait une fausse adresse sur les Champs-Élysées. EI : un
-    // établissement, pas un « siège » social.
-    infoAddressLabel: "Adresse",
-    infoAddress: ADDRESS,
     formTitle: "Écrivez-nous",
     firstName: "Prénom",
     lastName: "Nom",
@@ -760,8 +753,6 @@ const en: Dict = {
     infoWhatsappLabel: "WhatsApp Business",
     infoHoursLabel: "Response",
     infoHours: "By email or WhatsApp, as soon as we can",
-    infoAddressLabel: "Address",
-    infoAddress: ADDRESS,
     formTitle: "Write to us",
     firstName: "First name",
     lastName: "Last name",

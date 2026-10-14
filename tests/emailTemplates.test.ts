@@ -11,7 +11,7 @@ import {
   welcomeEmail,
 } from "@/lib/emailTemplates";
 import { contactError, CONTACT_TYPES, CONTACT_TYPE_LABELS } from "@/lib/contactMessage";
-import { ADDRESS, SIREN } from "@/lib/legalEntity";
+import { SIREN } from "@/lib/legalEntity";
 import { dictionaries } from "@/lib/dictionaries";
 
 const XSS = `<script>alert("x")</script>`;
@@ -138,11 +138,10 @@ describe("formulaire de contact", () => {
     }
   });
 
-  it("ne promet aucune disponibilité continue, et affiche l'adresse légale", () => {
+  it("ne promet aucune disponibilité continue, ni adresse inventée", () => {
     for (const lang of ["fr", "en"] as const) {
       const c = dictionaries[lang].contact;
       expect(JSON.stringify(c)).not.toMatch(/24\s?h?\s?\/\s?24|24\/7|7j\/7|24 heures|24 hours|Champs/);
-      expect(c.infoAddress).toBe(ADDRESS);
       for (const t of CONTACT_TYPES) expect(c[t]).toBeTruthy();
     }
   });
