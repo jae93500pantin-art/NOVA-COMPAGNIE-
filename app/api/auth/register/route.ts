@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { rateLimit } from "@/lib/validation";
 import { mapAuthError, validateRegistration } from "@/lib/authValidation";
+import { sendEmail, welcomeEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -79,6 +80,23 @@ export async function POST(req: NextRequest) {
   // We keep that property: an existing address gets the same "check your inbox"
   // answer as a fresh one.
   const needsEmailConfirmation = !data.session;
+
+  /**
+   * Bienvenue — seulement quand le compte est ouvert d'emblée.
+   *
+   * Avec la confirmation d'adresse activée, c'est Supabase qui écrit (son
+   * modèle est dans `supabase/email-templates/`) : envoyer aussi celui-ci
+   * doublerait le message, et souhaiterait la bienvenue à une adresse pas
+   * encore prouvée. ⚠️ Un `identities` vide est le leurre d'une adresse déjà
+   * inscrite : on n'écrit pas à son titulaire. Un échec d'envoi ne fait pas
+   * échouer l'inscription.
+   */
+  if (data.session && data.user?.identities?.length) {
+    await sendEmail({
+      to: email,
+      ...welcomeEmail({ firstName, role, origin: new URL(req.url).origin }),
+    });
+  }
 
   return Response.json({ ok: true, needsEmailConfirmation, role });
 }

@@ -1,5 +1,6 @@
 import { CONTACT_EMAIL } from "@/lib/contact";
 import { QUOTE_RETENTION_MONTHS } from "@/lib/quoteRequest";
+import { CONTACT_RETENTION_MONTHS } from "@/lib/contactMessage";
 
 export const metadata = { title: "Politique de confidentialité — Nova Compagnie" };
 
@@ -71,7 +72,8 @@ export default function PrivacyPage() {
         Les données de compte sont conservées tant que votre compte est actif,
         puis supprimées ou anonymisées sous 30 jours après clôture. Les demandes de
         devis sont conservées {QUOTE_RETENTION_MONTHS} mois au plus, puis
-        supprimées.
+        supprimées. Les messages envoyés depuis le formulaire de contact sont
+        conservés {CONTACT_RETENTION_MONTHS} mois au plus, puis supprimés.
       </p>
 
       <h2>5. Vos droits</h2>

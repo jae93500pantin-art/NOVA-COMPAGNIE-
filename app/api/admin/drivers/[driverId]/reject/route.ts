@@ -107,14 +107,14 @@ export async function POST(
   }
 
   const origin = new URL(request.url).origin;
-  const { subject, html } = driverRejectedEmail({
+  const { subject, html, text } = driverRejectedEmail({
     firstName: driver.first_name || "Chauffeur",
     reasonLabel: REJECTION_LABELS[reason],
     note: trimmed,
     resumeUrl: `${origin}/compte/onboarding`,
   });
   const emailed = driver.email
-    ? await sendEmail({ to: driver.email, subject, html })
+    ? await sendEmail({ to: driver.email, subject, html, text })
     : false;
 
   await logAdminAction(guard.userId, "driver_rejected", {

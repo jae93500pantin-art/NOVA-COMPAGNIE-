@@ -150,7 +150,7 @@ components/                   All client components unless noted
   LiveMap                     Picks Mapbox vs InteractiveMap based on token
   DriverCard, DriversExplorer, Gallery   ⚠️ Plus de `Reviews` ni de `StarRating` : sans course, aucun avis n'est certifiable (voir § STATUT D'ANNUAIRE).
   DriverContactCard           Colonne de droite de la fiche chauffeur, en remplacement de `BookingWidget`. Composant SERVEUR. Trois choses : les tarifs tels que le chauffeur les annonce, ses disponibilités s'il en a déclaré, et un lien de mise en relation (WhatsApp Nova). Plus la mention qui dit avec qui le contrat se noue. ⚠️ Aucun sélecteur d'unité, aucun créneau, aucun total client.
-  ContactForm                 Professional contact form (nom/prénom, e-mail, téléphone, type de demande, message) with client-side validation + animated success confirmation. ⚠️ L'envoi est SIMULÉ — aucun backend ne reçoit le message.
+  ContactForm                 Professional contact form (nom/prénom, e-mail, téléphone, type de demande, message) with client-side validation + animated success confirmation. Envoi RÉEL depuis le 2026-10-14 : `POST /api/contact` → e-mail à `CONTACT_EMAIL` (reply-to = le visiteur), règles dans `lib/contactMessage.ts`, champ piège, 5/min et 20/h par IP. Le message est **enregistré** dans `contact_messages` (migration `2026-10-14-contact-messages.sql`, RLS sans policy, service role seul) puis notifié ; succès si l'un des deux a réussi, **502** si aucun — jamais un succès simulé. Conservation `CONTACT_RETENTION_MONTHS` = 12 (annoncée sur `/legal/confidentialite`, purgée avec les devis par `POST /api/admin/quotes/purge`). ⚠️ Types sans « Réservation » (statut d'annuaire), plus de « 24h/24 », et `contact.infoAddress` = `ADDRESS` de `lib/legalEntity.ts` (l'ancienne adresse Champs-Élysées était fausse). Tant que la migration n'est pas passée, l'e-mail est la seule copie et il le dit. ⚠️ Pas encore de lecture dans la console `/admin` : les messages se lisent dans l'e-mail ou le Table Editor Supabase.
   TransferEstimate            Recherche « qui dessert ce trajet ? » : aeroport + zone + classe → la LISTE des chauffeurs concernes, chacun avec le tarif qu'IL a annonce, plus un « a partir de » qui est le MINIMUM de ces tarifs (jamais une moyenne, jamais une valeur plateforme ; un 0 est exclu, aucun tarif ⇒ aucun montant). Etat vide qui nomme sa cause et propose une suite. Recoit les chauffeurs en prop depuis la page serveur.
   TransferAirport             Corps client de la page transfert (i18n) : hero QUI CONTIENT la recherche (`TransferEstimate`, plus de photo — 2026-10-12), gages de confiance + une phrase courte et un `<details>` « Ce que nous contrôlons » (le détail reste un clic plus loin, pas supprimé), 5 services « selon le chauffeur », « Comment ça marche » en 3 étapes, la carte des zones (CDG, Orly, Le Bourget), et la mention légale d'annuaire en bas de page.
   TransferPickupMap           Stylised pickup-zones map (airport pins + animated rings), same aesthetic as InteractiveMap.
@@ -275,7 +275,7 @@ il contient des `drop table`, et un script qui rejoue automatiquement une
 suppression de table finit par la rejouer sur une base qui avait des données.
 Il n'a **pas encore été appliqué**. ⚠️ Corrigé le 2026-10-12 : il supprimait
 aussi `reviews`, revenue entre-temps (§ Avis de compte) — il n'en retire plus
-que `booking_id`. Ordre : 09-28, puis 09-29 (bloc A seul, puis B), puis 10-02.
+que `booking_id`. Ordre : 09-28, puis 09-29 (bloc A seul, puis B), puis 10-02, puis 10-14 (`contact_messages`).
 
 ## Auth & accounts (current = demo mode)
 
@@ -903,8 +903,8 @@ publique — la table porte nom, e-mail et téléphone de particuliers.
   sert à filtrer l'annuaire, elle ne détermine plus aucun prix.
 - **Contact** (`/contact`): `ContactForm` with nom/prénom, e-mail, téléphone,
   type de demande, message. Client-side validation (required fields + email
-  regex) and an animated success confirmation. **Demo mode**: the send is
-  simulated (no e-mail backend wired). Both pages are fully bilingual
+  regex) and an animated success confirmation. Envoi réel par
+  `POST /api/contact` (voir l'entrée `ContactForm` du plan). Both pages are fully bilingual
   (`contact.*` / `transfer.*` in `lib/dictionaries.ts`).
 
 ## Une seule prestation : la course VTC (et la qualification CNAPS)
@@ -977,11 +977,21 @@ clés i18n `service.*`). Tout cela **commercialisait** l'activité : retiré.
 - Envoi transactionnel via l'**API REST Resend** (sans SDK) dans `lib/email.ts`
   (`server-only`). Drapeau `isEmailConfigured` (exige `RESEND_API_KEY=re_…`).
   Sans clé, l'envoi est ignoré et rien n'échoue.
-- ⚠️ **Un seul modèle subsiste** : `driverApprovedEmail`, envoyé quand un
-  administrateur valide un chauffeur. `bookingRequestEmail`,
-  `bookingConfirmedEmail` et `paymentReceivedEmail` ont été retirés avec la
-  réservation et le paiement — la plateforme n'a plus de course à confirmer ni
-  de règlement à accuser.
+- **Modèles dans `lib/emailTemplates.ts`** (pur, testé — `tests/emailTemplates.test.ts`),
+  ré-exportés par `lib/email.ts`. Un seul gabarit sombre (fond #0B0F17, carte
+  #111827, bouton champagne, étiquettes cyan #38BDF8), en tables et styles en
+  ligne, avec version texte et pied de page légal tiré de `lib/legalEntity.ts`.
+  ⚠️ Les modèles passent du **texte brut** + `href` : tout est échappé au
+  rendu, aucun modèle n'écrit de HTML. Modèles : validation, refus, échéance
+  d'une pièce, devis (vers l'équipe), contact (vers l'équipe), bienvenue
+  (`/api/auth/register`, seulement quand le compte est ouvert sans
+  confirmation). `bookingRequestEmail`, `bookingConfirmedEmail` et
+  `paymentReceivedEmail` ont été retirés avec la réservation et le paiement.
+- **Confirmation d'adresse et mot de passe oublié** : modèles produits par
+  `supabaseAuthTemplates()` dans `supabase/email-templates/`
+  (`UPDATE_EMAIL_TEMPLATES=1 npm test` les régénère, un test échoue s'ils
+  divergent). ⚠️ À **coller à la main** dans le dashboard Supabase
+  (Authentication → Email Templates) : le dépôt ne peut pas les appliquer.
 - Activer : `RESEND_API_KEY` + domaine `EMAIL_FROM` vérifié dans `.env.local`.
 
 ### Deux systèmes d'e-mail, à ne pas confondre
@@ -994,6 +1004,12 @@ clés i18n `service.*`). Tout cela **commercialisait** l'activité : retiré.
 Renseigner la clé API ne réactive **pas** la confirmation d'inscription : celle-ci
 part de Supabase, qui a besoin d'identifiants SMTP. Les deux viennent du même
 compte Resend, mais se configurent à deux endroits différents.
+
+✅ **`novacompagnie.com` est vérifié chez Resend** (constaté le 2026-10-14 via
+`GET /domains` : `status: verified`, envoi activé, région `eu-west-1`), et
+`EMAIL_FROM` est déjà sur ce domaine. Le paragraphe suivant ne décrit plus
+que le comportement d'un domaine non vérifié. Restent à vérifier côté dashboard
+Supabase : `smtp_admin_email` sur ce domaine, puis `mailer_autoconfirm`.
 
 ⚠️ **Tant qu'aucun domaine n'est vérifié chez Resend, l'envoi n'est autorisé que
 vers l'adresse du titulaire du compte** — un alias `+quelquechose` est refusé

@@ -173,11 +173,11 @@ export async function POST(
   // 3. Activation email — best effort. The approval already succeeded, so a
   //    failed send must not turn into a failed request.
   const origin = new URL(request.url).origin;
-  const { subject, html } = driverApprovedEmail({
+  const { subject, html, text } = driverApprovedEmail({
     firstName: driver.first_name || "Chauffeur",
     loginUrl: `${origin}/auth/login`,
   });
-  const emailed = driver.email ? await sendEmail({ to: driver.email, subject, html }) : false;
+  const emailed = driver.email ? await sendEmail({ to: driver.email, subject, html, text }) : false;
 
   // Trace de la décision : qui, quand, et sur quelles pièces. C'est la preuve
   // en cas de litige — elle s'écrit APRÈS le succès, jamais avant.

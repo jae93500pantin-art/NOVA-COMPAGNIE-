@@ -15,16 +15,13 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { WHATSAPP_NUMBER, WHATSAPP_DISPLAY } from "@/lib/whatsapp";
 import { CONTACT_EMAIL } from "@/lib/contact";
-
-const REQUEST_TYPES = [
-  "typeReservation",
-  "typeTransfer",
-  "typeDriver",
-  "typeBusiness",
-  "typeOther",
-] as const;
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import {
+  CONTACT_LIMITS,
+  CONTACT_RETENTION_MONTHS,
+  CONTACT_TYPES,
+  contactError,
+} from "@/lib/contactMessage";
+import { QUOTE_HONEYPOT_FIELD } from "@/lib/quoteRequest";
 
 export function ContactForm() {
   const { t } = useI18n();
@@ -37,6 +34,8 @@ export function ContactForm() {
     message: "",
   });
   const [error, setError] = useState<string | null>(null);
+  // Champ piège : un humain ne le voit pas, donc le laisse vide.
+  const [trap, setTrap] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
 
   const set = (key: keyof typeof form) => (
@@ -47,31 +46,44 @@ export function ContactForm() {
     e.preventDefault();
     setError(null);
 
-    if (
-      !form.firstName.trim() ||
-      !form.lastName.trim() ||
-      !form.email.trim() ||
-      !form.type ||
-      !form.message.trim()
-    ) {
-      setError(t("contact.errorRequired"));
-      return;
-    }
-    if (!EMAIL_RE.test(form.email)) {
-      setError(t("contact.errorEmail"));
+    // Les mêmes règles que la route, qui les rejoue (`lib/contactMessage.ts`).
+    const invalid = contactError(form);
+    if (invalid) {
+      setError(t(invalid));
       return;
     }
 
-    // Demo mode: no email backend wired yet — simulate a successful send.
+    // ⚠️ Envoi réel (`POST /api/contact`). Le succès ne s'affiche que si
+    // l'e-mail est parti : le message n'existe nulle part ailleurs.
     setStatus("sending");
-    await new Promise((r) => setTimeout(r, 900));
-    setStatus("sent");
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, [QUOTE_HONEYPOT_FIELD]: trap }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const key =
+          typeof data.error === "string" && data.error.startsWith("contact.")
+            ? data.error
+            : "contact.errorSend";
+        setError(t(key));
+        setStatus("idle");
+        return;
+      }
+      setStatus("sent");
+    } catch {
+      setError(t("contact.errorNetwork"));
+      setStatus("idle");
+    }
   };
 
   const reset = () => {
     setForm({ firstName: "", lastName: "", email: "", phone: "", type: "", message: "" });
     setStatus("idle");
     setError(null);
+    setTrap("");
   };
 
   const info = [
@@ -207,6 +219,7 @@ export function ContactForm() {
                   <input
                     className="input"
                     value={form.firstName}
+                    maxLength={CONTACT_LIMITS.firstName}
                     onChange={set("firstName")}
                     autoComplete="given-name"
                   />
@@ -215,6 +228,7 @@ export function ContactForm() {
                   <input
                     className="input"
                     value={form.lastName}
+                    maxLength={CONTACT_LIMITS.lastName}
                     onChange={set("lastName")}
                     autoComplete="family-name"
                   />
@@ -227,6 +241,7 @@ export function ContactForm() {
                     type="email"
                     className="input"
                     value={form.email}
+                    maxLength={CONTACT_LIMITS.email}
                     onChange={set("email")}
                     autoComplete="email"
                   />
@@ -236,6 +251,7 @@ export function ContactForm() {
                     type="tel"
                     className="input"
                     value={form.phone}
+                    maxLength={CONTACT_LIMITS.phone}
                     onChange={set("phone")}
                     autoComplete="tel"
                   />
@@ -249,7 +265,7 @@ export function ContactForm() {
                   onChange={set("type")}
                 >
                   <option value="">{t("contact.typePlaceholder")}</option>
-                  {REQUEST_TYPES.map((rt) => (
+                  {CONTACT_TYPES.map((rt) => (
                     <option key={rt} value={rt}>
                       {t(`contact.${rt}`)}
                     </option>
@@ -261,10 +277,26 @@ export function ContactForm() {
                 <textarea
                   className="input min-h-[130px] resize-y"
                   value={form.message}
+                  maxLength={CONTACT_LIMITS.message}
                   onChange={set("message")}
                   placeholder={t("contact.messagePlaceholder")}
                 />
               </FieldLabel>
+
+              {/* Champ piège (antispam) — même dispositif que `QuoteRequestForm`. */}
+              <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+                <label>
+                  Ne pas remplir
+                  <input
+                    type="text"
+                    name={QUOTE_HONEYPOT_FIELD}
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={trap}
+                    onChange={(e) => setTrap(e.target.value)}
+                  />
+                </label>
+              </div>
 
               {error && (
                 <p className="text-sm text-red-300">{error}</p>
@@ -284,6 +316,21 @@ export function ContactForm() {
                   </>
                 )}
               </button>
+              {/* ⚠️ Information obligatoire AU MOMENT de la collecte (art. 13
+                  RGPD) : le message est enregistré en base. La durée vient de
+                  la même constante que la purge et /legal/confidentialite. */}
+              <p className="text-[11px] leading-relaxed text-white/35">
+                {t("contact.privacyNotice").replace(
+                  "{months}",
+                  String(CONTACT_RETENTION_MONTHS)
+                )}{" "}
+                <a
+                  href="/legal/confidentialite"
+                  className="underline underline-offset-2 hover:text-white/60"
+                >
+                  {t("contact.privacyLink")}
+                </a>
+              </p>
             </motion.form>
           )}
         </AnimatePresence>

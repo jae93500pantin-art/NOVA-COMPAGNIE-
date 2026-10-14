@@ -1,3 +1,5 @@
+import { ADDRESS } from "./legalEntity";
+
 export type Lang = "fr" | "en";
 
 type Dict = typeof fr;
@@ -310,10 +312,15 @@ const fr = {
     infoEmailLabel: "E-mail",
     infoPhoneLabel: "Téléphone",
     infoWhatsappLabel: "WhatsApp Business",
-    infoHoursLabel: "Disponibilité",
-    infoHours: "24h/24, 7j/7",
-    infoAddressLabel: "Siège",
-    infoAddress: "8 avenue des Champs-Élysées, 75008 Paris",
+    infoHoursLabel: "Réponse",
+    // ⚠️ Plus de « 24h/24, 7j/7 » : une disponibilité continue que personne
+    // ne garantit. On décrit le canal, pas une astreinte.
+    infoHours: "Par e-mail ou WhatsApp, dans les meilleurs délais",
+    // ⚠️ L'adresse vient de `lib/legalEntity.ts`, jamais recopiée : elle
+    // affichait une fausse adresse sur les Champs-Élysées. EI : un
+    // établissement, pas un « siège » social.
+    infoAddressLabel: "Adresse",
+    infoAddress: ADDRESS,
     formTitle: "Écrivez-nous",
     firstName: "Prénom",
     lastName: "Nom",
@@ -321,10 +328,11 @@ const fr = {
     phone: "Numéro de téléphone",
     type: "Type de demande",
     typePlaceholder: "Sélectionnez…",
-    typeReservation: "Réservation",
+    typeGeneral: "Question générale",
     typeTransfer: "Transfert aéroport",
     typeDriver: "Devenir chauffeur",
-    typeBusiness: "Offre entreprise",
+    typePartnership: "Partenariat",
+    typeSupport: "Support",
     typeOther: "Autre",
     message: "Message",
     messagePlaceholder: "Décrivez votre besoin…",
@@ -336,6 +344,15 @@ const fr = {
     successAgain: "Envoyer un autre message",
     errorRequired: "Merci de remplir tous les champs obligatoires.",
     errorEmail: "Adresse e-mail invalide.",
+    errorSend:
+      "Votre message n'a pas pu être envoyé. Réessayez, ou écrivez-nous sur WhatsApp.",
+    errorNetwork: "Le serveur ne répond pas. Réessayez, ou écrivez-nous sur WhatsApp.",
+    errorUnavailable:
+      "L'envoi de messages n'est pas actif sur cette installation. Écrivez-nous sur WhatsApp.",
+    errorRateLimited: "Trop de messages envoyés. Réessayez dans une minute.",
+    privacyNotice:
+      "Vos coordonnées servent uniquement à répondre à votre message. Conservées {months} mois au plus.",
+    privacyLink: "Politique de confidentialité",
   },
   transfer: {
     eyebrow: "Transfert Aéroport",
@@ -741,10 +758,10 @@ const en: Dict = {
     infoEmailLabel: "Email",
     infoPhoneLabel: "Phone",
     infoWhatsappLabel: "WhatsApp Business",
-    infoHoursLabel: "Availability",
-    infoHours: "24/7",
-    infoAddressLabel: "Head office",
-    infoAddress: "8 avenue des Champs-Élysées, 75008 Paris",
+    infoHoursLabel: "Response",
+    infoHours: "By email or WhatsApp, as soon as we can",
+    infoAddressLabel: "Address",
+    infoAddress: ADDRESS,
     formTitle: "Write to us",
     firstName: "First name",
     lastName: "Last name",
@@ -752,10 +769,11 @@ const en: Dict = {
     phone: "Phone number",
     type: "Request type",
     typePlaceholder: "Select…",
-    typeReservation: "Booking",
+    typeGeneral: "General question",
     typeTransfer: "Airport transfer",
     typeDriver: "Become a driver",
-    typeBusiness: "Corporate offer",
+    typePartnership: "Partnership",
+    typeSupport: "Support",
     typeOther: "Other",
     message: "Message",
     messagePlaceholder: "Describe your need…",
@@ -767,6 +785,14 @@ const en: Dict = {
     successAgain: "Send another message",
     errorRequired: "Please fill in all required fields.",
     errorEmail: "Invalid email address.",
+    errorSend: "Your message could not be sent. Try again, or message us on WhatsApp.",
+    errorNetwork: "The server is not responding. Try again, or message us on WhatsApp.",
+    errorUnavailable:
+      "Messaging is not enabled on this installation. Please message us on WhatsApp.",
+    errorRateLimited: "Too many messages sent. Try again in a minute.",
+    privacyNotice:
+      "Your details are used only to reply to your message. Kept for {months} months at most.",
+    privacyLink: "Privacy policy",
   },
   transfer: {
     eyebrow: "Airport Transfer",

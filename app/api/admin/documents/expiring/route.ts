@@ -116,7 +116,7 @@ export async function POST() {
     const left = daysUntilExpiry({ kind: row.kind, expiresAt: row.expires_at });
     if (!person?.email || left === null) continue;
 
-    const { subject, html } = documentExpiringEmail({
+    const { subject, html, text } = documentExpiringEmail({
       firstName: person.first_name || "Chauffeur",
       documentLabel: DOCUMENT_LABELS[row.kind as DriverDocumentKind]?.label ?? row.kind,
       expiresAt: row.expires_at ?? "",
@@ -124,7 +124,7 @@ export async function POST() {
       resumeUrl: `${new URL("/compte/onboarding", "https://www.novacompagnie.com")}`,
     });
 
-    const ok = await sendEmail({ to: person.email, subject, html });
+    const ok = await sendEmail({ to: person.email, subject, html, text });
     // ⚠️ La trace s'écrit même si l'envoi a échoué : sans cela, un e-mail
     // refusé serait retenté à chaque appel, et un chauffeur dont l'adresse est
     // invalide recevrait le même rappel en boucle.
