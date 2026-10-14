@@ -82,14 +82,15 @@ const HANDLED_QUOTES_SHOWN = 30;
 const HANDLED_CONTACTS_SHOWN = 30;
 
 /**
- * ⚠️ Colonnes de la table RÉELLE (créée hors du dépôt, relue le 2026-10-14).
- * `phone` n'y est pas : le nommer dans le `select` ferait échouer toute la
- * lecture (42703). Il reste dans l'e-mail de notification.
+ * Colonnes de la table RÉELLE (créée hors du dépôt, relue le 2026-10-14).
+ * `phone` a été ajoutée par la migration du 2026-10-14, appliquée le jour
+ * même : il est `null` pour les messages antérieurs ou sans téléphone.
  */
 type ContactRow = {
   id: string;
   name: string;
   email: string;
+  phone: string | null;
   subject: string;
   message: string;
   handled_at: string | null;
@@ -248,7 +249,7 @@ export default async function AdminDashboardPage() {
    * d'abord, puis les derniers traités. C'est le seul endroit où se lit un
    * message dont l'e-mail de notification n'est pas parti.
    */
-  const CONTACT_COLUMNS = "id, name, email, subject, message, handled_at, created_at";
+  const CONTACT_COLUMNS = "id, name, email, phone, subject, message, handled_at, created_at";
   const [openContactsRes, handledContactsRes] = await Promise.all([
     db
       .from("contact_messages")
@@ -545,6 +546,7 @@ export default async function AdminDashboardPage() {
                           >
                             {m.email}
                           </a>
+                          {m.phone && <p className="text-xs text-white/55">{m.phone}</p>}
                         </td>
                         <td className="whitespace-nowrap py-4 pr-4 text-sm text-white/80">
                           {m.subject}

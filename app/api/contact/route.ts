@@ -104,11 +104,10 @@ export async function POST(req: NextRequest) {
 
   /**
    * ⚠️ Colonnes de la table RÉELLE, relue le 2026-10-14 : `name`, `email`,
-   * `subject`, `message`, `handled_at`, `created_at`. Elle a été créée
-   * hors du dépôt, sans `phone` : le téléphone est envoyé s'il est saisi, et
-   * la ligne est réécrite sans lui si la colonne manque — il reste dans
-   * l'e-mail. Ajouter la colonne (migration du 2026-10-14) suffit à le
-   * conserver, sans redéployer.
+   * `subject`, `message`, `phone`, `handled_at`, `created_at`. Elle a
+   * été créée hors du dépôt, et `phone` ajoutée ensuite (migration du
+   * 2026-10-14, appliquée). Le repli sans `phone` reste en place : il ne
+   * coûte rien et protège une base qui n'aurait pas reçu la migration.
    */
   let savedId: string | null = null;
   if (db) {
