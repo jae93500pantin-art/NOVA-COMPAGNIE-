@@ -28,7 +28,7 @@ export type ContactType = (typeof CONTACT_TYPES)[number];
 
 /** Libellés de l'e-mail interne (en français : il part vers l'équipe). */
 export const CONTACT_TYPE_LABELS: Record<ContactType, string> = {
-  typeGeneral: "Question générale",
+  typeGeneral: "Demande d'information",
   typeTransfer: "Transfert aéroport",
   typeDriver: "Devenir chauffeur",
   typePartnership: "Partenariat",

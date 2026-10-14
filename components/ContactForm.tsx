@@ -7,6 +7,7 @@ import {
   MessageCircle,
   Phone,
   Clock,
+  MapPin,
   Send,
   CheckCircle2,
   User,
@@ -108,6 +109,14 @@ export function ContactForm() {
       icon: Clock,
       label: t("contact.infoHoursLabel"),
       value: t("contact.infoHours"),
+      accent: "default" as const,
+    },
+    // L'adresse de l'éditeur, celle des mentions légales (`ADDRESS` de
+    // `lib/legalEntity.ts`, via le dictionnaire) — jamais recopiée ici.
+    {
+      icon: MapPin,
+      label: t("contact.infoAddressLabel"),
+      value: t("contact.infoAddress"),
       accent: "default" as const,
     },
   ];

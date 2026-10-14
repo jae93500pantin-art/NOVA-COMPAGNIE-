@@ -37,6 +37,15 @@ export const runtime = "nodejs";
  * bilingue.
  */
 
+/**
+ * Colonne absente : `42703` quand elle est nommée dans un `select`,
+ * `PGRST204` quand elle est dans le corps d'un insert (cache de schéma
+ * PostgREST) — même règle que `/api/reviews`.
+ */
+function isMissingColumn(err: { code?: string } | null | undefined): boolean {
+  return err?.code === "42703" || err?.code === "PGRST204";
+}
+
 function ipOf(req: NextRequest) {
   return (
     req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
@@ -90,20 +99,35 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "contact.errorUnavailable" }, { status: 503 });
   }
 
+  const typeLabel = CONTACT_TYPE_LABELS[draft.type as ContactType];
+  const name = `${draft.firstName} ${draft.lastName}`;
+
+  /**
+   * ⚠️ Colonnes de la table RÉELLE, relue le 2026-10-14 : `name`, `email`,
+   * `subject`, `message`, `handled_at`, `created_at`. Elle a été créée
+   * hors du dépôt, sans `phone` : le téléphone est envoyé s'il est saisi, et
+   * la ligne est réécrite sans lui si la colonne manque — il reste dans
+   * l'e-mail. Ajouter la colonne (migration du 2026-10-14) suffit à le
+   * conserver, sans redéployer.
+   */
   let savedId: string | null = null;
   if (db) {
-    const { data, error } = await db
-      .from("contact_messages")
-      .insert({
-        first_name: draft.firstName,
-        last_name: draft.lastName,
-        email: draft.email,
-        phone: draft.phone || null,
-        type: draft.type,
-        message: draft.message,
-      })
-      .select("id")
-      .maybeSingle();
+    const row: Record<string, string> = {
+      name,
+      email: draft.email,
+      subject: typeLabel,
+      message: draft.message,
+    };
+    const insert = (withPhone: boolean) =>
+      db
+        .from("contact_messages")
+        .insert(withPhone ? { ...row, phone: draft.phone } : row)
+        .select("id")
+        .maybeSingle();
+
+    let { data, error } = await insert(Boolean(draft.phone));
+    if (draft.phone && isMissingColumn(error)) ({ data, error } = await insert(false));
+
     if (error || !data) {
       console.error(`[contact] enregistrement refusé : ${error?.message ?? "aucune ligne"}`);
     } else {
@@ -114,20 +138,14 @@ export async function POST(req: NextRequest) {
   const emailed = await sendEmail({
     to: CONTACT_EMAIL,
     ...contactMessageEmail({
-      name: `${draft.firstName} ${draft.lastName}`,
+      name,
       email: draft.email,
       phone: draft.phone,
-      typeLabel: CONTACT_TYPE_LABELS[draft.type as ContactType],
+      typeLabel,
       message: draft.message,
       saved: Boolean(savedId),
     }),
   });
-
-  if (savedId && emailed) {
-    // Trace de la notification, pour retrouver un message que l'e-mail n'a
-    // pas porté. Un échec ici ne change rien pour le visiteur.
-    await db!.from("contact_messages").update({ emailed: true }).eq("id", savedId);
-  }
 
   if (!savedId && !emailed) {
     return Response.json({ error: "contact.errorSend" }, { status: 502 });
