@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isSupabaseAdminConfigured } from "@/lib/config";
 import { sanitizeSchedule, type WeeklySchedule } from "@/lib/schedule";
@@ -102,7 +103,6 @@ function db() {
   return isSupabaseAdminConfigured ? getSupabaseAdmin() : null;
 }
 
-/** Tous les chauffeurs validés, ou une liste vide si la base est absente. */
 /** L'ancienne valeur par défaut de `drivers.response_time`, jamais déclarée. */
 const RESPONSE_TIME_DB_DEFAULT = "≈ 5 min";
 
@@ -111,7 +111,16 @@ function declaredResponseTime(raw: string | null | undefined): string | null {
   return v && v !== RESPONSE_TIME_DB_DEFAULT ? v : null;
 }
 
-export async function listDirectory(): Promise<Driver[]> {
+/**
+ * Tous les chauffeurs validés, ou une liste vide si la base est absente.
+ *
+ * ⚠️ `cache()` de React mémoïse PAR REQUÊTE, pas entre requêtes : deux appels
+ * pendant le rendu d'une même page ne coûtent qu'une lecture, la requête
+ * suivante relit la base. Un cache entre requêtes (`unstable_cache`) laisserait
+ * paraître une fiche dont une pièce vient d'expirer ou qui vient d'être
+ * supprimée — exactement ce que la lecture `force-dynamic` évite.
+ */
+export const listDirectory = cache(async (): Promise<Driver[]> => {
   const client = db();
   if (!client) return [];
 
@@ -128,7 +137,13 @@ export async function listDirectory(): Promise<Driver[]> {
   const ids = drivers.map((d) => d.id);
   const readProfiles = (columns: string) =>
     client.from("profiles").select(columns).in("id", ids);
-  let { data: profileRows, error: profileError } = await readProfiles(PROFILE_COLUMNS);
+  // Profils et pièces ne dépendent que des ids : lus EN PARALLÈLE. En série,
+  // chaque aller-retour VM → Supabase s'ajoutait au temps de chaque clic.
+  const [profileRes, { expired, verified }] = await Promise.all([
+    readProfiles(PROFILE_COLUMNS),
+    documentState(client, ids),
+  ]);
+  let { data: profileRows, error: profileError } = profileRes;
   if (profileError?.code === "42703") {
     ({ data: profileRows, error: profileError } = await readProfiles(PROFILE_COLUMNS_LEGACY));
   }
@@ -139,11 +154,6 @@ export async function listDirectory(): Promise<Driver[]> {
 
   const profiles = new Map(
     ((profileRows ?? []) as unknown as ProfileRow[]).map((p) => [p.id, p])
-  );
-
-  const { expired, verified } = await documentState(
-    client,
-    drivers.map((d) => d.id)
   );
 
   return drivers
@@ -158,7 +168,7 @@ export async function listDirectory(): Promise<Driver[]> {
       return isListable(driver) ? driver : null;
     })
     .filter((d): d is Driver => d !== null);
-}
+});
 
 /**
  * Une fiche est-elle publiable ?
@@ -209,8 +219,13 @@ export async function getDirectoryDriverAccountId(
   return (data as { id: string } | null)?.id ?? null;
 }
 
-/** Un chauffeur validé par son slug, ou `null`. */
-export async function getDirectoryDriver(slug: string): Promise<Driver | null> {
+/**
+ * Un chauffeur validé par son slug, ou `null`.
+ *
+ * Mémoïsé par requête (voir `listDirectory`) : `generateMetadata` et la page
+ * de `/drivers/[id]` l'appellent tous deux, ce qui doublait les lectures.
+ */
+export const getDirectoryDriver = cache(async (slug: string): Promise<Driver | null> => {
   const client = db();
   if (!client || !slug) return null;
 
@@ -221,14 +236,16 @@ export async function getDirectoryDriver(slug: string): Promise<Driver | null> {
     .maybeSingle();
   if (error || !row) return null;
 
+  const accountId = (row as unknown as DriverRow).id;
   const readProfile = (columns: string) =>
-    client
-      .from("profiles")
-      .select(columns)
-      .eq("id", (row as unknown as DriverRow).id)
-      .maybeSingle();
-  let { data: profile, error: profileError } = await readProfile(PROFILE_COLUMNS);
-  if (profileError?.code === "42703") {
+    client.from("profiles").select(columns).eq("id", accountId).maybeSingle();
+  // Profil et pièces en parallèle : l'id de compte est déjà celui de `drivers`.
+  const [profileRes, { expired, verified }] = await Promise.all([
+    readProfile(PROFILE_COLUMNS),
+    documentState(client, [accountId]),
+  ]);
+  let { data: profile } = profileRes;
+  if (profileRes.error?.code === "42703") {
     ({ data: profile } = await readProfile(PROFILE_COLUMNS_LEGACY));
   }
 
@@ -237,12 +254,11 @@ export async function getDirectoryDriver(slug: string): Promise<Driver | null> {
 
   // Même règle que la liste : une pièce obligatoire périmée répond 404, elle
   // ne laisse pas la fiche accessible par son URL directe.
-  const { expired, verified } = await documentState(client, [p.id]);
   if (expired.has(p.id)) return null;
 
   const driver = toDriver(row as unknown as DriverRow, p, verified.has(p.id));
   return isListable(driver) ? driver : null;
-}
+});
 
 /**
  * Les chauffeurs dont une pièce OBLIGATOIRE a expiré.

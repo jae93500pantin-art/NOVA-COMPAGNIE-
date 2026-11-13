@@ -7,6 +7,24 @@ import { airports } from "@/lib/transfer";
 
 const hubs = airports.filter((a) => !a.origin);
 
+/**
+ * Positions PROPRES à cette carte, en % du cadre, autour de Paris.
+ *
+ * ⚠️ Pas `mapX` / `mapY` de `lib/transfer.ts` : ces valeurs sont à l'échelle
+ * d'une carte de ville (2 % d'écart entre CDG, Orly et Le Bourget), et les
+ * trois repères s'empilaient au même point — 7 px d'écart sur un téléphone,
+ * un seul avion visible. Ici, l'orientation est respectée (CDG au nord-est,
+ * Le Bourget plus près au nord, Orly au sud), la distance est dilatée pour
+ * que chaque repère reste touchable au doigt.
+ */
+const PARIS_POS = { x: 42, y: 52 };
+const PIN_POS: Record<string, { x: number; y: number }> = {
+  cdg: { x: 72, y: 20 },
+  lbg: { x: 52, y: 30 },
+  // ≤ 68 % : en dessous, le code « ORY » touche l'étiquette du bas.
+  ory: { x: 48, y: 68 },
+};
+
 export function TransferPickupMap() {
   const [active, setActive] = useState(hubs[0].id);
 
@@ -16,17 +34,33 @@ export function TransferPickupMap() {
         <div className="absolute inset-0 bg-grid-faint [background-size:36px_36px]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(47,99,255,0.16),transparent_55%)]" />
 
+        {/* Repère d'orientation : sans Paris, trois avions flottent sans
+            référence. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1"
+          style={{ left: `${PARIS_POS.x}%`, top: `${PARIS_POS.y}%` }}
+        >
+          <span className="h-2.5 w-2.5 rounded-full bg-white/70 ring-4 ring-white/10" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-white/45">
+            Paris
+          </span>
+        </span>
+
         {hubs.map((a) => {
           const isActive = a.id === active;
+          const pos = PIN_POS[a.id] ?? { x: a.mapX, y: a.mapY };
           return (
             <button
               key={a.id}
               onMouseEnter={() => setActive(a.id)}
               onFocus={() => setActive(a.id)}
               onClick={() => setActive(a.id)}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${a.mapX}%`, top: `${a.mapY}%` }}
+              // 44 px de cible (le disque visible reste à 32 px).
+              className="absolute grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center"
+              style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
               aria-label={a.name}
+              aria-pressed={isActive}
             >
               {/* Pickup-zone ring */}
               <motion.span
@@ -54,6 +88,17 @@ export function TransferPickupMap() {
                 }`}
               >
                 <Plane className="h-4 w-4" />
+              </span>
+              {/* Code toujours visible : au doigt il n'y a pas de survol, et
+                  sans lui il faut toucher chaque avion pour savoir lequel
+                  est lequel. */}
+              <span
+                aria-hidden
+                className={`absolute left-1/2 top-full -translate-x-1/2 text-[10px] font-semibold tracking-wider transition ${
+                  isActive ? "text-royal-200" : "text-white/45"
+                }`}
+              >
+                {a.code}
               </span>
             </button>
           );

@@ -209,3 +209,24 @@ export function formatSlot(when: string, lang: "fr" | "en" = "fr"): string {
   }
   return datePart;
 }
+
+/**
+ * Les heures proposées en boutons par `DatePicker`, de 00:00 à la dernière
+ * avant minuit, tous les `stepMinutes`. Une heure déjà retenue hors de la
+ * grille (`extra`, ex. 04:35 venu d'un lien) y est insérée à sa place : sans
+ * elle, le choix courant n'aurait aucun bouton allumé et semblerait perdu.
+ */
+export function timeSlots(stepMinutes = 30, extra = ""): string[] {
+  const step = Math.min(Math.max(Math.round(stepMinutes), 5), 720);
+  const slots: string[] = [];
+  for (let m = 0; m < 24 * 60; m += step) {
+    const hh = String(Math.floor(m / 60)).padStart(2, "0");
+    const mm = String(m % 60).padStart(2, "0");
+    slots.push(`${hh}:${mm}`);
+  }
+  if (TIME_RE.test(extra) && !slots.includes(extra)) {
+    slots.push(extra);
+    slots.sort();
+  }
+  return slots;
+}

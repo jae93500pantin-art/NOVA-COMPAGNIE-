@@ -1,11 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { Plane } from "lucide-react";
 import { SearchBar } from "./SearchBar";
-import { Globe } from "./Globe";
 import { useI18n } from "@/lib/i18n";
+
+/**
+ * Le globe est un décor (`aria-hidden`), pas le contenu : `cobe` et son WebGL
+ * sortent du bundle initial et se chargent après l'hydratation. La carte de
+ * recherche devient interactive plus tôt sur mobile, là où le JS coûte le plus
+ * cher. `ssr: false` : un canvas WebGL n'a rien à rendre côté serveur.
+ */
+const Globe = dynamic(() => import("./Globe").then((m) => m.Globe), {
+  ssr: false,
+});
 
 export function Hero() {
   const { t } = useI18n();
@@ -53,7 +63,10 @@ export function Hero() {
             className="btn-ghost mt-3 w-full text-sm sm:w-auto"
           >
             <Plane className="h-4 w-4 text-royal-300" />
-            {t("transfer.bookCta")}
+            {/* ⚠️ Pas `transfer.bookCta` (« Voir les chauffeurs ») : c'est
+                l'intitulé du bouton de recherche juste au-dessus. Deux boutons
+                identiques empilés vers deux pages différentes. */}
+            {t("nav.transfer")}
           </Link>
 
           <p className="mt-4 text-xs text-white/45">{t("hero.freeAccess")}</p>

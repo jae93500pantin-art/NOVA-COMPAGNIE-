@@ -36,6 +36,13 @@ export function Globe({ className }: { className?: string }) {
     if (canvas.parentElement) ro.observe(canvas.parentElement);
     window.addEventListener("resize", measure);
 
+    // Mobile : le globe est derrière la carte de recherche, à 70 % d'opacité.
+    // Moitié moins de points et pas de rotation si l'utilisateur la refuse —
+    // le GPU d'un téléphone n'a pas à dessiner 24 000 points à 60 i/s pour un
+    // décor. Le rendu reste en 2× (cobe le suppose pour sa géométrie).
+    const small = window.matchMedia("(max-width: 640px)").matches;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     const globe = createGlobe(canvas, {
       devicePixelRatio: 2,
       width: width * 2,
@@ -44,7 +51,7 @@ export function Globe({ className }: { className?: string }) {
       theta: 0.25,
       dark: 1,
       diffuse: 1.8,
-      mapSamples: 24000,
+      mapSamples: small ? 12000 : 24000,
       mapBrightness: 8,
       baseColor: [0.24, 0.44, 0.72], // ocean blue (Google-Earth blue marble)
       markerColor: [1, 0.85, 0.5], // champagne markers
@@ -54,7 +61,7 @@ export function Globe({ className }: { className?: string }) {
       ],
       onRender: (state) => {
         // Slow, premium auto-rotation.
-        phi += 0.00175;
+        if (!still) phi += 0.00175;
         state.phi = phi;
         state.width = width * 2;
         state.height = width * 2;

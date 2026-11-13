@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 const config: Config = {
   content: [
@@ -78,7 +79,11 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // `coarse:` = écran tactile (doigt, pas souris). Sert à porter les cibles à
+    // 48 px sur mobile et tablette sans grossir l'interface au pointeur fin.
+    plugin(({ addVariant }) => addVariant("coarse", "@media (pointer: coarse)")),
+  ],
 };
 
 export default config;

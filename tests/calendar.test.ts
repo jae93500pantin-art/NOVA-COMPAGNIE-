@@ -14,6 +14,7 @@ import {
   isFutureSlot,
   rollPastTimeToNextDay,
   formatSlot,
+  timeSlots,
 } from "@/lib/calendar";
 
 describe("calendar — toISO / parseISO", () => {
@@ -222,5 +223,31 @@ describe("calendar — formatSlot", () => {
 
   it("rend tel quel un texte libre hérité", () => {
     expect(formatSlot("demain matin", "fr")).toBe("demain matin");
+  });
+});
+
+describe("calendar — timeSlots (grille d'heures du sélecteur)", () => {
+  it("couvre la journée entière par demi-heures", () => {
+    const s = timeSlots();
+    expect(s).toHaveLength(48);
+    expect(s[0]).toBe("00:00");
+    expect(s[1]).toBe("00:30");
+    expect(s[47]).toBe("23:30");
+  });
+
+  it("insère à sa place une heure retenue hors grille", () => {
+    const s = timeSlots(30, "04:35");
+    expect(s).toHaveLength(49);
+    expect(s.indexOf("04:35")).toBe(s.indexOf("04:30") + 1);
+  });
+
+  it("ignore une heure illisible ou déjà présente", () => {
+    expect(timeSlots(30, "4h")).toHaveLength(48);
+    expect(timeSlots(30, "08:00")).toHaveLength(48);
+  });
+
+  it("borne un pas absurde", () => {
+    expect(timeSlots(0)).toHaveLength(288); // 5 min
+    expect(timeSlots(60)).toHaveLength(24);
   });
 });

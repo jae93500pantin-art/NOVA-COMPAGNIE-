@@ -44,8 +44,10 @@ export function Footer() {
     <footer className="relative mt-24 border-t border-white/5 bg-ink-950">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-royal-500/40 to-transparent" />
       <div className="mx-auto max-w-7xl px-5 py-16 lg:px-8">
-        <div className="grid gap-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
-          <div>
+        {/* Mobile : deux colonnes de liens sous le bloc marque, au lieu de
+            quatre sections empilées qui doublaient la hauteur du pied. */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-10 lg:grid-cols-[1.4fr_1fr_1fr_1fr] lg:gap-12">
+          <div className="col-span-2 lg:col-span-1">
             <Link href="/" className="flex items-center gap-2.5">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-royal-400 to-royal-600 shadow-glow">
                 <Sparkles className="h-4 w-4 text-white" />
@@ -60,10 +62,10 @@ export function Footer() {
 
             {/* Les coordonnées sur chaque page, pas seulement sur /contact :
                 c'est le canal unique du support comme des demandes RGPD. */}
-            <div className="mt-5 space-y-2">
+            <div className="mt-5 space-y-1">
               <a
                 href={`mailto:${CONTACT_EMAIL}`}
-                className="flex items-center gap-2 text-sm text-white/50 transition hover:text-white"
+                className="flex min-h-10 items-center gap-2 text-sm text-white/50 transition hover:text-white"
               >
                 <Mail className="h-3.5 w-3.5 shrink-0" />
                 <span className="break-all">{CONTACT_EMAIL}</span>
@@ -75,7 +77,7 @@ export function Footer() {
                 href={whatsappUrl()}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-white/50 transition hover:text-white"
+                className="flex min-h-10 items-center gap-2 text-sm text-white/50 transition hover:text-white"
               >
                 <MessageCircle className="h-3.5 w-3.5 shrink-0" />
                 WhatsApp {CONTACT_PHONE_DISPLAY}
@@ -90,12 +92,12 @@ export function Footer() {
           {groups.map((g) => (
             <div key={g.title}>
               <h4 className="text-sm font-semibold text-white">{g.title}</h4>
-              <ul className="mt-4 space-y-3">
+              <ul className="mt-3 space-y-0.5 lg:mt-4 lg:space-y-1">
                 {g.links.map((l) => (
                   <li key={l.label}>
                     <Link
                       href={l.href}
-                      className="text-sm text-white/50 transition hover:text-white"
+                      className="inline-flex min-h-10 items-center text-sm text-white/50 transition hover:text-white lg:min-h-0 lg:py-1"
                     >
                       {l.label}
                     </Link>
@@ -108,16 +110,16 @@ export function Footer() {
 
         <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-white/5 pt-8 text-xs text-white/40 sm:flex-row">
           <p>© {new Date().getFullYear()} Nova Compagnie · www.novacompagnie.com — {t("footer.copyright")}</p>
-          <div className="flex flex-wrap items-center justify-center gap-6">
-            <Link href="/legal/confidentialite" className="hover:text-white/70">{t("footer.privacy")}</Link>
-            <Link href="/legal/conditions" className="hover:text-white/70">{t("footer.terms")}</Link>
-            <Link href="/legal/cookies" className="hover:text-white/70">{t("footer.cookies")}</Link>
-            <Link href="/legal/mentions-legales" className="hover:text-white/70">{t("footer.legal")}</Link>
+          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 sm:gap-6">
+            <Link href="/legal/confidentialite" className="inline-flex min-h-10 items-center hover:text-white/70 sm:min-h-0">{t("footer.privacy")}</Link>
+            <Link href="/legal/conditions" className="inline-flex min-h-10 items-center hover:text-white/70 sm:min-h-0">{t("footer.terms")}</Link>
+            <Link href="/legal/cookies" className="inline-flex min-h-10 items-center hover:text-white/70 sm:min-h-0">{t("footer.cookies")}</Link>
+            <Link href="/legal/mentions-legales" className="inline-flex min-h-10 items-center hover:text-white/70 sm:min-h-0">{t("footer.legal")}</Link>
             {/* Accès interne. Discret mais non caché : l'URL n'est pas un
                 secret, c'est `requireAdmin()` qui protège la console. */}
             <Link
               href="/admin/login"
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1 text-white/35 transition hover:border-royal-400/30 hover:text-royal-300"
+              className="mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-full border border-white/10 px-4 py-1 text-white/35 sm:mt-0 sm:min-h-0 sm:px-3 transition hover:border-royal-400/30 hover:text-royal-300"
             >
               <ShieldCheck className="h-3 w-3" />
               {t("footer.admin")}

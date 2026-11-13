@@ -81,8 +81,10 @@ body {
     @apply bg-white/[0.07] backdrop-blur-2xl border border-white/[0.12];
   }
 
+  /* `coarse:min-h-12` : 48 px au doigt (WCAG 2.5.5 / Material), inchangé à
+     la souris. Couvre d'un coup tous les btn-primary/ghost/white du site. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-full font-medium transition-all duration-300 ease-out select-none active:scale-[0.97];
+    @apply inline-flex items-center justify-center gap-2 rounded-full font-medium transition-all duration-300 ease-out select-none active:scale-[0.97] coarse:min-h-12;
   }
   .btn-primary {
     @apply btn bg-white text-ink-950 px-6 py-3 hover:bg-white/90 shadow-card hover:-translate-y-0.5 active:translate-y-0;
@@ -99,7 +101,7 @@ body {
   }
 
   .input {
-    @apply w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-sm text-white placeholder:text-white/30 outline-none transition focus:border-royal-400/60 focus:bg-white/[0.06] focus:ring-2 focus:ring-royal-500/20;
+    @apply w-full rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-sm text-white placeholder:text-white/30 outline-none transition focus:border-royal-400/60 focus:bg-white/[0.06] focus:ring-2 focus:ring-royal-500/20 coarse:min-h-12;
   }
 
   .section-eyebrow {
@@ -152,8 +154,10 @@ body {
 /*
  * Prevent iOS Safari from auto-zooming when focusing form fields.
  * Fields stay visually compact on desktop but use a 16px base on phones.
+ * ⚠️ `pointer: coarse` en plus de la largeur : Safari iPad zoome lui aussi
+ * sur un champ sous 16 px, et un iPad dépasse 640 px.
  */
-@media (max-width: 640px) {
+@media (max-width: 640px), (pointer: coarse) {
   input,
   select,
   textarea {

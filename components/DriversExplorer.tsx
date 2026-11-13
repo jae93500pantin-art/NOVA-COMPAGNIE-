@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import { MessageCircle, Plane, Search, SlidersHorizontal, X } from "lucide-react";
 import { motion } from "framer-motion";
@@ -76,6 +82,24 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   /**
+   * Réactivité des filtres. Un clic (pastille, ville, interrupteur) passe en
+   * transition : le recalcul de la liste et le rendu des cartes animées ne
+   * bloquent plus le fil principal, et un second clic interrompt le premier
+   * au lieu d'attendre derrière lui. Les champs contrôlés
+   * (recherche, menus) ne peuvent pas être mis en transition sans faire
+   * sauter le curseur : on diffère donc leur VALEUR, pas leur saisie.
+   */
+  const [isPending, startTransition] = useTransition();
+  const deferredQuery = useDeferredValue(query);
+  const deferredTransfer = useDeferredValue(transfer);
+  const deferredSort = useDeferredValue(sort);
+  const stale =
+    isPending ||
+    deferredQuery !== query ||
+    deferredTransfer !== transfer ||
+    deferredSort !== sort;
+
+  /**
    * Drivers merged with their own saved settings, so a transfer destination
    * ticked/unticked in the driver profile changes this listing without a
    * reload. Runs after mount — localStorage is client-only.
@@ -112,9 +136,9 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
   /** Nobody ticked this destination → the transfer booking must stop here. */
   const transferUnserved = useMemo(
     () =>
-      isKnownTransferDestination(transfer) &&
-      !pool.some((d) => driverServesTransferDestination(d, transfer)),
-    [pool, transfer]
+      isKnownTransferDestination(deferredTransfer) &&
+      !pool.some((d) => driverServesTransferDestination(d, deferredTransfer)),
+    [pool, deferredTransfer]
   );
 
   const filtered = useMemo(() => {
@@ -122,7 +146,7 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
       if (city !== "all" && d.cityId !== city) return false;
       if (category !== "Tous" && !d.categories.includes(category as VehicleCategory))
         return false;
-      if (!driverServesTransferDestination(d, transfer)) return false;
+      if (!driverServesTransferDestination(d, deferredTransfer)) return false;
       if (!driverHasTransferVehicle(d, vehicle)) return false;
       if (onlyAvailable && !d.available) return false;
       // ⚠️ `scheduleOf` retombe sur DEFAULT_SCHEDULE (aucune contrainte) pour un
@@ -134,8 +158,8 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
         !isWithinScheduleRange(scheduleOf(d), slotDate, slotEnd, slotTime)
       )
         return false;
-      if (query) {
-        const q = query.toLowerCase();
+      if (deferredQuery) {
+        const q = deferredQuery.toLowerCase();
         const hay =
           `${d.firstName} ${d.lastName} ${d.car.make} ${d.car.model}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -149,12 +173,12 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
       // repondent tout de suite. (Le filtre « Disponibles uniquement » reste
       // là pour qui ne veut vraiment qu'eux.)
       if (a.available !== b.available) return a.available ? -1 : 1;
-      if (sort === "experience") return b.experienceYears - a.experienceYears;
+      if (deferredSort === "experience") return b.experienceYears - a.experienceYears;
       // Le tri porte sur le TARIF CHAUFFEUR affiche sur la carte. Trier sur le
       // total client donnerait exactement le meme ordre (les 5 pourcent sont
       // proportionnels) tout en obligeant a recalculer a chaque comparaison.
-      if (sort === "priceAsc") return a.pricePerHour - b.pricePerHour;
-      if (sort === "priceDesc") return b.pricePerHour - a.pricePerHour;
+      if (deferredSort === "priceAsc") return a.pricePerHour - b.pricePerHour;
+      if (deferredSort === "priceDesc") return b.pricePerHour - a.pricePerHour;
       return 0;
     });
     return list;
@@ -162,14 +186,14 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
     pool,
     city,
     category,
-    transfer,
+    deferredTransfer,
     vehicle,
-    query,
+    deferredQuery,
     onlyAvailable,
     slotDate,
     slotEnd,
     slotTime,
-    sort,
+    deferredSort,
   ]);
 
   return (
@@ -217,7 +241,7 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
           <div className="space-y-1">
             <FilterRow
               active={city === "all"}
-              onClick={() => setCity("all")}
+              onClick={() => startTransition(() => setCity("all"))}
               label={t("drivers.allCities")}
               count={drivers.length}
             />
@@ -225,7 +249,7 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
               <FilterRow
                 key={c.id}
                 active={city === c.id}
-                onClick={() => setCity(c.id)}
+                onClick={() => startTransition(() => setCity(c.id))}
                 label={c.name}
                 count={drivers.filter((d) => d.cityId === c.id).length}
               />
@@ -271,7 +295,7 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
                 setSlotEnd("");
                 setSlotTime("");
               }}
-              className="flex w-full items-center justify-between rounded-xl border border-royal-400/50 bg-royal-500/20 px-3 py-2 text-sm text-white transition hover:bg-royal-500/30"
+              className="flex w-full items-center justify-between rounded-xl border border-royal-400/50 bg-royal-500/20 px-3 py-2 text-sm text-white transition coarse:min-h-12 hover:bg-royal-500/30"
             >
               <span>{slotLabel}</span>
               <X className="h-3.5 w-3.5 text-white/60" />
@@ -291,7 +315,7 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
             </p>
             <button
               onClick={() => setVehicle("")}
-              className="flex w-full items-center justify-between rounded-xl border border-royal-400/50 bg-royal-500/20 px-3 py-2 text-sm text-white transition hover:bg-royal-500/30"
+              className="flex w-full items-center justify-between rounded-xl border border-royal-400/50 bg-royal-500/20 px-3 py-2 text-sm text-white transition coarse:min-h-12 hover:bg-royal-500/30"
             >
               <span>{t(`transfer.${getVehicle(vehicle)?.labelKey}`)}</span>
               <X className="h-3.5 w-3.5 text-white/60" />
@@ -307,9 +331,9 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
             {categories.map((c) => (
               <button
                 key={c}
-                onClick={() => setCategory(c)}
+                onClick={() => startTransition(() => setCategory(c))}
                 className={cn(
-                  "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition coarse:min-h-12 coarse:px-4 coarse:text-sm",
                   category === c
                     ? "border-royal-400/50 bg-royal-500/20 text-white"
                     : "border-white/10 text-white/60 hover:bg-white/5"
@@ -321,10 +345,19 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
           </div>
         </div>
 
-        <label className="flex cursor-pointer items-center justify-between rounded-xl bg-white/[0.03] px-4 py-3">
+        {/* Toute la ligne est la cible (48 px au doigt), pas la seule pilule
+            de 24 px : l'ancien <label> n'était relié à aucun champ, donc
+            toucher le texte ne faisait rien. */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={onlyAvailable}
+          onClick={() => startTransition(() => setOnlyAvailable((v) => !v))}
+          className="flex w-full min-h-12 items-center justify-between rounded-xl bg-white/[0.03] px-4 py-3 text-left"
+        >
           <span className="text-sm text-white/70">{t("drivers.availableOnly")}</span>
           <span
-            onClick={() => setOnlyAvailable((v) => !v)}
+            aria-hidden
             className={cn(
               "relative h-6 w-11 rounded-full transition",
               onlyAvailable ? "bg-royal-500" : "bg-white/10"
@@ -337,7 +370,7 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
               )}
             />
           </span>
-        </label>
+        </button>
       </aside>
 
       {/* Results */}
@@ -350,7 +383,7 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value)}
-            className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white outline-none [&>option]:text-ink-900"
+            className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white outline-none coarse:min-h-12 [&>option]:text-ink-900"
           >
             <option value="experience">{t("drivers.sortExperience")}</option>
             <option value="priceAsc">{t("drivers.sortPriceAsc")}</option>
@@ -431,7 +464,14 @@ export function DriversExplorer({ drivers = [] }: { drivers?: Driver[] }) {
             )}
           </motion.div>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+          // Pendant la transition, l'ancienne liste reste affichée, atténuée :
+          // le clic est pris en compte à l'œil sans attendre le nouveau rendu.
+          <div
+            className={cn(
+              "grid gap-6 transition-opacity sm:grid-cols-2 xl:grid-cols-3",
+              stale && "opacity-60"
+            )}
+          >
             {filtered.map((d, i) => (
               <DriverCard key={d.id} driver={d} index={i} />
             ))}
@@ -457,7 +497,7 @@ function FilterRow({
     <button
       onClick={onClick}
       className={cn(
-        "flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition",
+        "flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition coarse:min-h-12",
         active ? "bg-white/[0.06] text-white" : "text-white/60 hover:bg-white/5"
       )}
     >

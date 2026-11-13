@@ -375,15 +375,18 @@ function EstField({
   label: string;
   children: React.ReactNode;
 }) {
+  // `<label>` et non `<div>`, comme le `Field` de SearchBar : toucher
+  // n'importe où dans la case ouvre le <select>, pas seulement sa ligne de
+  // texte (~23 px au doigt).
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-3 transition hover:border-white/10 hover:bg-white/[0.04]">
+    <label className="flex min-h-[60px] cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-3 transition hover:border-white/10 hover:bg-white/[0.04]">
       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/5">
         {icon}
       </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] uppercase tracking-wider text-white/40">{label}</p>
+      <span className="block min-w-0 flex-1">
+        <span className="block text-[11px] uppercase tracking-wider text-white/40">{label}</span>
         {children}
-      </div>
-    </div>
+      </span>
+    </label>
   );
 }

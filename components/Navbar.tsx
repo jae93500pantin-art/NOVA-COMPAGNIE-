@@ -114,7 +114,9 @@ export function Navbar() {
         className={cn(
           "mx-auto flex max-w-7xl items-center justify-between transition-all duration-500",
           scrolled
-            ? "mx-3 mt-3 rounded-2xl glass-strong px-4 py-2.5 shadow-card lg:mx-auto lg:px-6"
+            ? // `max-md:bg-ink-950/80` : sur téléphone le texte défilant
+              // restait lisible SOUS le logo à travers le verre (7 % de blanc).
+              "mx-3 mt-3 rounded-2xl glass-strong px-4 py-2.5 shadow-card max-md:bg-ink-950/80 lg:mx-auto lg:px-6"
             : "px-5 py-4 lg:px-8"
         )}
       >
@@ -231,7 +233,7 @@ export function Navbar() {
 
         <button
           onClick={() => setOpen((o) => !o)}
-          className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 text-white md:hidden"
+          className="grid h-12 w-12 place-items-center rounded-xl border border-white/10 text-white md:hidden"
           aria-label="Menu"
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -244,7 +246,9 @@ export function Navbar() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="mx-3 mt-2 overflow-hidden rounded-2xl glass-strong p-4 md:hidden"
+            // Fond quasi opaque, pas `glass-strong` (7 % de blanc) : le titre
+            // de l'accueil se lisait à travers les liens du menu.
+            className="mx-3 mt-2 max-h-[calc(100dvh-6rem)] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-ink-950/95 p-4 shadow-card backdrop-blur-2xl md:hidden"
           >
             {user && (
               <div className="mb-3 flex items-center gap-3 rounded-xl bg-white/[0.04] p-3">
@@ -263,7 +267,7 @@ export function Navbar() {
               {user && (
                 <Link
                   href="/compte"
-                  className="flex items-center gap-2.5 rounded-xl px-4 py-3 text-sm text-white/80 transition hover:bg-white/5"
+                  className="flex min-h-12 items-center gap-2.5 rounded-xl px-4 py-3 text-sm text-white/80 transition hover:bg-white/5"
                 >
                   <LayoutDashboard className="h-4 w-4" /> {t("nav.account")}
                 </Link>
@@ -273,7 +277,7 @@ export function Navbar() {
                   key={l.href}
                   href={l.href}
                   className={cn(
-                    "rounded-xl px-4 py-3 text-sm transition",
+                    "flex min-h-12 items-center rounded-xl px-4 py-3 text-sm transition",
                     l.cta
                       ? "mt-1 border border-royal-400/40 text-royal-200 hover:bg-royal-500/10"
                       : "text-white/80 hover:bg-white/5"

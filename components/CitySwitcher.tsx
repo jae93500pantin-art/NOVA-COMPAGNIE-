@@ -57,7 +57,7 @@ export function CitySwitcher({ className }: { className?: string }) {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
+        className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-sm text-white/70 transition hover:bg-white/5 hover:text-white coarse:min-h-12 coarse:px-4"
       >
         <MapPin className="h-4 w-4 text-royal-400" />
         <span className="font-medium">{current?.name}</span>
