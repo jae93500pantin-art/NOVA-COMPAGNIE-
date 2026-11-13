@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { avatarFromMetadata, nameFromMetadata } from "@/lib/identity";
 import { safeReturnPath } from "@/lib/validation";
+import { publicOrigin } from "@/lib/publicOrigin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,12 +21,8 @@ export const runtime = "nodejs";
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  // Behind the Azure reverse proxy the request URL is http://internal-host.
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-  const origin = forwardedHost
-    ? `${forwardedProto ?? "https"}://${forwardedHost}`
-    : url.origin;
+  // Derrière un proxy (Caddy, Render), l'URL de la requête est l'hôte interne.
+  const origin = publicOrigin(request);
 
   const next = safeReturnPath(url.searchParams.get("next"));
   const fail = (message: string) =>

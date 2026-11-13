@@ -63,19 +63,24 @@ export const ADDRESS = "3 place Jean Giraudoux, 94000 Créteil, France";
 /* -------------------------------------------------------------------------- */
 
 /**
- * ⚠️ L'hébergeur réel est **Microsoft Azure**, pas Vercel ni Cloudflare.
+ * ⚠️ L'hébergeur réel est **Render** (depuis le 2026-11-13), plus Azure.
  *
- * `deploy.sh` déploie sur une machine virtuelle Azure (`az vm`, groupe de
- * ressources `rg-nova`, machine `vm-nova`) jointe en SSH. Nommer un hébergeur
- * qui n'héberge pas prive la mention de son seul usage : permettre à un tiers
- * de s'adresser à qui détient réellement les contenus.
+ * Le site est servi par un service web Render décrit dans `render.yaml`
+ * (région Francfort), déployé à chaque push sur `main`. L'ancienne machine
+ * virtuelle Azure (`vm-nova`) dépendait d'un compte Microsoft auquel le
+ * propriétaire n'a plus accès. Nommer un hébergeur qui n'héberge pas prive la
+ * mention de son seul usage : permettre à un tiers de s'adresser à qui détient
+ * réellement les contenus.
  *
- * Microsoft Ireland Operations Limited est l'entité contractante de Microsoft
- * pour les services en ligne dans l'Espace économique européen.
+ * ⚠️ L'ADRESSE EST À CONFIRMER : Render ne la publie sur aucune page officielle
+ * consultée le 2026-11-13 (CGU, DPA, confidentialité ne citent que « Render
+ * Inc. »). Celle-ci est celle que reprennent de nombreuses mentions légales
+ * de sites hébergés chez Render ; à vérifier dans le contrat (render.com/terms,
+ * ou legal@render.com) et à corriger ici si elle diffère.
  */
-export const HOST_NAME = "Microsoft Azure — Microsoft Ireland Operations Limited";
+export const HOST_NAME = "Render Services, Inc.";
 export const HOST_ADDRESS =
-  "One Microsoft Place, South County Business Park, Leopardstown, Dublin 18, D18 P521, Irlande";
+  "525 Brannan Street, Suite 300, San Francisco, CA 94107, États-Unis";
 
 /* -------------------------------------------------------------------------- */
 /*  Contrôle                                                                  */

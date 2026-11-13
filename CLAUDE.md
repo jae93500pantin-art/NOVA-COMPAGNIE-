@@ -1090,6 +1090,26 @@ faux pour un client cherchant à qui s'adresser.
 
 ## Deployment workflow
 
+⚠️ **Hébergement : Render, depuis le 2026-11-13** (`render.yaml`, service web
+Node, région Francfort, offre Starter). **Un push sur `main` du remote `nova`
+déploie** — plus de `deploy.sh`. Raisons : le compte Microsoft de la VM Azure
+est inaccessible au propriétaire, et la VM répondait en **7,2 s** sur toute
+page qui lit Supabase (contre 0,15 s ailleurs avec le même code — panne réseau
+de la VM, jamais diagnostiquée faute d'accès).
+
+- **Pourquoi Render et pas Vercel** : un serveur Node permanent garde
+  `rateLimit` (mémoire du processus) efficace, et accepte les pièces de 8 Mo
+  (`/api/driver/documents`) — Vercel plafonne le corps d'une requête à 4,5 Mo.
+- Clés : saisies dans le tableau de bord Render (`sync: false`), jamais dans
+  le dépôt. ⚠️ `NEXT_PUBLIC_*` figées au build : en changer une = redéployer.
+- `lib/publicOrigin.ts` reconstruit l'adresse publique derrière le proxy
+  (`x-forwarded-host` → `Host` → URL) pour le lien du mot de passe oublié.
+- Mentions légales : `HOST_NAME` / `HOST_ADDRESS` (`lib/legalEntity.ts`)
+  nomment Render. ⚠️ L'adresse de Render est **à confirmer** (aucune page
+  officielle ne la publie).
+
+### Ancien déploiement (VM Azure) — conservé pour mémoire
+
 - Local dev → `./deploy.sh` (build locally first; aborts if it fails). The script also
   **starts the VM if it's deallocated**, ships a tarball, runs `npm ci && npm run build`
   on the VM, restarts the `lumecar` service, and curls the HTTPS URL to confirm.

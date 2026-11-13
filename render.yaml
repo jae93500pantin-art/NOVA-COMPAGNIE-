@@ -1,0 +1,48 @@
+# Render Blueprint — hébergement de Nova Compagnie.
+#
+# Un seul service web Node qui fait exactement ce que faisait la VM Azure :
+# `next build` puis `next start`. Aucun changement de code nécessaire —
+# un serveur permanent garde les compteurs anti-spam en mémoire (`rateLimit`)
+# et accepte les pièces de 8 Mo des chauffeurs.
+#
+# Déploiement : automatique à chaque push sur `main` (remote `nova`).
+#
+# ⚠️ Les clés ne sont JAMAIS écrites ici : `sync: false` fait demander leur
+# valeur dans le tableau de bord Render à la création du Blueprint.
+# ⚠️ Les `NEXT_PUBLIC_*` sont figées dans le bundle AU BUILD : une valeur
+# ajoutée ou changée après coup exige un nouveau déploiement
+# (« Manual Deploy → Clear build cache & deploy »), sinon le site reste en
+# mode démo sans la moindre erreur.
+
+services:
+  - type: web
+    name: nova-compagnie
+    runtime: node
+    # Francfort : la région Render la plus proche de Paris et de Supabase (UE).
+    region: frankfurt
+    # Starter : instance permanente (l'offre gratuite s'endort après 15 min,
+    # et le premier visiteur attend alors ~1 min).
+    plan: starter
+    branch: main
+    autoDeploy: true
+    buildCommand: npm ci && npm run build
+    # `next start` lit la variable PORT que Render fournit.
+    startCommand: npm start
+    # Page statique, sans base de données : un incident Supabase ne doit pas
+    # faire croire à Render que le site est mort et le redémarrer en boucle.
+    healthCheckPath: /legal/mentions-legales
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false

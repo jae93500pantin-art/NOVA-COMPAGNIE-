@@ -31,11 +31,12 @@ describe("identité de l'éditeur", () => {
   });
 
   it("nomme l'hébergeur RÉEL, pas un hébergeur plausible", () => {
-    // `deploy.sh` déploie sur une machine virtuelle Azure. Nommer Vercel ou
-    // Cloudflare priverait la mention de son seul usage : permettre de
-    // s'adresser à qui détient réellement les contenus.
-    expect(HOST_NAME).toMatch(/azure|microsoft/i);
-    expect(HOST_NAME).not.toMatch(/vercel|cloudflare|netlify/i);
+    // Le site est servi par Render (`render.yaml`) depuis le 2026-11-13.
+    // Nommer un autre hébergeur — y compris l'ancien, Azure — priverait la
+    // mention de son seul usage : permettre de s'adresser à qui détient
+    // réellement les contenus. Changer d'hébergeur = changer ce test.
+    expect(HOST_NAME).toMatch(/render/i);
+    expect(HOST_NAME).not.toMatch(/azure|microsoft|vercel|cloudflare|netlify/i);
   });
 });
 

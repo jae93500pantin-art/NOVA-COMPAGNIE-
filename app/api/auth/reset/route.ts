@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { rateLimit, RECOVERY_PATH } from "@/lib/validation";
 import { emailError, normalizeEmail } from "@/lib/authValidation";
+import { publicOrigin } from "@/lib/publicOrigin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -46,12 +47,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "auth.errors.unconfigured" }, { status: 503 });
   }
 
-  // Behind the Azure reverse proxy the request URL is the internal host.
-  const forwardedHost = req.headers.get("x-forwarded-host");
-  const forwardedProto = req.headers.get("x-forwarded-proto");
-  const origin = forwardedHost
-    ? `${forwardedProto ?? "https"}://${forwardedHost}`
-    : new URL(req.url).origin;
+  // Derrière un proxy (Caddy, Render), l'URL de la requête est l'hôte interne.
+  const origin = publicOrigin(req);
 
   // The link goes through /auth/callback, which exchanges the one-time code for
   // a session cookie before handing over to the new-password form.
