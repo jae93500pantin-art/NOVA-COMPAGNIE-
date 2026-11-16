@@ -1091,7 +1091,7 @@ faux pour un client cherchant à qui s'adresser.
 ## Deployment workflow
 
 ⚠️ **Hébergement : Render, depuis le 2026-11-13** (`render.yaml`, service web
-Node, région Francfort prévue — **Oregon en réalité**, voir § État réel —, offre Starter). **Un push sur `main` du remote `nova`
+Node, région Francfort, offre Starter). **Un push sur `main` du remote `nova`
 déploie** — plus de `deploy.sh`. Raisons : le compte Microsoft de la VM Azure
 est inaccessible au propriétaire, et la VM répondait en **7,2 s** sur toute
 page qui lit Supabase (contre 0,15 s ailleurs avec le même code — panne réseau
@@ -1113,7 +1113,11 @@ de la VM, jamais diagnostiquée faute d'accès).
 - **`https://novacompagnie.com` est servi par Render** (certificat Google
   Trust Services, renouvelé par Render). Le domaine **nu** est l'adresse
   canonique : `www` et `http://` répondent 301 vers lui.
-- ⚠️ **Le service réel ne suit pas `render.yaml`** : il s'appelle
+- ✅ **Bascule vers Francfort faite le 2026-11-16** : service Blueprint
+  `nova-compagnie` (`nova-compagnie-6dkp.onrender.com`), `/drivers` ≈ 0,2 s.
+  L'ancien service `NOVA-COMPAGNIE-` (Oregon, dans « My project ») n'a plus
+  de domaine et est à supprimer. Historique de ce qui précédait :
+- ⚠️ **Le premier service ne suivait pas `render.yaml`** : il s'appelle
   `NOVA-COMPAGNIE-` et tourne en **Oregon**, créé à la main et non par le
   Blueprint. Conséquence : une page qui lit Supabase (Irlande) traverse
   l'Atlantique — `/drivers` ≈ 1,2–1,5 s contre 0,25 s pour une page statique.
@@ -1121,7 +1125,7 @@ de la VM, jamais diagnostiquée faute d'accès).
   service par le Blueprint, y saisir les 5 clés, déplacer les Custom Domains,
   puis supprimer l'ancien.
 - **DNS chez OVH** (`dns106.ovh.net`) : `A @ → 216.24.57.1` et
-  `CNAME www → nova-compagnie.onrender.com.` ⚠️ Les lignes e-mail (MX,
+  `CNAME www → nova-compagnie-6dkp.onrender.com.` ⚠️ Les lignes e-mail (MX,
   `send`, `rsend`, `resend._domainkey`, `_dmarc`, `ovhmo-selector-*`) ne se
   touchent pas, et les TXT `1|www…` / `3|welcome` d'une redirection OVH
   bloquent l'ajout du CNAME `www` : à supprimer s'ils reviennent.
