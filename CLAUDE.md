@@ -98,7 +98,7 @@ lu que côté serveur (`requireAdmin`). C'est délibéré : le navigateur n'auto
 rien, et un `isAdmin` côté client n'aurait servi qu'à afficher un lien.
 
 - Dev binds `0.0.0.0` so other devices on the LAN can connect.
-  iPhone Safari on the same Wi-Fi: **http://192.168.1.192:3000** (Mac LAN IP).
+  iPhone Safari on the same Wi-Fi: `http://<IP LAN du poste>:3000` (192.168.1.192 était l'ancien Mac ; le poste actuel est un PC Windows).
 - ⚠️ **Do not run `npm run build` while `npm run dev` is running** — they share
   `.next/` and corrupt each other (causes `Cannot find module './vendor-chunks/*'`
   and 500s). Kill dev first, or `rm -rf .next` then restart dev.
@@ -1091,7 +1091,7 @@ faux pour un client cherchant à qui s'adresser.
 ## Deployment workflow
 
 ⚠️ **Hébergement : Render, depuis le 2026-11-13** (`render.yaml`, service web
-Node, région Francfort, offre Starter). **Un push sur `main` du remote `nova`
+Node, région Francfort prévue — **Oregon en réalité**, voir § État réel —, offre Starter). **Un push sur `main` du remote `nova`
 déploie** — plus de `deploy.sh`. Raisons : le compte Microsoft de la VM Azure
 est inaccessible au propriétaire, et la VM répondait en **7,2 s** sur toute
 page qui lit Supabase (contre 0,15 s ailleurs avec le même code — panne réseau
@@ -1107,6 +1107,29 @@ de la VM, jamais diagnostiquée faute d'accès).
 - Mentions légales : `HOST_NAME` / `HOST_ADDRESS` (`lib/legalEntity.ts`)
   nomment Render. ⚠️ L'adresse de Render est **à confirmer** (aucune page
   officielle ne la publie).
+
+### État réel en ligne (2026-11-16)
+
+- **`https://novacompagnie.com` est servi par Render** (certificat Google
+  Trust Services, renouvelé par Render). Le domaine **nu** est l'adresse
+  canonique : `www` et `http://` répondent 301 vers lui.
+- ⚠️ **Le service réel ne suit pas `render.yaml`** : il s'appelle
+  `NOVA-COMPAGNIE-` et tourne en **Oregon**, créé à la main et non par le
+  Blueprint. Conséquence : une page qui lit Supabase (Irlande) traverse
+  l'Atlantique — `/drivers` ≈ 1,2–1,5 s contre 0,25 s pour une page statique.
+  Render ne change pas la région d'un service : passer à Francfort = créer le
+  service par le Blueprint, y saisir les 5 clés, déplacer les Custom Domains,
+  puis supprimer l'ancien.
+- **DNS chez OVH** (`dns106.ovh.net`) : `A @ → 216.24.57.1` et
+  `CNAME www → nova-compagnie.onrender.com.` ⚠️ Les lignes e-mail (MX,
+  `send`, `rsend`, `resend._domainkey`, `_dmarc`, `ovhmo-selector-*`) ne se
+  touchent pas, et les TXT `1|www…` / `3|welcome` d'une redirection OVH
+  bloquent l'ajout du CNAME `www` : à supprimer s'ils reviennent.
+- **Supabase Auth** : `https://novacompagnie.com/**` doit figurer dans les
+  Redirect URLs (la liste ne portait que `www`), sinon le lien du mot de passe
+  oublié est refusé.
+- ⚠️ La VM Azure (`20.111.46.101`) ne reçoit plus de trafic mais n'a pas pu
+  être arrêtée : le compte Microsoft est perdu.
 
 ### Ancien déploiement (VM Azure) — conservé pour mémoire
 
