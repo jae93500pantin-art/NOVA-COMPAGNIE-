@@ -898,8 +898,20 @@ publique — la table porte nom, e-mail et téléphone de particuliers.
   = non communiqué, pas ramené au plafond). 0 s'écrit `NULL`.
   ⚠️ `profiles.min_rate` existe aussi en base mais **n'est lue nulle part** :
   son sens n'a jamais été défini. Ne pas l'afficher sans l'avoir défini.
-  ⚠️ La sauvegarde de `ProfileEditor` ne lit pas la réponse du serveur : la
-  validation du forfait doit donc bloquer CÔTÉ FORMULAIRE.
+  **Un forfait PAR AÉROPORT depuis le 2026-11-19** : `profiles.airport_flat_rates`
+  (jsonb `{cdg, ory, lbg}`, clé absente = pas de forfait), trois champs dans
+  `ProfileEditor`, une ligne par aéroport sur la fiche. `Driver.airportFlatRates`
+  remplace `airportFlatRate`. La recherche transfert lit le forfait de
+  l'aéroport du trajet (`airportRateIdOf` : destination, sinon départ) ; sans
+  aéroport précis, le plus bas des forfaits du chauffeur. `readAirportFlatRates`
+  (testé) re-borne à la lecture et fait valoir l'**ancien forfait unique pour
+  les trois aéroports** tant qu'aucun forfait par aéroport n'existe ; la route
+  le remet à `NULL` à chaque enregistrement. Lecture repliée sur trois jeux de
+  colonnes (42703). ⚠️ Migration `2026-11-19-forfaits-par-aeroport.sql`
+  **à lancer** dans l'éditeur SQL : avant elle, la fiche s'enregistre mais
+  les forfaits répondent 503 avec un message.
+  `ProfileEditor` **lit désormais la réponse du serveur** et affiche un refus
+  au lieu de « Profil validé ». La validation reste aussi côté formulaire.
 - **L'état vide nomme sa cause et propose une suite** (autre classe, autre
   destination, WhatsApp, annuaire complet) au lieu d'afficher « 0 chauffeur
   habilité ». ⚠️ Il distingue « personne ne dessert ce trajet » de « personne

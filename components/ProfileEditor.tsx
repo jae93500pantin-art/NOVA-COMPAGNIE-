@@ -22,9 +22,13 @@ import {
 import { useAuth } from "@/lib/auth";
 import type { VehicleCategory } from "@/lib/types";
 import {
+  AIRPORT_RATE_IDS,
+  AIRPORT_RATE_LABELS,
   acceptsAirportTransfers,
   transferDestinationsForOptIn,
   sanitizeTransferDestinationIds,
+  type AirportFlatRates,
+  type AirportRateId,
 } from "@/lib/transfer";
 import { springSnappy } from "@/lib/motion";
 import {
@@ -68,6 +72,8 @@ interface DriverProfileDto {
   schedule: WeeklySchedule | null;
 }
 
+const EMPTY_FLAT_RATES: Record<AirportRateId, string> = { cdg: "", ory: "", lbg: "" };
+
 const CATEGORIES: VehicleCategory[] = [
   "Business",
   "Moto",
@@ -101,9 +107,11 @@ export function ProfileEditor() {
   // Rates are typed as text so the field can be emptied while editing.
   const [hourRate, setHourRate] = useState("");
   const [dayRate, setDayRate] = useState("");
-  /** Forfait transfert aéroport — facultatif, et fixé par le chauffeur. */
-  const [flatRate, setFlatRate] = useState("");
-  const [loadedFlatRate, setLoadedFlatRate] = useState(0);
+  /** Forfaits transfert aéroport, un par aéroport — facultatifs, fixés par le chauffeur. */
+  const [flatRates, setFlatRates] = useState<Record<AirportRateId, string>>(EMPTY_FLAT_RATES);
+  const [loadedFlatRates, setLoadedFlatRates] = useState<AirportFlatRates>({});
+  /** Refus renvoyé par le serveur à l'enregistrement. */
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -136,7 +144,7 @@ export function ProfileEditor() {
       .then((data) => {
         if (cancelled) return;
         setDriverProfile((data?.profile as DriverProfileDto) ?? null);
-        setLoadedFlatRate(Number(data?.airportFlatRate) || 0);
+        setLoadedFlatRates((data?.airportFlatRates as AirportFlatRates) ?? {});
         setProfileLoaded(true);
       })
       .catch(() => !cancelled && setProfileLoaded(true));
@@ -190,7 +198,11 @@ export function ProfileEditor() {
     // chauffeur saisit le sien, c'est la condition pour paraître à l'annuaire.
     setHourRate(rateValue(p?.price_per_hour ?? o.pricePerHour));
     setDayRate(rateValue(p?.price_per_day ?? o.pricePerDay));
-    setFlatRate(rateValue(loadedFlatRate));
+    setFlatRates({
+      cdg: rateValue(loadedFlatRates.cdg),
+      ory: rateValue(loadedFlatRates.ory),
+      lbg: rateValue(loadedFlatRates.lbg),
+    });
     setCnapsVerified(p?.cnaps_verified === true);
     setCarMake(p?.car_make ?? o.car?.make ?? "");
     setCarModel(p?.car_model ?? o.car?.model ?? "");
@@ -201,7 +213,7 @@ export function ProfileEditor() {
         ? p.car_photos
         : o.carPhotos ?? []
     );
-  }, [user, isDriver, profileLoaded, driverProfile, publicSlug, loadedFlatRate]);
+  }, [user, isDriver, profileLoaded, driverProfile, publicSlug, loadedFlatRates]);
 
   // ⚠️ Changer de gamme ne touche plus aux tarifs. L'ancien effet les recalait
   // dans la bande de la nouvelle classe : passer de Luxury à Business écrasait
@@ -215,7 +227,7 @@ export function ProfileEditor() {
     );
   }
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     // An out-of-band rate blocks the whole save: a half-saved profile whose
     // price silently reverted is worse than a refusal.
@@ -224,13 +236,17 @@ export function ProfileEditor() {
       return;
     }
     setRateBlocked(false);
+    setSaveError(null);
     setSaving(true);
     // Persist identity on the session.
     updateProfile({ firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim() });
     // La fiche publique part au serveur, qui reclampe les tarifs et refuse
     // tout ce qui n'appartient pas au chauffeur (slug, statut).
+    // ⚠️ Sa réponse est LUE : un refus doit s'afficher, pas se perdre derrière
+    // un « Profil validé ».
+    let serverError: string | null = null;
     if (isDriver) {
-      void fetch("/api/driver/profile", {
+      serverError = await fetch("/api/driver/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -240,8 +256,8 @@ export function ProfileEditor() {
           acceptsTransfers: transfers,
           pricePerHour: hourValue,
           pricePerDay: dayValue,
-          // 0 = « je n'annonce pas de forfait » : le serveur écrit NULL.
-          airportFlatRate: flatValue,
+          // Vide = « je n'annonce pas de forfait pour cet aéroport ».
+          airportFlatRates: flatValues,
           carMake: carMake.trim(),
           carModel: carModel.trim(),
           carYear,
@@ -249,10 +265,17 @@ export function ProfileEditor() {
           carPhotos: photos,
           schedule: sanitizeSchedule(schedule),
         }),
-      }).catch(() => {
-        // Hors ligne ou base absente : la copie locale ci-dessous prend le
-        // relais, la saisie n'est pas perdue.
-      });
+      })
+        .then(async (res) => {
+          if (res.ok) return null;
+          const data = (await res.json().catch(() => null)) as { error?: string } | null;
+          return data?.error ?? "Enregistrement impossible. Réessayez.";
+        })
+        .catch(() => {
+          // Hors ligne : la copie locale ci-dessous prend le relais, la
+          // saisie n'est pas perdue.
+          return null;
+        });
     }
 
     // Copie locale : repli du mode démo (aucune clé) et de la navigation hors
@@ -290,6 +313,11 @@ export function ProfileEditor() {
         );
       }
     }
+    if (serverError) {
+      setSaving(false);
+      setSaveError(serverError);
+      return;
+    }
     setTimeout(() => {
       setSaving(false);
       setSaved(true);
@@ -322,10 +350,20 @@ export function ProfileEditor() {
   const hourError = rateError("hour", hourValue);
   const dayError = rateError("day", dayValue);
   const flatBounds = boundsFor("transfer");
-  const flatValue = flatRate.trim() === "" ? 0 : Number.parseFloat(flatRate);
-  // ⚠️ Bloque l'envoi côté formulaire : la sauvegarde ne lit pas la réponse
-  // du serveur, un refus 400 y passerait inaperçu.
-  const flatError = optionalRateError("transfer", flatValue);
+  const flatValues = Object.fromEntries(
+    AIRPORT_RATE_IDS.map((id) => [
+      id,
+      flatRates[id].trim() === "" ? 0 : Number.parseFloat(flatRates[id]),
+    ])
+  ) as Record<AirportRateId, number>;
+  const flatErrors = Object.fromEntries(
+    AIRPORT_RATE_IDS.map((id) => [id, optionalRateError("transfer", flatValues[id])])
+  ) as Record<AirportRateId, string | null>;
+  // Bloque l'envoi côté formulaire, avant même que le serveur ne refuse.
+  const flatErrorId = AIRPORT_RATE_IDS.find((id) => flatErrors[id]);
+  const flatError = flatErrorId
+    ? `${AIRPORT_RATE_LABELS[flatErrorId]} : ${flatErrors[flatErrorId]}`
+    : null;
 
   const patchDay = (i: number, patch: Partial<DaySchedule>) =>
     setSchedule((prev) =>
@@ -756,20 +794,31 @@ export function ProfileEditor() {
                     conseillé par la plateforme (règle 3 du statut d'annuaire). */}
                 {transfers && (
                   <div className="mt-3">
-                    <RateInput
-                      label="Forfait transfert aéroport TTC (facultatif)"
-                      suffix="€"
-                      value={flatRate}
-                      min={flatBounds.min}
-                      max={flatBounds.max}
-                      error={flatError}
-                      onChange={setFlatRate}
-                    />
+                    <p className="mb-2 text-xs font-medium text-white/70">
+                      Forfaits transfert aéroport TTC (facultatifs)
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {AIRPORT_RATE_IDS.map((id) => (
+                        <RateInput
+                          key={id}
+                          label={AIRPORT_RATE_LABELS[id]}
+                          suffix="€"
+                          value={flatRates[id]}
+                          min={flatBounds.min}
+                          max={flatBounds.max}
+                          error={flatErrors[id]}
+                          onChange={(v) =>
+                            setFlatRates((prev) => ({ ...prev, [id]: v }))
+                          }
+                        />
+                      ))}
+                    </div>
                     <p className="mt-2 text-[11px] leading-relaxed text-white/40">
                       Le prix à partir duquel vous effectuez un trajet entre
-                      Paris et un aéroport. Il s&apos;affiche « Transfert dès … € »
-                      sur votre fiche et dans la recherche de transfert. Laissé
-                      vide, c&apos;est votre tarif horaire qui s&apos;affiche.
+                      Paris et chaque aéroport. Il s&apos;affiche
+                      « Transfert dès … € » sur votre fiche et dans la recherche
+                      de transfert. Un aéroport laissé vide affiche votre tarif
+                      horaire.
                     </p>
                   </div>
                 )}
@@ -876,6 +925,16 @@ export function ProfileEditor() {
           <p className="flex items-center gap-1.5 rounded-xl border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs text-red-300">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             {hourError ?? dayError ?? flatError}
+          </p>
+        )}
+
+        {saveError && (
+          <p
+            role="alert"
+            className="flex items-center gap-1.5 rounded-xl border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs text-red-300"
+          >
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {saveError}
           </p>
         )}
 

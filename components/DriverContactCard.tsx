@@ -3,7 +3,19 @@ import type { Driver } from "@/lib/types";
 import { formatPrice } from "@/lib/utils";
 import { whatsappUrl, WHATSAPP_DISPLAY } from "@/lib/whatsapp";
 import { DAY_LABELS_FR } from "@/lib/schedule";
-import { acceptsAirportTransfers } from "@/lib/transfer";
+import {
+  AIRPORT_RATE_IDS,
+  acceptsAirportTransfers,
+  airportFlatRateFor,
+  type AirportRateId,
+} from "@/lib/transfer";
+
+/** Libellés courts : la colonne de droite est étroite. */
+const AIRPORT_SHORT_LABELS: Record<AirportRateId, string> = {
+  cdg: "Roissy CDG",
+  ory: "Orly",
+  lbg: "Le Bourget",
+};
 
 /**
  * Bloc de contact d'une fiche chauffeur. Remplace `BookingWidget`.
@@ -73,15 +85,22 @@ export function DriverContactCard({ driver }: { driver: Driver }) {
           {/* Forfait annoncé par le chauffeur — seulement s'il dessert les
               aéroports : un forfait sans le trajet qui va avec ne veut rien
               dire. « dès » parce qu'il varie selon le trajet exact. */}
-          {(driver.airportFlatRate ?? 0) > 0 && acceptsAirportTransfers(driver) && (
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-sm text-white/60">Transfert aéroport</span>
-              <span className="text-xl font-semibold text-white">
-                <span className="text-sm font-normal text-white/40">dès </span>
-                {formatPrice(driver.airportFlatRate ?? 0)}
-              </span>
-            </div>
-          )}
+          {acceptsAirportTransfers(driver) &&
+            AIRPORT_RATE_IDS.map((id) => {
+              const rate = airportFlatRateFor(driver.airportFlatRates, id);
+              if (rate <= 0) return null;
+              return (
+                <div key={id} className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm text-white/60">
+                    Transfert {AIRPORT_SHORT_LABELS[id]}
+                  </span>
+                  <span className="text-xl font-semibold text-white">
+                    <span className="text-sm font-normal text-white/40">dès </span>
+                    {formatPrice(rate)}
+                  </span>
+                </div>
+              );
+            })}
         </div>
 
         {/* La mention qui empêche le malentendu. Un visiteur qui a vu un tarif

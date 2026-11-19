@@ -18,6 +18,10 @@ import {
   driversForTransferVehicle,
   transferPriceOf,
   transferFromPrice,
+  airportRateIdOf,
+  airportFlatRateFor,
+  readAirportFlatRates,
+  parseAirportFlatRatesInput,
 } from "@/lib/transfer";
 import { FIXTURE_DRIVERS as drivers } from "./fixtures/drivers";
 
@@ -231,32 +235,34 @@ describe("strict filtering by vehicle class", () => {
   });
 });
 
+const allAirports = (r: number) => ({ cdg: r, ory: r, lbg: r });
+
 describe("prix d'un transfert — toujours celui du chauffeur", () => {
   it("prefere le forfait aeroport annonce", () => {
-    expect(transferPriceOf({ airportFlatRate: 70, pricePerHour: 60 })).toEqual({
-      amount: 70,
-      unit: "flat",
-    });
+    expect(
+      transferPriceOf({ airportFlatRates: { cdg: 70 }, pricePerHour: 60 }, "cdg")
+    ).toEqual({ amount: 70, unit: "flat" });
   });
 
   it("retombe sur le tarif horaire, avec son unite", () => {
     expect(transferPriceOf({ pricePerHour: 60 })).toEqual({ amount: 60, unit: "hour" });
-    expect(transferPriceOf({ airportFlatRate: 0, pricePerHour: 60 })).toEqual({
-      amount: 60,
-      unit: "hour",
-    });
+    expect(
+      transferPriceOf({ airportFlatRates: { cdg: 0 }, pricePerHour: 60 }, "cdg")
+    ).toEqual({ amount: 60, unit: "hour" });
   });
 
   it("n'invente rien quand aucun prix n'est annonce", () => {
-    expect(transferPriceOf({ airportFlatRate: 0, pricePerHour: 0 })).toBeNull();
-    expect(transferPriceOf({ airportFlatRate: Number.NaN, pricePerHour: 0 })).toBeNull();
+    expect(transferPriceOf({ airportFlatRates: {}, pricePerHour: 0 })).toBeNull();
+    expect(
+      transferPriceOf({ airportFlatRates: { cdg: Number.NaN }, pricePerHour: 0 }, "cdg")
+    ).toBeNull();
   });
 
   it("« a partir de » = minimum des forfaits, sans les comparer a un horaire", () => {
     expect(
       transferFromPrice([
-        { airportFlatRate: 90, pricePerHour: 50 },
-        { airportFlatRate: 70, pricePerHour: 80 },
+        { airportFlatRates: allAirports(90), pricePerHour: 50 },
+        { airportFlatRates: allAirports(70), pricePerHour: 80 },
         { pricePerHour: 30 },
       ])
     ).toEqual({ amount: 70, unit: "flat" });
@@ -272,5 +278,68 @@ describe("prix d'un transfert — toujours celui du chauffeur", () => {
   it("aucun prix : aucun montant", () => {
     expect(transferFromPrice([])).toBeNull();
     expect(transferFromPrice([{ pricePerHour: 0 }])).toBeNull();
+  });
+});
+
+describe("forfaits par aeroport — CDG, Orly, Le Bourget", () => {
+  it("rattache un trajet a son aeroport, dans les deux sens", () => {
+    expect(airportRateIdOf("cdg")).toBe("cdg");
+    expect(airportRateIdOf("ory-paris")).toBe("ory");
+    expect(airportRateIdOf("lbg")).toBe("lbg");
+    expect(airportRateIdOf("paris")).toBeNull();
+    expect(airportRateIdOf("")).toBeNull();
+  });
+
+  it("lit le forfait de l'aeroport demande, sans en emprunter un autre", () => {
+    const rates = { cdg: 90, ory: 70 };
+    expect(airportFlatRateFor(rates, "cdg")).toBe(90);
+    expect(airportFlatRateFor(rates, "ory")).toBe(70);
+    expect(airportFlatRateFor(rates, "lbg")).toBe(0);
+    // Sans aeroport precis : le plus bas, pour un « des ... ».
+    expect(airportFlatRateFor(rates)).toBe(70);
+    expect(airportFlatRateFor({})).toBe(0);
+  });
+
+  it("un aeroport sans forfait retombe sur le tarif horaire", () => {
+    expect(
+      transferPriceOf({ airportFlatRates: { cdg: 90 }, pricePerHour: 60 }, "lbg")
+    ).toEqual({ amount: 60, unit: "hour" });
+  });
+
+  it("« a partir de » par aeroport", () => {
+    const list = [
+      { airportFlatRates: { cdg: 90, ory: 60 }, pricePerHour: 50 },
+      { airportFlatRates: { cdg: 80 }, pricePerHour: 40 },
+    ];
+    expect(transferFromPrice(list, "cdg")).toEqual({ amount: 80, unit: "flat" });
+    expect(transferFromPrice(list, "ory")).toEqual({ amount: 60, unit: "flat" });
+    expect(transferFromPrice(list, "lbg")).toEqual({ amount: 40, unit: "hour" });
+  });
+
+  it("lecture : bornes appliquees, hors bornes = non communique", () => {
+    expect(
+      readAirportFlatRates({ airport_flat_rates: { cdg: 95, ory: "70", lbg: 5000 } })
+    ).toEqual({ cdg: 95, ory: 70 });
+    expect(readAirportFlatRates({ airport_flat_rates: [1, 2] })).toEqual({});
+    expect(readAirportFlatRates({})).toEqual({});
+  });
+
+  it("lecture : l'ancien forfait unique vaut pour les trois aeroports", () => {
+    expect(readAirportFlatRates({ airport_flat_rate: 80 })).toEqual(allAirports(80));
+    // ...mais plus des qu'un forfait par aeroport existe.
+    expect(
+      readAirportFlatRates({ airport_flat_rates: { ory: 60 }, airport_flat_rate: 80 })
+    ).toEqual({ ory: 60 });
+  });
+
+  it("saisie : vides omis, hors bornes refuse en nommant l'aeroport", () => {
+    expect(parseAirportFlatRatesInput({ cdg: 95, ory: 0, lbg: "" })).toEqual({
+      rates: { cdg: 95 },
+      error: null,
+    });
+    const bad = parseAirportFlatRatesInput({ cdg: 95, ory: 5000 });
+    expect(bad.rates).toEqual({});
+    expect(bad.error).toContain("Orly");
+    expect(parseAirportFlatRatesInput(null)).toEqual({ rates: {}, error: null });
   });
 });

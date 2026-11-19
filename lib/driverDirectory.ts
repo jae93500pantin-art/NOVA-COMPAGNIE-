@@ -4,12 +4,15 @@ import { cache } from "react";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isSupabaseAdminConfigured } from "@/lib/config";
 import { sanitizeSchedule, type WeeklySchedule } from "@/lib/schedule";
-import { clampRate, isRateAcceptable } from "@/lib/pricing";
+import { clampRate } from "@/lib/pricing";
 import {
   hasExpiredRequired,
   allRequiredChecked,
 } from "@/lib/driverDocuments";
-import { sanitizeTransferDestinationIds } from "@/lib/transfer";
+import {
+  readAirportFlatRates,
+  sanitizeTransferDestinationIds,
+} from "@/lib/transfer";
 import type { Driver, VehicleCategory } from "@/lib/types";
 
 /**
@@ -76,19 +79,40 @@ interface ProfileRow {
   last_name: string | null;
   avatar_url: string | null;
   status: string | null;
-  /** Absent tant que la colonne n'existe pas en base (voir PROFILE_COLUMNS). */
+  /** Absents tant que les colonnes n'existent pas en base (voir PROFILE_COLUMN_SETS). */
+  airport_flat_rates?: unknown;
+  /** Ancien forfait unique, valable pour les trois aéroports. */
   airport_flat_rate?: number | string | null;
 }
 
 /**
- * ⚠️ `airport_flat_rate` vit sur `profiles`, pas sur `drivers` : la colonne
- * a été ajoutée là en base le 2026-10-12. On la lit avec le profil, qu'on lit
- * de toute façon pour le statut de validation.
+ * ⚠️ Les forfaits vivent sur `profiles`, pas sur `drivers` : la première
+ * colonne a été ajoutée là en base le 2026-10-12. On les lit avec le profil,
+ * qu'on lit de toute façon pour le statut de validation.
+ *
+ * Essayés dans l'ordre : forfaits par aéroport (`airport_flat_rates`, jsonb,
+ * migration du 2026-11-19), puis l'ancien forfait unique, puis rien. Une
+ * colonne absente (42703) fait passer au jeu suivant : l'annuaire reste
+ * lisible, sans forfait, au lieu de se vider.
  */
-const PROFILE_COLUMNS = "id, first_name, last_name, avatar_url, status, airport_flat_rate";
-/** Repli si la colonne manque (base non migrée) : l'annuaire reste lisible,
- *  sans forfait, au lieu de se vider sur une erreur 42703. */
-const PROFILE_COLUMNS_LEGACY = "id, first_name, last_name, avatar_url, status";
+const PROFILE_BASE = "id, first_name, last_name, avatar_url, status";
+const PROFILE_COLUMN_SETS = [
+  `${PROFILE_BASE}, airport_flat_rate, airport_flat_rates`,
+  `${PROFILE_BASE}, airport_flat_rate`,
+  PROFILE_BASE,
+];
+
+/** Lit les profils avec le jeu de colonnes le plus complet qui existe. */
+async function readProfilesWithFallback<T>(
+  read: (columns: string) => PromiseLike<{ data: T | null; error: { code?: string; message: string } | null }>
+): Promise<{ data: T | null; error: { code?: string; message: string } | null }> {
+  let res = await read(PROFILE_COLUMN_SETS[0]);
+  for (const columns of PROFILE_COLUMN_SETS.slice(1)) {
+    if (res.error?.code !== "42703") break;
+    res = await read(columns);
+  }
+  return res;
+}
 
 /**
  * ⚠️ Ni `rating`, ni `reviews_count`, ni `trips` : rien ne les lit (la note se
@@ -140,13 +164,10 @@ export const listDirectory = cache(async (): Promise<Driver[]> => {
   // Profils et pièces ne dépendent que des ids : lus EN PARALLÈLE. En série,
   // chaque aller-retour VM → Supabase s'ajoutait au temps de chaque clic.
   const [profileRes, { expired, verified }] = await Promise.all([
-    readProfiles(PROFILE_COLUMNS),
+    readProfilesWithFallback(readProfiles),
     documentState(client, ids),
   ]);
-  let { data: profileRows, error: profileError } = profileRes;
-  if (profileError?.code === "42703") {
-    ({ data: profileRows, error: profileError } = await readProfiles(PROFILE_COLUMNS_LEGACY));
-  }
+  const { data: profileRows, error: profileError } = profileRes;
   if (profileError) {
     console.error(`[annuaire] profils illisibles : ${profileError.message}`);
     return [];
@@ -241,13 +262,10 @@ export const getDirectoryDriver = cache(async (slug: string): Promise<Driver | n
     client.from("profiles").select(columns).eq("id", accountId).maybeSingle();
   // Profil et pièces en parallèle : l'id de compte est déjà celui de `drivers`.
   const [profileRes, { expired, verified }] = await Promise.all([
-    readProfile(PROFILE_COLUMNS),
+    readProfilesWithFallback(readProfile),
     documentState(client, [accountId]),
   ]);
-  let { data: profile } = profileRes;
-  if (profileRes.error?.code === "42703") {
-    ({ data: profile } = await readProfile(PROFILE_COLUMNS_LEGACY));
-  }
+  const { data: profile } = profileRes;
 
   const p = profile as unknown as ProfileRow | null;
   if (!p || p.status !== "approved") return null;
@@ -409,13 +427,7 @@ function toDriver(
     pricePerHour: clampRate("hour", num(row.price_per_hour, 0)),
     pricePerDay: clampRate("day", num(row.price_per_day, 0)),
     pricePerKm: num(row.price_per_km, 0),
-    // ⚠️ Hors bornes = non communiqué (0), PAS ramené au plafond : `profiles`
-    // est modifiable par son propriétaire via PostgREST, donc une valeur peut
-    // arriver ici sans être passée par la route qui valide.
-    airportFlatRate: (() => {
-      const v = num(profile.airport_flat_rate ?? null, 0);
-      return isRateAcceptable("transfer", v) ? Math.round(v) : 0;
-    })(),
+    airportFlatRates: readAirportFlatRates(profile),
     bio: row.bio ?? "",
     badges: row.badges ?? [],
     // L'annuaire en base porte de vraies coordonnées ; les offsets de la carte

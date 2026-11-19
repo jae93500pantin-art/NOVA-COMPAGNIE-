@@ -1,4 +1,5 @@
 import type { WeeklySchedule } from "./schedule";
+import type { AirportFlatRates } from "./transfer";
 
 export type VehicleCategory = "Business" | "Moto" | "Van" | "Van Luxury" | "Luxury";
 
@@ -89,11 +90,12 @@ export interface Driver {
   pricePerDay: number;
   pricePerKm: number;
   /**
-   * Forfait transfert aéroport annoncé PAR LE CHAUFFEUR (euros), lu dans
-   * `profiles.airport_flat_rate`. Absent ou 0 = non communiqué : on affiche
-   * alors son tarif horaire. ⚠️ Nova n'en fixe aucun et n'en calcule aucun.
+   * Forfaits transfert aéroport annoncés PAR LE CHAUFFEUR (euros), un par
+   * aéroport (CDG, Orly, Le Bourget), lus dans `profiles.airport_flat_rates`.
+   * Absent ou 0 = non communiqué pour cet aéroport : on affiche alors son
+   * tarif horaire. ⚠️ Nova n'en fixe aucun et n'en calcule aucun.
    */
-  airportFlatRate?: number;
+  airportFlatRates?: AirportFlatRates;
   bio: string;
   badges: string[];
   /** Relative coordinates (0-100) used to position the live pin on the map. */

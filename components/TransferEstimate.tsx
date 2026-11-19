@@ -34,6 +34,7 @@ import {
   zoneDestinationId,
   transferFromPrice,
   transferPriceOf,
+  airportRateIdOf,
 } from "@/lib/transfer";
 
 /**
@@ -106,7 +107,17 @@ export function TransferEstimate({ drivers = [] }: { drivers?: Driver[] }) {
    */
   // Minimum des prix ANNONCÉS par les chauffeurs listés : forfait aéroport
   // s'il y en a, sinon tarif horaire — jamais les deux mélangés.
-  const fromPrice = useMemo(() => transferFromPrice(matching), [matching]);
+  /**
+   * L'aéroport du trajet, pour lire le forfait que chaque chauffeur annonce
+   * POUR CET aéroport : celui de la destination (« Paris → Orly »), sinon
+   * celui du départ (« CDG → Paris »). Paris → Paris : aucun, on prend alors
+   * le plus bas des forfaits du chauffeur.
+   */
+  const rateAirport = airportRateIdOf(destinationId) ?? airportRateIdOf(airport);
+  const fromPrice = useMemo(
+    () => transferFromPrice(matching, rateAirport),
+    [matching, rateAirport]
+  );
 
   /** Distingués pour que le refus nomme sa cause — les deux se corrigent autrement. */
   const blockedBy: "destination" | "vehicle" | null =
@@ -317,7 +328,7 @@ export function TransferEstimate({ drivers = [] }: { drivers?: Driver[] }) {
                       </span>
                       <span className="shrink-0 text-right">
                         {(() => {
-                          const price = transferPriceOf(d);
+                          const price = transferPriceOf(d, rateAirport);
                           if (!price) return null;
                           return price.unit === "flat" ? (
                             <>
@@ -338,7 +349,7 @@ export function TransferEstimate({ drivers = [] }: { drivers?: Driver[] }) {
                             </span>
                           );
                         })()}
-                        {transferPriceOf(d) === null && (
+                        {transferPriceOf(d, rateAirport) === null && (
                           <span className="block text-[11px] text-white/40">
                             {t("transfer.estNoRate")}
                           </span>

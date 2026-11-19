@@ -14,6 +14,8 @@
  * chauffeur annonce sur sa fiche.
  */
 
+import { clampRate, isRateAcceptable, optionalRateError } from "./pricing";
+
 export type TransferVehicleId = "business" | "van" | "premium";
 export type TransferZoneId = "idf" | "cdg" | "orly" | "lbg";
 
@@ -235,12 +237,117 @@ export const getVehicle = (id: string) => vehicles.find((v) => v.id === id);
  */
 export type TransferPrice = { amount: number; unit: "flat" | "hour" };
 
-export function transferPriceOf(driver: {
-  airportFlatRate?: number;
-  pricePerHour: number;
-}): TransferPrice | null {
-  const flat = driver.airportFlatRate ?? 0;
-  if (Number.isFinite(flat) && flat > 0) return { amount: flat, unit: "flat" };
+/**
+ * Les trois aéroports pour lesquels un chauffeur peut annoncer un forfait
+ * distinct (2026-11-19). Les ids sont ceux de `airports`.
+ */
+export type AirportRateId = "cdg" | "ory" | "lbg";
+export const AIRPORT_RATE_IDS: AirportRateId[] = ["cdg", "ory", "lbg"];
+export const AIRPORT_RATE_LABELS: Record<AirportRateId, string> = {
+  cdg: "Roissy Charles de Gaulle (CDG)",
+  ory: "Orly (ORY)",
+  lbg: "Le Bourget (LBG)",
+};
+
+/** Forfaits annoncés par aéroport. Absent ou 0 = pas de forfait annoncé. */
+export type AirportFlatRates = Partial<Record<AirportRateId, number>>;
+
+const isPositive = (n: number | undefined): n is number =>
+  typeof n === "number" && Number.isFinite(n) && n > 0;
+
+/** Un montant de forfait accepté (bornes `RATE_LIMITS.transfer`), arrondi, sinon `null`. */
+function acceptFlatRate(raw: unknown): number | null {
+  const n =
+    typeof raw === "string" ? (raw.trim() === "" ? Number.NaN : Number(raw)) : raw;
+  return typeof n === "number" && isRateAcceptable("transfer", n) ? Math.round(n) : null;
+}
+
+/**
+ * Forfaits par aéroport tels qu'ils sont stockés (`profiles.airport_flat_rates`,
+ * jsonb `{cdg, ory, lbg}`), re-bornés à la lecture : `profiles` est modifiable
+ * par son propriétaire via PostgREST, une valeur peut donc arriver sans être
+ * passée par la route qui valide. Hors bornes = non communiqué (absent), PAS
+ * ramené au plafond.
+ *
+ * Tant qu'aucun forfait par aéroport n'est enregistré, l'ancien forfait unique
+ * (`profiles.airport_flat_rate`) vaut pour les trois aéroports — c'était son sens.
+ */
+export function readAirportFlatRates(profile: {
+  airport_flat_rates?: unknown;
+  airport_flat_rate?: unknown;
+}): AirportFlatRates {
+  const out: AirportFlatRates = {};
+  const map = profile.airport_flat_rates;
+  if (map && typeof map === "object" && !Array.isArray(map)) {
+    for (const id of AIRPORT_RATE_IDS) {
+      const v = acceptFlatRate((map as Record<string, unknown>)[id]);
+      if (v !== null) out[id] = v;
+    }
+    if (Object.keys(out).length > 0) return out;
+  }
+  const legacy = acceptFlatRate(profile.airport_flat_rate);
+  if (legacy !== null) for (const id of AIRPORT_RATE_IDS) out[id] = legacy;
+  return out;
+}
+
+/**
+ * Forfaits envoyés par le formulaire → ce qu'on enregistre.
+ *
+ * Chaque forfait est FACULTATIF : vide ou 0 = pas de forfait pour cet
+ * aéroport (la clé est omise). ⚠️ Une valeur saisie hors bornes est REFUSÉE
+ * (message nommant l'aéroport), pas ramenée en silence : enregistrer autre
+ * chose que ce que le chauffeur a tapé ferait changer son prix sans qu'il le
+ * sache.
+ */
+export function parseAirportFlatRatesInput(
+  raw: unknown
+): { rates: AirportFlatRates; error: string | null } {
+  const rates: AirportFlatRates = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { rates, error: null };
+  }
+  for (const id of AIRPORT_RATE_IDS) {
+    const value = Number((raw as Record<string, unknown>)[id] ?? 0);
+    const error = optionalRateError("transfer", value);
+    if (error) return { rates: {}, error: `${AIRPORT_RATE_LABELS[id]} : ${error}` };
+    const amount = clampRate("transfer", value);
+    if (amount > 0) rates[id] = amount;
+  }
+  return { rates, error: null };
+}
+
+/**
+ * L'aéroport concerné par un id d'aéroport (`cdg`) ou de trajet
+ * (`cdg`, `cdg-paris`). `paris` (le fourre-tout « un aéroport → Paris ») et
+ * l'origine Paris n'en désignent aucun : `null`.
+ */
+export function airportRateIdOf(id: string | null | undefined): AirportRateId | null {
+  const head = (id ?? "").split("-")[0];
+  return (AIRPORT_RATE_IDS as string[]).includes(head) ? (head as AirportRateId) : null;
+}
+
+/**
+ * Le forfait d'un chauffeur pour un aéroport, ou — sans aéroport précis — le
+ * plus bas de ses forfaits (« dès … »). `0` quand il n'en annonce aucun.
+ */
+export function airportFlatRateFor(
+  rates: AirportFlatRates | undefined,
+  airport?: AirportRateId | null
+): number {
+  if (airport) {
+    const v = rates?.[airport];
+    return isPositive(v) ? v : 0;
+  }
+  const declared = AIRPORT_RATE_IDS.map((id) => rates?.[id]).filter(isPositive);
+  return declared.length > 0 ? Math.min(...declared) : 0;
+}
+
+export function transferPriceOf(
+  driver: { airportFlatRates?: AirportFlatRates; pricePerHour: number },
+  airport?: AirportRateId | null
+): TransferPrice | null {
+  const flat = airportFlatRateFor(driver.airportFlatRates, airport);
+  if (flat > 0) return { amount: flat, unit: "flat" };
   if (Number.isFinite(driver.pricePerHour) && driver.pricePerHour > 0) {
     return { amount: driver.pricePerHour, unit: "hour" };
   }
@@ -257,10 +364,11 @@ export function transferPriceOf(driver: {
  * tarifs horaires (« … / h »).
  */
 export function transferFromPrice(
-  drivers: { airportFlatRate?: number; pricePerHour: number }[]
+  drivers: { airportFlatRates?: AirportFlatRates; pricePerHour: number }[],
+  airport?: AirportRateId | null
 ): TransferPrice | null {
   const prices = drivers
-    .map(transferPriceOf)
+    .map((d) => transferPriceOf(d, airport))
     .filter((p): p is TransferPrice => p !== null);
   const flats = prices.filter((p) => p.unit === "flat");
   const pool = flats.length > 0 ? flats : prices;

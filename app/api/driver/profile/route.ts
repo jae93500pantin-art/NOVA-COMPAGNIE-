@@ -2,9 +2,11 @@ import { NextRequest } from "next/server";
 import { getServerUser } from "@/lib/session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isSupabaseAdminConfigured } from "@/lib/config";
-import { clampRate, optionalRateError } from "@/lib/pricing";
+import { clampRate } from "@/lib/pricing";
 import { sanitizeSchedule } from "@/lib/schedule";
 import {
+  parseAirportFlatRatesInput,
+  readAirportFlatRates,
   sanitizeTransferDestinationIds,
   transferDestinationsForOptIn,
 } from "@/lib/transfer";
@@ -100,23 +102,28 @@ export async function GET() {
   if (error) {
     return Response.json({ error: "Lecture impossible" }, { status: 500 });
   }
-  // Le forfait aéroport vit sur `profiles` (colonne ajoutée là en base) : il
-  // est lu à part et renvoyé à côté de la fiche. Colonne absente = null, le
-  // formulaire s'ouvre simplement vide.
-  const { data: flat } = await g.db
-    .from("profiles")
-    .select("airport_flat_rate")
-    .eq("id", g.user.id)
-    .maybeSingle();
-  const airportFlatRate =
-    Number((flat as { airport_flat_rate?: number | string | null } | null)?.airport_flat_rate) || 0;
+  // Les forfaits aéroport vivent sur `profiles` (colonnes ajoutées là en
+  // base) : lus à part et renvoyés à côté de la fiche. Colonne absente : on
+  // essaie la précédente, puis rien — le formulaire s'ouvre simplement vide.
+  let flat: unknown = null;
+  for (const columns of ["airport_flat_rate, airport_flat_rates", "airport_flat_rate"]) {
+    const res = await g.db.from("profiles").select(columns).eq("id", g.user.id).maybeSingle();
+    if (!res.error) {
+      flat = res.data;
+      break;
+    }
+    if (!isMissingColumn(res.error)) break;
+  }
+  const airportFlatRates = readAirportFlatRates(
+    (flat ?? {}) as { airport_flat_rates?: unknown; airport_flat_rate?: unknown }
+  );
 
   // Pas encore de fiche : on renvoie `null` plutôt qu'un 404. L'absence de
   // fiche est l'état NORMAL d'un chauffeur qui vient de s'inscrire, pas une
   // erreur — le formulaire doit s'ouvrir vide.
   return Response.json({
     profile: data ?? null,
-    airportFlatRate,
+    airportFlatRates,
     status: g.user.status,
   });
 }
@@ -150,19 +157,19 @@ export async function POST(req: NextRequest) {
   const pricePerDay = clampRate("day", Number(body.pricePerDay));
 
   /**
-   * Forfait transfert aéroport : FACULTATIF, et fixé par le chauffeur.
-   * ⚠️ Refusé en 400 s'il est hors bornes, plutôt que ramené en silence :
+   * Forfaits transfert aéroport, un par aéroport (CDG, Orly, Le Bourget) :
+   * FACULTATIFS, et fixés par le chauffeur.
+   * ⚠️ Refusés en 400 s'ils sont hors bornes, plutôt que ramenés en silence :
    * enregistrer 0 à la place d'un « 5000 » saisi par erreur ferait disparaître
    * le forfait sans que le chauffeur comprenne pourquoi. Le champ absent du
-   * corps (ancien formulaire, tunnel d'inscription) ne touche à rien.
+   * corps (tunnel d'inscription) ne touche à rien.
    */
-  const hasFlatRate = Object.prototype.hasOwnProperty.call(body, "airportFlatRate");
-  const flatRaw = Number(body.airportFlatRate ?? 0);
-  const flatError = hasFlatRate ? optionalRateError("transfer", flatRaw) : null;
-  if (flatError) {
-    return Response.json({ error: flatError }, { status: 400 });
+  const hasFlatRates = Object.prototype.hasOwnProperty.call(body, "airportFlatRates");
+  const parsedFlat = hasFlatRates ? parseAirportFlatRatesInput(body.airportFlatRates) : null;
+  if (parsedFlat?.error) {
+    return Response.json({ error: parsedFlat.error }, { status: 400 });
   }
-  const airportFlatRate = hasFlatRate ? clampRate("transfer", flatRaw) : null;
+  const airportFlatRates = parsedFlat ? parsedFlat.rates : null;
 
   const photos = Array.isArray(body.carPhotos)
     ? (body.carPhotos as unknown[])
@@ -280,18 +287,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (airportFlatRate !== null) {
-    // 0 = non communiqué : on écrit NULL, pas 0, pour qu'aucune lecture ne
-    // puisse le prendre pour un prix.
+  if (airportFlatRates !== null) {
+    // Aucun forfait = NULL, pas `{}` ni 0, pour qu'aucune lecture ne puisse le
+    // prendre pour un prix. L'ancien forfait unique est remis à NULL : sans
+    // quoi il reviendrait comme repli (`readAirportFlatRates`) dès que le
+    // chauffeur vide ses trois forfaits.
     const { error: flatWriteError } = await g.db
       .from("profiles")
-      .update({ airport_flat_rate: airportFlatRate > 0 ? airportFlatRate : null })
+      .update({
+        airport_flat_rates: Object.keys(airportFlatRates).length > 0 ? airportFlatRates : null,
+        airport_flat_rate: null,
+      })
       .eq("id", g.user.id);
     if (flatWriteError) {
-      console.error(`[driver-profile] forfait non enregistré : ${flatWriteError.message}`);
+      console.error(`[driver-profile] forfaits non enregistrés : ${flatWriteError.message}`);
       return Response.json(
-        { error: "Votre fiche est enregistrée, mais pas le forfait aéroport. Réessayez." },
-        { status: 500 }
+        {
+          error: isMissingColumn(flatWriteError)
+            ? "Votre fiche est enregistrée, mais les forfaits par aéroport ne sont pas encore disponibles (mise à jour de la base en attente)."
+            : "Votre fiche est enregistrée, mais pas les forfaits aéroport. Réessayez.",
+        },
+        { status: isMissingColumn(flatWriteError) ? 503 : 500 }
       );
     }
   }
@@ -302,8 +318,17 @@ export async function POST(req: NextRequest) {
     // afficher ce qui a RÉELLEMENT été enregistré, pas ce qu'il a envoyé.
     pricePerHour,
     pricePerDay,
-    airportFlatRate,
+    airportFlatRates,
   });
+}
+
+/**
+ * Colonne absente : `42703` quand elle est nommée dans un `select`,
+ * `PGRST204` quand elle est dans le corps d'un update (cache de schéma
+ * PostgREST). Les deux existent sur ce projet — voir CLAUDE.md § Avis de compte.
+ */
+function isMissingColumn(error: { code?: string } | null): boolean {
+  return error?.code === "42703" || error?.code === "PGRST204";
 }
 
 /**
