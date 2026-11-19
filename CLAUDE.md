@@ -413,8 +413,16 @@ est exactement ce que cette fonctionnalité rend impossible. Ne pas le remettre
 
 ### Le verrou de validation
 
-- **Six pièces obligatoires** : permis, carte VTC, **inscription au registre
-  VTC**, **Kbis/SIRENE**, assurance, carte grise. ⚠️ La carte atteste du
+- **Cinq pièces obligatoires (2026-11-19)** : permis, carte VTC, **inscription
+  au registre VTC**, assurance (RC pro **et** véhicule), carte grise —
+  exactement ce que l'**art. L3141-2 du Code des transports** impose au
+  professionnel qui met en relation de vérifier. ⚠️ Ne pas descendre en
+  dessous. Le **Kbis** est **retiré** des pièces (la loi ne l'exige pas ; le SIREN
+  se vérifie sur annuaire-entreprises.data.gouv.fr). ⚠️ Question ouverte, à
+  faire trancher par un avocat : L3141-1 ne pose **aucune condition de
+  rémunération**, Nova pourrait donc être une **centrale de réservation**
+  (L3142-1 : déclaration annuelle, 15 000 € d'amende sinon ; responsabilité
+  de plein droit ; RC pro). ⚠️ La carte atteste du
   **chauffeur**, le registre atteste de l'**exploitant** — un chauffeur peut
   détenir une carte valide alors que son entreprise n'est plus inscrite. Ne pas
   fusionner ces deux pièces.

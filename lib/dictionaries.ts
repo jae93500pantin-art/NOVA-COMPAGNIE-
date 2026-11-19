@@ -364,7 +364,7 @@ const fr = {
     badgeInstant: "Mise en relation directe",
     badgeFlexible: "Tarifs annoncés par le chauffeur",
     badgeSecureDetail:
-      "Nous contrôlons sur pièces la carte professionnelle VTC et son inscription au registre des exploitants, l'attestation d'assurance responsabilité civile professionnelle, le Kbis, le permis et la carte grise. Les fiches dont le contrôle est complet portent la mention « Habilitations vérifiées » — vérifiez sa présence sur la fiche du chauffeur que vous retenez. Nous constatons l'existence de ces documents ; nous n'exécutons aucun transport.",
+      "Nous contrôlons sur pièces la carte professionnelle VTC et son inscription au registre des exploitants, l'attestation d'assurance (responsabilité civile professionnelle et véhicule), le permis et la carte grise. Les fiches dont le contrôle est complet portent la mention « Habilitations vérifiées » — vérifiez sa présence sur la fiche du chauffeur que vous retenez. Nous constatons l'existence de ces documents ; nous n'exécutons aucun transport.",
     badgeSecureShort:
       "Les fiches dont toutes les pièces ont été contrôlées portent la mention « Habilitations vérifiées ».",
     learnMore: "Ce que nous contrôlons",
@@ -801,7 +801,7 @@ const en: Dict = {
     badgeInstant: "Direct introduction",
     badgeFlexible: "Driver-set rates",
     badgeSecureDetail:
-      "We check on file the professional VTC card and its entry in the operator register, the professional liability insurance certificate, the company registration, the driving licence and the vehicle registration document. Listings whose check is complete carry a « Credentials verified » mention — look for it on the listing of the chauffeur you pick. We confirm that those documents exist; we do not carry out any transport.",
+      "We check on file the professional VTC card and its entry in the operator register, the insurance certificate (professional liability and vehicle), the driving licence and the vehicle registration document. Listings whose check is complete carry a « Credentials verified » mention — look for it on the listing of the chauffeur you pick. We confirm that those documents exist; we do not carry out any transport.",
     badgeSecureShort:
       "Listings whose documents have all been checked carry the « Credentials verified » mention.",
     learnMore: "What we check",

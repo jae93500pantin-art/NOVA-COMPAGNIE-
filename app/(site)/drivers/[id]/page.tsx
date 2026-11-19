@@ -139,7 +139,7 @@ export default async function DriverProfile({ params }: { params: { id: string }
                   </span>
                   <p className="mt-2 text-[11px] leading-relaxed text-white/45">
                     Permis, carte professionnelle VTC, inscription au registre
-                    des exploitants, Kbis et attestation d&apos;assurance
+                    des exploitants, attestation d&apos;assurance et carte grise
                     contrôlés sur pièces par notre équipe. Nous constatons
                     l&apos;existence de ces documents ; nous n&apos;exécutons
                     aucun transport.

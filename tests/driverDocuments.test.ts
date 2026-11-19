@@ -85,14 +85,13 @@ describe("documentError", () => {
 
 describe("missingRequired", () => {
   it("liste ce qu'il manque pour que le dossier soit examinable", () => {
-    // ⚠️ Six pièces depuis le 2026-09-29 : le registre VTC et le Kbis se sont
-    // ajoutés, parce que la page publique promet de les contrôler. La carte
+    // ⚠️ Cinq pièces depuis le 2026-11-19 : exactement celles de l'art.
+    // L3141-2 du Code des transports. Le Kbis est facultatif. La carte
     // atteste du chauffeur, le registre atteste de l'exploitant.
     expect(missingRequired([])).toEqual([
       "licence",
       "vtc_card",
       "vtc_register",
-      "kbis",
       "insurance",
       "registration",
     ]);
@@ -110,7 +109,7 @@ describe("missingRequired", () => {
   });
 
   it("ignore une pièce inconnue plutôt que de la compter", () => {
-    expect(missingRequired([{ kind: "selfie" }])).toHaveLength(6);
+    expect(missingRequired([{ kind: "selfie" }])).toHaveLength(5);
   });
 });
 
@@ -175,9 +174,9 @@ describe("échéances des pièces", () => {
   });
 
   it("ignore une pièce sans échéance ou mal formée", () => {
-    expect(daysUntilExpiry({ kind: "kbis" }, NOW)).toBeNull();
-    expect(daysUntilExpiry({ kind: "kbis", expiresAt: "29/09/2026" }, NOW)).toBeNull();
-    expect(isExpired({ kind: "kbis", expiresAt: null }, NOW)).toBe(false);
+    expect(daysUntilExpiry({ kind: "identity" }, NOW)).toBeNull();
+    expect(daysUntilExpiry({ kind: "identity", expiresAt: "29/09/2026" }, NOW)).toBeNull();
+    expect(isExpired({ kind: "identity", expiresAt: null }, NOW)).toBe(false);
   });
 });
 
@@ -223,14 +222,20 @@ describe("blockingDocuments — le bouton Valider", () => {
     expect(canApproveDossier(docs, NOW)).toBe(true);
   });
 
-  it("exige les six pièces obligatoires, registre et Kbis compris", () => {
+  it("exige le minimum legal (L3141-2), pas moins", () => {
     // ⚠️ La carte VTC atteste du chauffeur, le registre atteste de
     // l'exploitant : les deux sont exigés, et les fusionner serait une perte
-    // de contrôle.
+    // de contrôle. La carte grise sert à vérifier les conditions du véhicule
+    // (L3122-4). Le Kbis, que la loi n'impose pas, est facultatif.
     const required = DOCUMENT_KINDS.filter((k) => DOCUMENT_LABELS[k].required);
-    expect(required).toContain("vtc_card");
-    expect(required).toContain("vtc_register");
-    expect(required).toContain("kbis");
+    expect(required).toEqual([
+      "licence",
+      "vtc_card",
+      "vtc_register",
+      "insurance",
+      "registration",
+    ]);
+    expect(DOCUMENT_KINDS as readonly string[]).not.toContain("kbis");
     expect(blockingDocuments([], NOW).map((b) => b.kind)).toEqual(required);
   });
 });
@@ -340,8 +345,8 @@ describe("validation par derogation", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("missingRequired face à un enum incomplet", () => {
-  // La situation réelle du 2026-10-02 : le code exige `vtc_register` et
-  // `kbis`, l'enum `driver_document_kind` ne les connaît pas encore.
+  // La situation réelle du 2026-10-02 : le code exige `vtc_register`, l'enum
+  // `driver_document_kind` ne le connaît pas encore.
   const LIVE_ENUM = [
     "licence",
     "vtc_card",
@@ -354,7 +359,6 @@ describe("missingRequired face à un enum incomplet", () => {
   it("n'exige pas une pièce que la base ne sait pas stocker", () => {
     const missing = missingRequired([], LIVE_ENUM);
     expect(missing).not.toContain("vtc_register");
-    expect(missing).not.toContain("kbis");
   });
 
   it("laisse le dossier se terminer avec les seules pièces déposables", () => {
@@ -364,17 +368,17 @@ describe("missingRequired face à un enum incomplet", () => {
     expect(missingRequired(deposited, LIVE_ENUM)).toEqual([]);
   });
 
-  it("exige à nouveau les deux pièces dès que l'enum est à jour", () => {
+  it("exige à nouveau le registre dès que l'enum est à jour", () => {
     const afterMigration = [...LIVE_ENUM, "vtc_register", "kbis"];
     expect(missingRequired([], afterMigration)).toContain("vtc_register");
-    expect(missingRequired([], afterMigration)).toContain("kbis");
+    expect(missingRequired([], afterMigration)).not.toContain("kbis"); // retiré du code, reste dans l'enum
   });
 
   it("applique la règle complète quand la liste est indéterminée", () => {
     // `undefined` ne veut pas dire « rien n'est accepté » mais « on ne sait
     // pas » : on ne relâche alors aucune exigence.
     expect(missingRequired([])).toEqual(missingRequired([], undefined));
-    expect(missingRequired([])).toContain("kbis");
+    expect(missingRequired([])).toContain("vtc_register");
   });
 
   it("ne rend jamais obligatoire une pièce facultative, enum ou pas", () => {

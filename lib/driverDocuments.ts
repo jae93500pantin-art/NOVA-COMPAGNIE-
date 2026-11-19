@@ -10,7 +10,9 @@ export const DOCUMENT_KINDS = [
   "licence",
   "vtc_card",
   "vtc_register",
-  "kbis",
+  // ⚠️ `kbis` retiré le 2026-11-19 : l'art. L3141-2 du Code des transports ne
+  // l'exige pas, et le SIREN se vérifie en ligne. La valeur reste dans l'enum
+  // de la base (Postgres ne retire pas une valeur d'enum), sans usage.
   "insurance",
   "registration",
   "identity",
@@ -55,14 +57,17 @@ export const DOCUMENT_LABELS: Record<
     hint: "Récépissé d'inscription au registre des exploitants VTC (ministère des Transports).",
     required: true,
   },
-  kbis: {
-    label: "Kbis ou avis SIRENE",
-    hint: "Rattache le SIREN déclaré à une entreprise réellement immatriculée. De moins de 3 mois.",
-    required: true,
-  },
+  /**
+   * ⚠️ Les cinq pièces obligatoires sont exactement celles que l'art. L3141-2
+   * du Code des transports impose de vérifier — ne pas descendre en dessous.
+   *
+   * L3141-2 exige DEUX assurances : la RC professionnelle de l'entreprise et
+   * l'assurance du véhicule. Un contrat VTC couvre souvent les deux ;
+   * l'administrateur vérifie que c'est le cas avant de cocher « Conforme ».
+   */
   insurance: {
     label: "Attestation d'assurance",
-    hint: "Responsabilité civile professionnelle transport de personnes.",
+    hint: "RC professionnelle transport de personnes ET assurance du véhicule (un seul fichier, ou les deux réunis en PDF).",
     required: true,
   },
   registration: {
